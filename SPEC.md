@@ -1,4 +1,4 @@
-# SailingRatings.com — Product Spec
+# SailRatings.com — Product Spec
 
 ## The Product
 
@@ -8,8 +8,8 @@ One flow: search → teaser → pay → report. Not a dashboard. Not a web app. 
 
 ## The API
 
-Backend: https://api.sailingratings.com
-OpenAPI docs: https://api.sailingratings.com/v1/docs
+Backend: https://api.sailratings.com
+OpenAPI docs: https://api.sailratings.com/v1/docs
 CORS: enabled for all origins.
 
 ### Endpoints
@@ -95,7 +95,7 @@ GET /v1/analytics/boats/{id}/rivals → head-to-head rival data
 - SSE streaming via fetch + ReadableStream
 - Stripe Checkout for payment
 - Deploy to Cloudflare Pages or Vercel
-- Domain: sailingratings.com
+- Domain: sailratings.com
 
 ## Test Data
 

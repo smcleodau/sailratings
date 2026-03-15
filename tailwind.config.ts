@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * SailingRatings Design Tokens
+ * SailRatings Design Tokens
  *
  * Note: Tailwind v4 reads theme configuration from @theme in globals.css.
  * This file documents the design system for reference and tooling support.
@@ -12,29 +12,29 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        linen: "#FAF6F0",
         navy: {
-          DEFAULT: "#0F1B2D",
-          light: "#1A2A42",
+          DEFAULT: "#0B1623",
+          light: "#142033",
         },
+        sand: "#F7F3ED",
         copper: {
-          DEFAULT: "#B87333",
-          dark: "#9A5F28",
+          DEFAULT: "#C27B3E",
+          dark: "#A8692F",
         },
-        teal: {
-          DEFAULT: "#2A7B88",
-          light: "#3A9DAD",
+        signal: {
+          DEFAULT: "#1B7FA3",
+          light: "#2194BC",
         },
         ink: {
-          DEFAULT: "#1C1C1C",
+          DEFAULT: "#1A1A1A",
           light: "#3A3A3A",
         },
         border: {
-          DEFAULT: "#D4CFC7",
+          DEFAULT: "#DDD8CF",
           light: "#E8E3DB",
         },
-        cream: "#F5F0E8",
-        muted: "#7A756D",
+        cream: "#F0EBE3",
+        muted: "#8A8478",
       },
       fontFamily: {
         serif: ['"Cormorant Garamond"', "Georgia", "serif"],

@@ -7,17 +7,20 @@ import { streamInsights } from "@/lib/api";
 interface TeaserAnalysisProps {
   boatId: number;
   boatName: string;
+  onComplete?: (text: string) => void;
 }
 
 export default function TeaserAnalysis({
   boatId,
   boatName,
+  onComplete,
 }: TeaserAnalysisProps) {
   const [text, setText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [isDone, setIsDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
+  const textRef = useRef("");
 
   useEffect(() => {
     // Prevent double-fire in strict mode
@@ -30,6 +33,7 @@ export default function TeaserAnalysis({
       setIsStreaming(true);
       setError(null);
       setText("");
+      textRef.current = "";
 
       try {
         const stream = streamInsights(boatId, "free");
@@ -37,7 +41,8 @@ export default function TeaserAnalysis({
           if (cancelled) break;
 
           if (event.type === "text") {
-            setText((prev) => prev + event.data);
+            textRef.current += event.data;
+            setText(textRef.current);
           } else if (event.type === "done") {
             break;
           } else if (event.type === "error") {
@@ -53,6 +58,9 @@ export default function TeaserAnalysis({
         if (!cancelled) {
           setIsStreaming(false);
           setIsDone(true);
+          if (textRef.current && onComplete) {
+            onComplete(textRef.current);
+          }
         }
       }
     }
@@ -61,7 +69,7 @@ export default function TeaserAnalysis({
     return () => {
       cancelled = true;
     };
-  }, [boatId]);
+  }, [boatId, onComplete]);
 
   if (error && !text) {
     return (
@@ -121,10 +129,10 @@ export default function TeaserAnalysis({
         {isDone && (
           <div className="border-t border-border-light px-8 py-3 flex items-center justify-between">
             <span className="text-xs text-muted/60 font-body italic">
-              Free preview — full analysis available below
+              You&rsquo;re seeing the surface. The full report goes deeper.
             </span>
             <span className="text-xs text-muted/40 data-mono">
-              sailingratings.com
+              sailratings.com
             </span>
           </div>
         )}

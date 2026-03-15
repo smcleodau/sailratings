@@ -1,22 +1,22 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Fira+Code:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Fira+Code:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 /* ── Tailwind v4 Theme ───────────────────────────────────────────────── */
 @theme inline {
-  --color-linen: #FAF6F0;
-  --color-navy: #0F1B2D;
-  --color-navy-light: #1A2A42;
-  --color-copper: #B87333;
-  --color-copper-dark: #9A5F28;
-  --color-teal: #2A7B88;
-  --color-teal-light: #3A9DAD;
-  --color-ink: #1C1C1C;
+  --color-navy: #0B1623;
+  --color-navy-light: #142033;
+  --color-sand: #F7F3ED;
+  --color-copper: #C27B3E;
+  --color-copper-dark: #A8692F;
+  --color-signal: #1B7FA3;
+  --color-signal-light: #2194BC;
+  --color-ink: #1A1A1A;
   --color-ink-light: #3A3A3A;
-  --color-border: #D4CFC7;
+  --color-border: #DDD8CF;
   --color-border-light: #E8E3DB;
-  --color-cream: #F5F0E8;
+  --color-cream: #F0EBE3;
   --color-white: #FFFFFF;
-  --color-muted: #7A756D;
+  --color-muted: #8A8478;
 
   --font-serif: "Cormorant Garamond", "Georgia", serif;
   --font-body: "Crimson Pro", "Georgia", serif;
@@ -39,7 +39,7 @@ html {
 }
 
 body {
-  background: var(--color-linen);
+  background: var(--color-sand);
   color: var(--color-ink);
   font-family: "Crimson Pro", Georgia, serif;
   font-size: 18px;
@@ -72,32 +72,32 @@ body {
 .page-border::before {
   top: 0;
   left: 0;
-  border-top: var(--bracket-thickness) solid var(--color-border);
-  border-left: var(--bracket-thickness) solid var(--color-border);
+  border-top: var(--bracket-thickness) solid var(--color-signal);
+  border-left: var(--bracket-thickness) solid var(--color-signal);
 }
 
 /* Top-right */
 .page-border::after {
   top: 0;
   right: 0;
-  border-top: var(--bracket-thickness) solid var(--color-border);
-  border-right: var(--bracket-thickness) solid var(--color-border);
+  border-top: var(--bracket-thickness) solid var(--color-signal);
+  border-right: var(--bracket-thickness) solid var(--color-signal);
 }
 
 /* Bottom-left */
 .page-border .corner-bl::before {
   bottom: 0;
   left: 0;
-  border-bottom: var(--bracket-thickness) solid var(--color-border);
-  border-left: var(--bracket-thickness) solid var(--color-border);
+  border-bottom: var(--bracket-thickness) solid var(--color-signal);
+  border-left: var(--bracket-thickness) solid var(--color-signal);
 }
 
 /* Bottom-right */
 .page-border .corner-br::before {
   bottom: 0;
   right: 0;
-  border-bottom: var(--bracket-thickness) solid var(--color-border);
-  border-right: var(--bracket-thickness) solid var(--color-border);
+  border-bottom: var(--bracket-thickness) solid var(--color-signal);
+  border-right: var(--bracket-thickness) solid var(--color-signal);
 }
 
 /* ── Vintage Photo Filter — warm, painterly ──────────────────────────── */
@@ -111,11 +111,11 @@ body {
   inset: 0;
   background: linear-gradient(
     to bottom,
-    rgba(42, 31, 26, 0.48) 0%,
-    rgba(42, 31, 26, 0.18) 35%,
-    rgba(42, 31, 26, 0.12) 55%,
-    rgba(42, 31, 26, 0.45) 85%,
-    rgba(42, 31, 26, 0.65) 100%
+    rgba(11, 22, 35, 0.55) 0%,
+    rgba(11, 22, 35, 0.20) 30%,
+    rgba(11, 22, 35, 0.10) 50%,
+    rgba(11, 22, 35, 0.25) 75%,
+    rgba(11, 22, 35, 0.60) 100%
   );
   pointer-events: none;
 }
@@ -130,6 +130,38 @@ body {
   animation: subtle-pulse 1.5s ease-in-out infinite;
 }
 
+/* ── Fade-In Up Animation ────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s ease-out both;
+}
+
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-400 {
+  animation-delay: 400ms;
+}
+
+.animation-delay-600 {
+  animation-delay: 600ms;
+}
+
+.animation-delay-800 {
+  animation-delay: 800ms;
+}
+
 /* ── Teaser Fade-Out Gradient ─────────────────────────────────────────── */
 .teaser-fade {
   position: relative;
@@ -141,14 +173,40 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 120px;
+  height: 160px;
   background: linear-gradient(
     to bottom,
     rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.85) 60%,
+    rgba(255, 255, 255, 0.85) 55%,
     rgba(255, 255, 255, 1) 100%
   );
   pointer-events: none;
+}
+
+/* ── Section Divider ──────────────────────────────────────────────────── */
+.section-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.section-divider::before,
+.section-divider::after {
+  content: "";
+  flex: 1;
+  max-width: 120px;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.section-divider .diamond {
+  width: 6px;
+  height: 6px;
+  background: var(--color-border);
+  transform: rotate(45deg);
+  flex-shrink: 0;
 }
 
 /* ── Typography Helpers ───────────────────────────────────────────────── */
@@ -157,6 +215,20 @@ body {
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.15;
+}
+
+.heading-serif-bold {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+
+.brand-wordmark {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
 }
 
 .body-text {

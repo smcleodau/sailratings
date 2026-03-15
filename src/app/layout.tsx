@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SailingRatings — What is your IRC rating really costing you?",
+  title: "Sail Ratings — What is your IRC rating really costing you?",
   description:
-    "We've analysed 6,000+ IRC boats, 31,000 race results, and thousands of certificates to find where your rating points are hiding. Search your boat and get your optimisation report.",
+    "6,197 boats. 31,000 race results. We know where your points are hiding. Search your boat and get your optimisation report.",
   openGraph: {
-    title: "SailingRatings — IRC Rating Analysis",
+    title: "Sail Ratings — IRC Rating Analysis",
     description:
       "Search your IRC-rated yacht. See where your rating points are hiding.",
-    url: "https://sailingratings.com",
-    siteName: "SailingRatings",
+    url: "https://sailratings.com",
+    siteName: "Sail Ratings",
     type: "website",
   },
 };

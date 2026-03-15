@@ -105,7 +105,7 @@ export default function BoatCard({
           </div>
           {tcc != null && (
             <div className="text-right flex-shrink-0">
-              <div className="data-mono text-3xl sm:text-4xl text-teal font-semibold">
+              <div className="data-mono text-3xl sm:text-4xl text-signal font-semibold">
                 {Number(tcc).toFixed(3)}
               </div>
               <div className="text-xs text-muted uppercase tracking-wider mt-1">

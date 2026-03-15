@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import SearchBar from "@/components/SearchBar";
 import BoatCard from "@/components/BoatCard";
 import TeaserAnalysis from "@/components/TeaserAnalysis";
@@ -11,6 +11,8 @@ export default function PageFlow() {
   const [selectedBoat, setSelectedBoat] = useState<SearchResult | null>(null);
   const [boatLoaded, setBoatLoaded] = useState(false);
   const [boatDetail, setBoatDetail] = useState<BoatDetail | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [teaserText, setTeaserText] = useState("");
 
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -18,12 +20,18 @@ export default function PageFlow() {
     setSelectedBoat(boat);
     setBoatLoaded(false);
     setBoatDetail(null);
+    setTeaserText("");
+    setSearchQuery(boat.boat_name);
   };
 
   const handleBoatLoaded = (boat: BoatDetail) => {
     setBoatDetail(boat);
     setBoatLoaded(true);
   };
+
+  const handleTeaserComplete = useCallback((text: string) => {
+    setTeaserText(text);
+  }, []);
 
   // Scroll to results when a boat is selected
   useEffect(() => {
@@ -40,7 +48,7 @@ export default function PageFlow() {
   return (
     <>
       {/* Search section — overlapping hero bottom */}
-      <section className="relative z-30 -mt-20 px-6 pb-16">
+      <section className="relative z-30 -mt-20 px-6 pb-16 animate-fade-in-up animation-delay-600">
         <SearchBar onBoatSelected={handleBoatSelected} />
       </section>
 
@@ -61,7 +69,15 @@ export default function PageFlow() {
               key={`teaser-${selectedBoat.id}`}
               boatId={selectedBoat.id}
               boatName={selectedBoat.boat_name}
+              onComplete={handleTeaserComplete}
             />
+          )}
+
+          {/* Section divider */}
+          {boatLoaded && boatDetail && (
+            <div className="section-divider" aria-hidden="true">
+              <span className="diamond" />
+            </div>
           )}
 
           {/* Purchase CTA — appears after boat is loaded */}
@@ -69,6 +85,8 @@ export default function PageFlow() {
             <PurchaseCTA
               boatId={selectedBoat.id}
               boatName={selectedBoat.boat_name}
+              searchQuery={searchQuery}
+              teaserText={teaserText}
             />
           )}
         </section>

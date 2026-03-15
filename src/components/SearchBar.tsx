@@ -203,8 +203,8 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
           onFocus={() => {
             if (results.length > 0) setIsOpen(true);
           }}
-          placeholder="Enter your boat name or sail number..."
-          className="w-full h-18 sm:h-20 pl-16 pr-16 bg-white border-2 border-border text-ink text-xl sm:text-2xl placeholder:text-muted/50 placeholder:italic transition-all hover:border-copper/40 focus:border-copper"
+          placeholder="Search by boat name or sail number"
+          className="w-full h-18 sm:h-20 pl-16 pr-16 bg-white border-2 border-border text-ink text-xl sm:text-2xl placeholder:text-muted/50 placeholder:italic shadow-sm transition-all hover:border-copper/40 focus:border-copper focus:shadow-md"
           style={{ borderRadius: "1px", fontFamily: "'Crimson Pro', Georgia, serif" }}
           autoComplete="off"
           role="combobox"
@@ -231,6 +231,13 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
         )}
       </div>
 
+      {/* Hint text */}
+      {!isOpen && !error && results.length === 0 && !query && (
+        <p className="mt-3 text-center text-sm text-muted/60 font-body italic">
+          Try &ldquo;Chilli Pepper&rdquo;, &ldquo;GBR1663R&rdquo;, or &ldquo;Foggy Dew&rdquo;
+        </p>
+      )}
+
       {/* Error */}
       {error && (
         <p className="mt-2 text-sm text-copper font-body">{error}</p>
@@ -252,7 +259,7 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
               onClick={() => handleSelect(boat)}
               onMouseEnter={() => setHighlightIndex(index)}
               className={`flex items-center gap-4 px-5 py-3.5 cursor-pointer transition-colors border-b border-border-light last:border-b-0 ${
-                highlightIndex === index ? "bg-linen" : "hover:bg-linen/50"
+                highlightIndex === index ? "bg-sand" : "hover:bg-sand/50"
               }`}
             >
               {boat.country && <CountryFlag country={boat.country} />}
