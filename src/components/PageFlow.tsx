@@ -39,8 +39,13 @@ export default function PageFlow() {
 
   return (
     <>
-      {/* Search section — overlapping hero bottom */}
-      <section className="relative z-30 -mt-24 px-6 pb-16">
+      {/* Search section — overlapping hero, pulled well up into it */}
+      <section className="relative z-30 -mt-40 sm:-mt-48 px-6 pb-16">
+        <div className="max-w-2xl mx-auto text-center mb-4">
+          <p className="body-text text-white/70 text-sm sm:text-base font-light italic" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.3)" }}>
+            Find your boat and we&rsquo;ll show you what we found.
+          </p>
+        </div>
         <SearchBar onBoatSelected={handleBoatSelected} />
       </section>
 
