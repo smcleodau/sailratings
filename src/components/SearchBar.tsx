@@ -203,9 +203,9 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
           onFocus={() => {
             if (results.length > 0) setIsOpen(true);
           }}
-          placeholder="Search by boat name, sail number, or design..."
-          className="w-full h-16 sm:h-18 pl-14 pr-14 bg-white border border-border text-ink text-lg sm:text-xl font-body placeholder:text-muted/60 transition-colors hover:border-ink-light focus:border-navy"
-          style={{ borderRadius: "1px" }}
+          placeholder="Enter your boat name or sail number..."
+          className="w-full h-18 sm:h-20 pl-16 pr-16 bg-white border-2 border-border text-ink text-xl sm:text-2xl placeholder:text-muted/50 placeholder:italic transition-all hover:border-copper/40 focus:border-copper"
+          style={{ borderRadius: "1px", fontFamily: "'Crimson Pro', Georgia, serif" }}
           autoComplete="off"
           role="combobox"
           aria-expanded={isOpen}

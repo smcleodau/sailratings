@@ -100,9 +100,9 @@ body {
   border-right: var(--bracket-thickness) solid var(--color-border);
 }
 
-/* ── Vintage Photo Filter ─────────────────────────────────────────────── */
+/* ── Vintage Photo Filter — warm, painterly ──────────────────────────── */
 .vintage-photo {
-  filter: saturate(0.85) contrast(1.05) brightness(0.95);
+  filter: saturate(0.7) contrast(1.1) brightness(0.85) sepia(0.2) hue-rotate(-5deg);
 }
 
 .vintage-photo::after {
@@ -111,10 +111,11 @@ body {
   inset: 0;
   background: linear-gradient(
     to bottom,
-    rgba(15, 27, 45, 0.35) 0%,
-    rgba(15, 27, 45, 0.15) 40%,
-    rgba(15, 27, 45, 0.25) 70%,
-    rgba(15, 27, 45, 0.55) 100%
+    rgba(42, 31, 26, 0.48) 0%,
+    rgba(42, 31, 26, 0.18) 35%,
+    rgba(42, 31, 26, 0.12) 55%,
+    rgba(42, 31, 26, 0.45) 85%,
+    rgba(42, 31, 26, 0.65) 100%
   );
   pointer-events: none;
 }

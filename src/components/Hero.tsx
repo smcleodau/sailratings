@@ -16,12 +16,12 @@ export default function Hero() {
         />
       </div>
 
-      {/* Navy gradient overlay */}
+      {/* Warm gradient overlay */}
       <div
         className="absolute inset-0 z-10"
         style={{
           background:
-            "linear-gradient(to bottom, rgba(15,27,45,0.45) 0%, rgba(15,27,45,0.2) 35%, rgba(15,27,45,0.3) 65%, rgba(15,27,45,0.7) 100%)",
+            "linear-gradient(to bottom, rgba(42,31,26,0.40) 0%, rgba(42,31,26,0.12) 30%, rgba(42,31,26,0.08) 55%, rgba(42,31,26,0.35) 80%, rgba(42,31,26,0.60) 100%)",
         }}
       />
 
@@ -29,13 +29,13 @@ export default function Hero() {
       <div className="relative z-20 flex flex-col items-center justify-center h-full px-6 text-center">
         <h1
           className="heading-serif text-white text-4xl sm:text-5xl md:text-6xl lg:text-7xl max-w-4xl mb-6"
-          style={{ textShadow: "0 2px 20px rgba(0,0,0,0.3)" }}
+          style={{ textShadow: "0 4px 30px rgba(60,20,0,0.4), 0 1px 3px rgba(30,10,0,0.3)" }}
         >
-          What is your rating really costing you?
+          What is your rating <em className="italic">really</em> costing you?
         </h1>
         <p
-          className="body-text text-white/85 text-lg sm:text-xl md:text-2xl max-w-2xl italic font-light"
-          style={{ textShadow: "0 1px 10px rgba(0,0,0,0.3)" }}
+          className="body-text text-white/80 text-lg sm:text-xl md:text-2xl max-w-2xl italic font-light"
+          style={{ textShadow: "0 1px 10px rgba(60,20,0,0.25)" }}
         >
           We&rsquo;ve analysed 6,000+ IRC boats, 31,000 race results, and
           thousands of certificates to find where your points are hiding.
