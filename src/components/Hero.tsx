@@ -2,7 +2,7 @@ import Image from "next/image";
 
 export default function Hero() {
   return (
-    <section className="relative w-full h-screen min-h-[600px] overflow-hidden">
+    <section className="relative w-full h-[85vh] min-h-[550px] overflow-hidden">
       {/* Background image with vintage filter */}
       <div className="absolute inset-0 vintage-photo">
         <Image
@@ -25,8 +25,8 @@ export default function Hero() {
         }}
       />
 
-      {/* Content — push text up to leave room for search below */}
-      <div className="relative z-20 flex flex-col items-center justify-start h-full px-6 text-center pt-[18vh] sm:pt-[16vh]">
+      {/* Content — centered vertically */}
+      <div className="relative z-20 flex flex-col items-center justify-center h-full px-6 text-center pb-16">
         <h1
           className="heading-serif text-white text-4xl sm:text-5xl md:text-6xl lg:text-7xl max-w-4xl mb-6"
           style={{ textShadow: "0 4px 30px rgba(60,20,0,0.4), 0 1px 3px rgba(30,10,0,0.3)" }}
