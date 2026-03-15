@@ -1,26 +1,197 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Fira+Code:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ── Tailwind v4 Theme ───────────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-linen: #FAF6F0;
+  --color-navy: #0F1B2D;
+  --color-navy-light: #1A2A42;
+  --color-copper: #B87333;
+  --color-copper-dark: #9A5F28;
+  --color-teal: #2A7B88;
+  --color-teal-light: #3A9DAD;
+  --color-ink: #1C1C1C;
+  --color-ink-light: #3A3A3A;
+  --color-border: #D4CFC7;
+  --color-border-light: #E8E3DB;
+  --color-cream: #F5F0E8;
+  --color-white: #FFFFFF;
+  --color-muted: #7A756D;
+
+  --font-serif: "Cormorant Garamond", "Georgia", serif;
+  --font-body: "Crimson Pro", "Georgia", serif;
+  --font-mono: "Fira Code", "Courier New", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Base ─────────────────────────────────────────────────────────────── */
+:root {
+  --page-border-width: 12px;
+  --bracket-size: 24px;
+  --bracket-thickness: 1px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-linen);
+  color: var(--color-ink);
+  font-family: "Crimson Pro", Georgia, serif;
+  font-size: 18px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Page Border Frame ────────────────────────────────────────────────── */
+.page-border {
+  position: fixed;
+  inset: var(--page-border-width);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Corner brackets — thin L-shapes at each corner */
+.page-border::before,
+.page-border::after,
+.page-border .corner-bl::before,
+.page-border .corner-br::before {
+  content: "";
+  position: absolute;
+  width: var(--bracket-size);
+  height: var(--bracket-size);
+  pointer-events: none;
+}
+
+/* Top-left */
+.page-border::before {
+  top: 0;
+  left: 0;
+  border-top: var(--bracket-thickness) solid var(--color-border);
+  border-left: var(--bracket-thickness) solid var(--color-border);
+}
+
+/* Top-right */
+.page-border::after {
+  top: 0;
+  right: 0;
+  border-top: var(--bracket-thickness) solid var(--color-border);
+  border-right: var(--bracket-thickness) solid var(--color-border);
+}
+
+/* Bottom-left */
+.page-border .corner-bl::before {
+  bottom: 0;
+  left: 0;
+  border-bottom: var(--bracket-thickness) solid var(--color-border);
+  border-left: var(--bracket-thickness) solid var(--color-border);
+}
+
+/* Bottom-right */
+.page-border .corner-br::before {
+  bottom: 0;
+  right: 0;
+  border-bottom: var(--bracket-thickness) solid var(--color-border);
+  border-right: var(--bracket-thickness) solid var(--color-border);
+}
+
+/* ── Vintage Photo Filter ─────────────────────────────────────────────── */
+.vintage-photo {
+  filter: saturate(0.85) contrast(1.05) brightness(0.95);
+}
+
+.vintage-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(15, 27, 45, 0.35) 0%,
+    rgba(15, 27, 45, 0.15) 40%,
+    rgba(15, 27, 45, 0.25) 70%,
+    rgba(15, 27, 45, 0.55) 100%
+  );
+  pointer-events: none;
+}
+
+/* ── Pulse Indicator (for streaming) ──────────────────────────────────── */
+@keyframes subtle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.streaming-pulse {
+  animation: subtle-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── Teaser Fade-Out Gradient ─────────────────────────────────────────── */
+.teaser-fade {
+  position: relative;
+}
+
+.teaser-fade::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.85) 60%,
+    rgba(255, 255, 255, 1) 100%
+  );
+  pointer-events: none;
+}
+
+/* ── Typography Helpers ───────────────────────────────────────────────── */
+.heading-serif {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.body-text {
+  font-family: "Crimson Pro", Georgia, serif;
+  font-weight: 400;
+  line-height: 1.7;
+}
+
+.data-mono {
+  font-family: "Fira Code", "Courier New", monospace;
+  font-weight: 500;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.02em;
+}
+
+/* ── Selection ────────────────────────────────────────────────────────── */
+::selection {
+  background: var(--color-copper);
+  color: white;
+}
+
+/* ── Scrollbar (subtle) ───────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+}
+
+/* ── Focus Styles ─────────────────────────────────────────────────────── */
+input:focus-visible {
+  outline: 1px solid var(--color-navy);
+  outline-offset: -1px;
 }
