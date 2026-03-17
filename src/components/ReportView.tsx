@@ -18,7 +18,7 @@ export default function ReportView({ report, token }: ReportViewProps) {
         <header className="border border-border bg-white px-8 py-8 sm:px-12 sm:py-10">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <h1 className="heading-serif text-3xl sm:text-4xl text-ink">
+              <h1 className="heading-display text-3xl sm:text-4xl text-ink">
                 {boat.boat_name}
               </h1>
               <div className="flex items-center gap-3 mt-2">
@@ -45,7 +45,7 @@ export default function ReportView({ report, token }: ReportViewProps) {
             </div>
             {boat.irc_tcc != null && (
               <div className="text-right flex-shrink-0">
-                <div className="data-mono text-3xl sm:text-4xl text-signal font-semibold">
+                <div className="data-mono text-3xl sm:text-4xl text-navy font-semibold">
                   {Number(boat.irc_tcc).toFixed(3)}
                 </div>
                 <div className="text-xs text-muted uppercase tracking-wider mt-1">
@@ -64,7 +64,7 @@ export default function ReportView({ report, token }: ReportViewProps) {
               href={getReportPdfUrl(token)}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 text-copper hover:text-copper-dark transition-colors font-body text-sm font-medium"
+              className="flex items-center gap-2 text-brass hover:text-brass-dark transition-colors font-body text-sm font-medium"
             >
               <Download size={16} strokeWidth={1.5} />
               Download PDF
@@ -87,8 +87,8 @@ export default function ReportView({ report, token }: ReportViewProps) {
       {recommendations && recommendations.length > 0 && (
         <section className="border border-border bg-white">
           <div className="border-b border-border-light px-8 py-5 flex items-center gap-3">
-            <Target size={18} strokeWidth={1.5} className="text-copper" />
-            <h2 className="heading-serif text-xl text-ink">
+            <Target size={18} strokeWidth={1.5} className="text-brass" />
+            <h2 className="heading-display text-xl text-ink">
               Optimisation Recommendations
             </h2>
           </div>
@@ -112,11 +112,11 @@ export default function ReportView({ report, token }: ReportViewProps) {
                   <tr
                     key={i}
                     className={`border-b border-border-light last:border-b-0 ${
-                      i % 2 === 0 ? "bg-white" : "bg-sand/50"
+                      i % 2 === 0 ? "bg-white" : "bg-cream/50"
                     }`}
                   >
                     <td className="px-6 py-4">
-                      <span className="data-mono text-sm text-copper font-semibold">
+                      <span className="data-mono text-sm text-brass font-semibold">
                         {rec.rank}
                       </span>
                     </td>
@@ -143,7 +143,7 @@ export default function ReportView({ report, token }: ReportViewProps) {
                     <td className="px-6 py-4 text-right">
                       <span
                         className={`data-mono text-sm font-semibold ${
-                          rec.tcc_delta < 0 ? "text-signal" : "text-copper"
+                          rec.tcc_delta < 0 ? "text-navy" : "text-brass"
                         }`}
                       >
                         {rec.tcc_delta > 0 ? "+" : ""}
@@ -165,7 +165,7 @@ export default function ReportView({ report, token }: ReportViewProps) {
             {recommendations.map((rec, i) => (
               <div key={i}>
                 <div className="flex items-baseline gap-2 mb-1">
-                  <span className="data-mono text-xs text-copper font-semibold">
+                  <span className="data-mono text-xs text-brass font-semibold">
                     {rec.rank}.
                   </span>
                   <span className="body-text text-sm text-ink font-medium">
@@ -190,8 +190,8 @@ export default function ReportView({ report, token }: ReportViewProps) {
       {rai && (
         <section className="border border-border bg-white">
           <div className="border-b border-border-light px-8 py-5 flex items-center gap-3">
-            <Trophy size={18} strokeWidth={1.5} className="text-copper" />
-            <h2 className="heading-serif text-xl text-ink">
+            <Trophy size={18} strokeWidth={1.5} className="text-brass" />
+            <h2 className="heading-display text-xl text-ink">
               Racing Performance Index
             </h2>
           </div>
@@ -221,8 +221,8 @@ export default function ReportView({ report, token }: ReportViewProps) {
       {rivals && rivals.length > 0 && (
         <section className="border border-border bg-white">
           <div className="border-b border-border-light px-8 py-5 flex items-center gap-3">
-            <Swords size={18} strokeWidth={1.5} className="text-copper" />
-            <h2 className="heading-serif text-xl text-ink">
+            <Swords size={18} strokeWidth={1.5} className="text-brass" />
+            <h2 className="heading-display text-xl text-ink">
               Head-to-Head Rivals
             </h2>
           </div>
@@ -243,7 +243,7 @@ export default function ReportView({ report, token }: ReportViewProps) {
                   <tr
                     key={i}
                     className={`border-b border-border-light last:border-b-0 ${
-                      i % 2 === 0 ? "bg-white" : "bg-sand/50"
+                      i % 2 === 0 ? "bg-white" : "bg-cream/50"
                     }`}
                   >
                     <td className="px-6 py-4">
@@ -257,7 +257,7 @@ export default function ReportView({ report, token }: ReportViewProps) {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <span className="data-mono text-sm text-signal">
+                      <span className="data-mono text-sm text-navy">
                         {rival.wins}
                       </span>
                     </td>
@@ -307,9 +307,9 @@ function formatValue(val: number | string): string {
 
 function markdownToHtml(md: string): string {
   return md
-    .replace(/^### (.+)$/gm, '<h3 class="heading-serif text-lg text-ink mt-8 mb-3">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="heading-serif text-xl text-ink mt-10 mb-4">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="heading-serif text-2xl text-ink mt-10 mb-4">$1</h1>')
+    .replace(/^### (.+)$/gm, '<h3 class="heading-display text-lg text-ink mt-8 mb-3">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="heading-display text-xl text-ink mt-10 mb-4">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="heading-display text-2xl text-ink mt-10 mb-4">$1</h1>')
     .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-ink">$1</strong>')
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
     .replace(/\n\n/g, '</p><p class="body-text text-ink-light text-base leading-relaxed mb-4">')

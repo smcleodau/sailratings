@@ -203,9 +203,9 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
           onFocus={() => {
             if (results.length > 0) setIsOpen(true);
           }}
-          placeholder="Search by boat name or sail number"
-          className="w-full h-18 sm:h-20 pl-16 pr-16 bg-white border-2 border-border text-ink text-xl sm:text-2xl placeholder:text-muted/50 placeholder:italic shadow-sm transition-all hover:border-copper/40 focus:border-copper focus:shadow-md"
-          style={{ borderRadius: "1px", fontFamily: "'Crimson Pro', Georgia, serif" }}
+          placeholder="Enter boat name or sail number..."
+          id="main-search"
+          className="w-full h-14 sm:h-16 pl-14 pr-14 bg-white border border-border text-charcoal text-[15px] sm:text-base font-body placeholder:text-slate/40 rounded-full shadow-sm transition-all hover:border-amber/30 focus:border-amber focus:shadow-md"
           autoComplete="off"
           role="combobox"
           aria-expanded={isOpen}
@@ -215,7 +215,7 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
         {query && (
           <button
             onClick={handleClear}
-            className="absolute right-5 top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors"
+            className="absolute right-5 top-1/2 -translate-y-1/2 text-muted hover:text-charcoal transition-colors"
             aria-label="Clear search"
           >
             <X size={20} strokeWidth={1.5} />
@@ -224,7 +224,7 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
         {isLoading && (
           <div className="absolute right-14 top-1/2 -translate-y-1/2">
             <div
-              className="w-4 h-4 border border-border border-t-navy animate-spin"
+              className="w-4 h-4 border border-border border-t-amber animate-spin"
               style={{ borderRadius: "50%" }}
             />
           </div>
@@ -240,7 +240,7 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
 
       {/* Error */}
       {error && (
-        <p className="mt-2 text-sm text-copper font-body">{error}</p>
+        <p className="mt-2 text-sm text-teak font-body">{error}</p>
       )}
 
       {/* Dropdown */}
@@ -265,7 +265,7 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
               {boat.country && <CountryFlag country={boat.country} />}
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="heading-serif text-lg text-ink truncate">
+                  <span className="heading-display text-lg text-charcoal truncate">
                     {boat.boat_name}
                   </span>
                   <span className="data-mono text-xs text-muted">

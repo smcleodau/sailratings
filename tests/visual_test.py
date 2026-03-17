@@ -47,15 +47,20 @@ def main():
             assert h >= 580, f"Hero height: {h}px"
         test("Hero is full viewport height", test_hero_height)
 
-        def test_hero_italic():
-            style = page.locator("h1").first.evaluate(
-                "el => window.getComputedStyle(el).fontStyle"
-            )
-            assert style == "italic", f"Font style: {style}"
-        test("Hero headline is italic", test_hero_italic)
+        def test_hero_headline():
+            h1 = page.locator("h1").first
+            text = h1.text_content()
+            assert text and "analysis your competitors wish they had" in text, f'Headline: "{text}"'
+        test("Hero headline correct", test_hero_headline)
+
+        def test_hero_subheadline():
+            sub = page.locator("h1 + p").first
+            text = sub.text_content()
+            assert text and "31,000 race results" in text, f'Subheadline: "{text}"'
+        test("Hero subheadline correct", test_hero_subheadline)
 
         def test_trust_bar():
-            assert page.locator("text=IRC analysis since 2024").count() > 0
+            assert page.locator("text=31,000+ race results analyzed").count() > 0
         test("Trust bar visible", test_trust_bar)
 
         def test_search_placeholder():
@@ -63,25 +68,13 @@ def main():
             assert ph and "boat name or sail number" in ph, f'Placeholder: "{ph}"'
         test("Search bar placeholder correct", test_search_placeholder)
 
-        def test_hint():
-            assert page.locator("text=Chilli Pepper").count() > 0
-        test("Search hint text visible", test_hint)
-
-        def test_border_color():
-            color = page.locator(".page-border").evaluate(
-                "el => window.getComputedStyle(el, '::before').borderTopColor"
-            )
-            # Signal blue #1B7FA3 -> rgb(27, 127, 163)
-            assert "27" in color and "127" in color, f"Border color: {color}"
-        test("Page border brackets use signal blue", test_border_color)
-
-        def test_bg_sand():
+        def test_bg_cream():
             bg = page.evaluate(
                 "() => window.getComputedStyle(document.querySelector('main')).backgroundColor"
             )
-            # #F7F3ED = rgb(247, 243, 237)
-            assert "247" in bg, f"Background: {bg}"
-        test("Background is warm sand", test_bg_sand)
+            # cream #F4F1E8 = rgb(244, 241, 232)
+            assert "244" in bg, f"Background: {bg}"
+        test("Background is cream", test_bg_cream)
 
         def test_footer_wordmark():
             assert page.locator("footer .brand-wordmark").count() > 0
@@ -97,29 +90,30 @@ def main():
             inp = page.locator('input[type="text"]')
             inp.fill("Chilli Pepper")
             time.sleep(1.5)
-            count = page.locator("#search-results li").count()
+            count = page.locator("ul li").count()
             assert count > 0, "No search results"
         test("Search returns results", test_search)
 
         def test_select_boat():
-            page.locator("#search-results li").first.click()
+            page.locator("ul li").first.click()
             time.sleep(2)
-            h2 = page.locator("h2:has-text('CHILLI PEPPER')")
-            h2.wait_for(timeout=10000)
-            assert "CHILLI PEPPER" in (h2.text_content() or "")
+            h2 = page.locator("h2")
+            h2.first.wait_for(timeout=10000)
+            text = (h2.first.text_content() or "").upper()
+            assert "CHILLI PEPPER" in text, f'Boat card: "{text}"'
         test("Select boat loads card", test_select_boat)
 
         def test_tcc_color():
-            tcc = page.locator(".text-signal.data-mono").first
+            tcc = page.locator(".text-navy.data-mono").first
             tcc.wait_for(timeout=5000)
             color = tcc.evaluate("el => window.getComputedStyle(el).color")
-            # #1B7FA3 -> rgb(27, 127, 163)
-            assert "27" in color, f"TCC color: {color}"
-        test("TCC in signal blue", test_tcc_color)
+            # navy #0A2240 -> rgb(10, 34, 64)
+            assert "10" in color and "34" in color, f"TCC color: {color}"
+        test("TCC in navy", test_tcc_color)
 
         def test_teaser_streams():
             time.sleep(6)
-            el = page.locator(".body-text.text-ink-light.whitespace-pre-wrap").first
+            el = page.locator(".body-text.text-charcoal-light.whitespace-pre-wrap").first
             text = el.text_content()
             assert text and len(text) > 10, f"Too short: {len(text or '')} chars"
         test("Teaser analysis streams", test_teaser_streams)
@@ -144,12 +138,12 @@ def main():
             btn = page.locator("button:has-text('Get the Full Report')")
             btn.wait_for(timeout=5000)
             bg = btn.evaluate("el => window.getComputedStyle(el).backgroundColor")
-            # Copper #C27B3E -> rgb(194, 123, 62)
-            assert "194" in bg, f"Button bg: {bg}"
-        test("CTA button is copper", test_cta_button_color)
+            # brass #C29B61 -> rgb(194, 155, 97)
+            assert "194" in bg and "155" in bg, f"Button bg: {bg}"
+        test("CTA button is brass", test_cta_button_color)
 
         def test_price():
-            els = page.locator(".heading-serif.text-4xl")
+            els = page.locator(".heading-display.text-4xl")
             text = els.last.text_content()
             assert text and any(c in text for c in "$£€"), f'Price: "{text}"'
         test("Localised price displayed", test_price)

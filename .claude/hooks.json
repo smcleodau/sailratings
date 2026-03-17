@@ -1,0 +1,9 @@
+{
+  "hooks": [
+    {
+      "event": "postToolUse",
+      "command": "cd /home/irc-data/code/irc-frontend && git add -A && git diff --cached --quiet || git commit -m \"auto: $(date +%Y-%m-%d_%H:%M) checkpoint\"",
+      "timeout": 10000
+    }
+  ]
+}

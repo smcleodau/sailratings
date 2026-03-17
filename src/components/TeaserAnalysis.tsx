@@ -74,7 +74,7 @@ export default function TeaserAnalysis({
   if (error && !text) {
     return (
       <div className="w-full max-w-2xl mx-auto border border-border bg-white p-8">
-        <p className="body-text text-copper">{error}</p>
+        <p className="body-text text-brass">{error}</p>
       </div>
     );
   }
@@ -89,7 +89,7 @@ export default function TeaserAnalysis({
             <Sparkles
               size={16}
               strokeWidth={1.5}
-              className={`text-copper ${isStreaming ? "streaming-pulse" : ""}`}
+              className={`text-brass ${isStreaming ? "streaming-pulse" : ""}`}
             />
             <span className="text-xs uppercase tracking-widest text-muted font-body">
               Rating Analysis
@@ -103,10 +103,10 @@ export default function TeaserAnalysis({
         {/* Analysis text body */}
         <div className="relative px-8 py-8 sm:px-12 sm:py-10">
           <div className={`teaser-fade ${isDone ? "" : ""}`}>
-            <div className="body-text text-ink-light text-base sm:text-lg leading-relaxed whitespace-pre-wrap">
+            <div className="body-text text-charcoal-light text-base sm:text-lg leading-relaxed whitespace-pre-wrap">
               {text}
               {isStreaming && (
-                <span className="inline-block w-0.5 h-5 bg-copper ml-0.5 align-text-bottom streaming-pulse" />
+                <span className="inline-block w-0.5 h-5 bg-brass ml-0.5 align-text-bottom streaming-pulse" />
               )}
             </div>
           </div>
@@ -115,7 +115,7 @@ export default function TeaserAnalysis({
           {isStreaming && !text && (
             <div className="flex items-center gap-3 py-4">
               <div
-                className="w-4 h-4 border border-border border-t-copper animate-spin"
+                className="w-4 h-4 border border-border border-t-brass animate-spin"
                 style={{ borderRadius: "50%" }}
               />
               <span className="body-text text-muted italic">

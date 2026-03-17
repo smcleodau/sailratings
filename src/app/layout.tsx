@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Sail Ratings — What is your IRC rating really costing you?",
+  title: "Sail Ratings — The unseen advantage in your rating",
   description:
-    "6,197 boats. 31,000 race results. We know where your points are hiding. Search your boat and get your optimisation report.",
+    "We analyze 31,000 race results and every certificate ever published to find where your IRC and ORC rating points are hiding.",
   openGraph: {
-    title: "Sail Ratings — IRC Rating Analysis",
-    description:
-      "Search your IRC-rated yacht. See where your rating points are hiding.",
+    title: "Sail Ratings — IRC & ORC Rating Analysis",
+    description: "The unseen advantage in your rating.",
     url: "https://sailratings.com",
     siteName: "Sail Ratings",
     type: "website",
@@ -22,15 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">
-        {/* Page border with corner brackets */}
-        <div className="page-border" aria-hidden="true">
-          <span className="corner-bl" />
-          <span className="corner-br" />
-        </div>
-
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

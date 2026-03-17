@@ -1,45 +1,23 @@
 import type { Config } from "tailwindcss";
 
-/**
- * SailRatings Design Tokens
- *
- * Note: Tailwind v4 reads theme configuration from @theme in globals.css.
- * This file documents the design system for reference and tooling support.
- * The actual runtime values are defined in src/app/globals.css via @theme inline.
- */
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        navy: {
-          DEFAULT: "#0B1623",
-          light: "#142033",
-        },
-        sand: "#F7F3ED",
-        copper: {
-          DEFAULT: "#C27B3E",
-          dark: "#A8692F",
-        },
-        signal: {
-          DEFAULT: "#1B7FA3",
-          light: "#2194BC",
-        },
-        ink: {
-          DEFAULT: "#1A1A1A",
-          light: "#3A3A3A",
-        },
-        border: {
-          DEFAULT: "#DDD8CF",
-          light: "#E8E3DB",
-        },
-        cream: "#F0EBE3",
-        muted: "#8A8478",
+        navy: { DEFAULT: "#0A2240", light: "#163156" },
+        brass: { DEFAULT: "#C29B61", dark: "#A6834D" },
+        cream: { DEFAULT: "#F4F1E8" },
+        charcoal: { DEFAULT: "#2C2C2C", light: "#555555" },
+        slate: "#6B7A8F",
+        border: { DEFAULT: "#D1C8B7", light: "#E5DFD4" },
+        muted: "#6B7A8F",
+        sand: "#F4F1E8",
       },
       fontFamily: {
-        serif: ['"Cormorant Garamond"', "Georgia", "serif"],
-        body: ['"Crimson Pro"', "Georgia", "serif"],
-        mono: ['"Fira Code"', '"Courier New"', "monospace"],
+        display: ['"Soehne"', "system-ui", "sans-serif"],
+        body: ['"Soehne"', "system-ui", "sans-serif"],
+        mono: ['"Roboto Mono"', '"Courier New"', "monospace"],
       },
     },
   },

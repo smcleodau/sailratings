@@ -78,12 +78,12 @@ export default function PurchaseCTA({
       <div className="border border-border bg-white">
         {/* Header */}
         <div className="px-8 py-8 sm:px-12 sm:py-10 border-b border-border-light">
-          <h3 className="heading-serif text-2xl sm:text-3xl text-ink mb-3">
+          <h3 className="heading-display text-2xl sm:text-3xl text-charcoal mb-3">
             Unlock the Full Analysis
           </h3>
           <p className="body-text text-muted text-base sm:text-lg">
             Every tenth of a point matters. See exactly where{" "}
-            <span className="text-ink font-medium">{boatName}</span> is leaving
+            <span className="text-charcoal font-medium">{boatName}</span> is leaving
             performance on the table.
           </p>
         </div>
@@ -96,9 +96,9 @@ export default function PurchaseCTA({
                 <feature.icon
                   size={20}
                   strokeWidth={1.5}
-                  className="text-copper mt-0.5 flex-shrink-0"
+                  className="text-brass mt-0.5 flex-shrink-0"
                 />
-                <span className="body-text text-ink-light text-base">
+                <span className="body-text text-charcoal-light text-base">
                   {feature.text}
                 </span>
               </li>
@@ -111,7 +111,7 @@ export default function PurchaseCTA({
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
             <div>
               <div className="flex items-baseline gap-2">
-                <span className="heading-serif text-4xl text-ink">
+                <span className="heading-display text-4xl text-charcoal">
                   {currency.display}
                 </span>
                 <span className="body-text text-muted text-sm">
@@ -126,7 +126,7 @@ export default function PurchaseCTA({
               <button
                 onClick={handlePurchase}
                 disabled={isLoading}
-                className="group flex items-center gap-3 bg-copper text-white px-8 py-4 text-base font-body font-medium tracking-wide hover:bg-copper-dark transition-colors cursor-pointer w-full sm:w-auto justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                className="group flex items-center gap-3 bg-brass text-white px-8 py-4 text-base font-body font-medium tracking-wide hover:bg-brass-dark transition-colors cursor-pointer w-full sm:w-auto justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ borderRadius: "1px" }}
               >
                 {isLoading ? (
@@ -150,7 +150,7 @@ export default function PurchaseCTA({
                 )}
               </button>
               {error && (
-                <p className="body-text text-xs text-copper mt-2">{error}</p>
+                <p className="body-text text-xs text-brass mt-2">{error}</p>
               )}
             </div>
           </div>

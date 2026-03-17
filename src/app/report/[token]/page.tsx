@@ -48,15 +48,15 @@ export default function ReportPage({
   // Loading / pending / paid states
   if (error) {
     return (
-      <main className="min-h-screen bg-sand flex items-center justify-center px-6">
+      <main className="min-h-screen bg-cream flex items-center justify-center px-6">
         <div className="max-w-md text-center">
-          <h1 className="heading-serif text-3xl text-ink mb-4">
+          <h1 className="heading-display text-3xl text-ink mb-4">
             Something went wrong
           </h1>
           <p className="body-text text-muted mb-8">{error}</p>
           <Link
             href="/"
-            className="inline-block bg-copper text-white px-6 py-3 font-body font-medium hover:bg-copper-dark transition-colors"
+            className="inline-block bg-brass text-white px-6 py-3 font-body font-medium hover:bg-brass-dark transition-colors"
             style={{ borderRadius: "1px" }}
           >
             Back to Home
@@ -68,7 +68,7 @@ export default function ReportPage({
 
   if (!report || report.status === "pending" || report.status === "paid") {
     return (
-      <main className="min-h-screen bg-sand flex items-center justify-center px-6">
+      <main className="min-h-screen bg-cream flex items-center justify-center px-6">
         <div className="max-w-md text-center">
           <div className="mb-8">
             <span className="brand-wordmark text-sm text-navy/40">
@@ -77,11 +77,11 @@ export default function ReportPage({
           </div>
           <div className="flex justify-center mb-6">
             <div
-              className="w-8 h-8 border-2 border-border border-t-copper animate-spin"
+              className="w-8 h-8 border-2 border-border border-t-brass animate-spin"
               style={{ borderRadius: "50%" }}
             />
           </div>
-          <h1 className="heading-serif text-2xl text-ink mb-3">
+          <h1 className="heading-display text-2xl text-ink mb-3">
             Preparing Your Report
           </h1>
           <p className="body-text text-muted text-base">
@@ -96,9 +96,9 @@ export default function ReportPage({
 
   if (report.status === "error") {
     return (
-      <main className="min-h-screen bg-sand flex items-center justify-center px-6">
+      <main className="min-h-screen bg-cream flex items-center justify-center px-6">
         <div className="max-w-md text-center">
-          <h1 className="heading-serif text-3xl text-ink mb-4">
+          <h1 className="heading-display text-3xl text-ink mb-4">
             Report Error
           </h1>
           <p className="body-text text-muted mb-8">
@@ -107,7 +107,7 @@ export default function ReportPage({
           </p>
           <Link
             href="/"
-            className="inline-block bg-copper text-white px-6 py-3 font-body font-medium hover:bg-copper-dark transition-colors"
+            className="inline-block bg-brass text-white px-6 py-3 font-body font-medium hover:bg-brass-dark transition-colors"
             style={{ borderRadius: "1px" }}
           >
             Back to Home
@@ -118,7 +118,7 @@ export default function ReportPage({
   }
 
   return (
-    <main className="min-h-screen bg-sand">
+    <main className="min-h-screen bg-cream">
       {/* Nav */}
       <nav className="border-b border-border-light px-8 py-5 flex items-center justify-between">
         <Link href="/">

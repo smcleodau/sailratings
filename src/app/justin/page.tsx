@@ -177,7 +177,7 @@ function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
     <div className="min-h-screen bg-navy flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="heading-serif text-3xl text-white/90 mb-2">
+          <h1 className="heading-display text-3xl text-white/90 mb-2">
             Data Admin
           </h1>
           <p className="body-text text-white/40 text-sm">
@@ -192,14 +192,14 @@ function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
-            className="w-full h-12 px-4 bg-navy-light border border-white/10 text-white placeholder:text-white/30 body-text text-base focus:border-copper focus:outline-none transition-colors"
+            className="w-full h-12 px-4 bg-navy-light border border-white/10 text-white placeholder:text-white/30 body-text text-base focus:border-brass focus:outline-none transition-colors"
           />
           {error && (
-            <p className="body-text text-sm text-copper">{error}</p>
+            <p className="body-text text-sm text-brass">{error}</p>
           )}
           <button
             type="submit"
-            className="w-full h-12 bg-copper text-white body-text text-base font-medium hover:bg-copper-dark transition-colors"
+            className="w-full h-12 bg-brass text-white body-text text-base font-medium hover:bg-brass-dark transition-colors"
           >
             Sign In
           </button>
@@ -253,10 +253,10 @@ function ProposedChangeCard({
   onReject: () => void;
 }) {
   return (
-    <div className="my-3 border border-copper/40 bg-copper/5 rounded-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-copper/20 flex items-center gap-2">
-        <AlertTriangle size={14} strokeWidth={1.5} className="text-copper flex-shrink-0" />
-        <span className="body-text text-xs uppercase tracking-wider text-copper font-medium">
+    <div className="my-3 border border-brass/40 bg-brass/5 rounded-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-brass/20 flex items-center gap-2">
+        <AlertTriangle size={14} strokeWidth={1.5} className="text-brass flex-shrink-0" />
+        <span className="body-text text-xs uppercase tracking-wider text-brass font-medium">
           Proposed Change
         </span>
         {change.data.affected_rows_estimate && (
@@ -270,17 +270,17 @@ function ProposedChangeCard({
         <p className="body-text text-sm text-white/80 mb-3">
           {change.data.explanation}
         </p>
-        <pre className="data-mono text-xs text-copper/70 whitespace-pre-wrap break-all bg-black/20 px-3 py-2 rounded-sm leading-relaxed">
+        <pre className="data-mono text-xs text-brass/70 whitespace-pre-wrap break-all bg-black/20 px-3 py-2 rounded-sm leading-relaxed">
           {change.data.sql}
         </pre>
       </div>
 
-      <div className="px-4 py-3 border-t border-copper/20">
+      <div className="px-4 py-3 border-t border-brass/20">
         {change.status === "pending" && (
           <div className="flex items-center gap-3">
             <button
               onClick={onConfirm}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-signaltext-white text-sm body-text font-medium hover:bg-signal-light transition-colors"
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-navy text-white text-sm body-text font-medium hover:bg-signal-light transition-colors"
             >
               <Check size={14} strokeWidth={2} />
               Confirm
@@ -297,7 +297,7 @@ function ProposedChangeCard({
         {change.status === "executing" && (
           <div className="flex items-center gap-2">
             <div
-              className="w-3.5 h-3.5 border border-white/30 border-t-copper animate-spin"
+              className="w-3.5 h-3.5 border border-white/30 border-t-brass animate-spin"
               style={{ borderRadius: "50%" }}
             />
             <span className="body-text text-sm text-white/50 italic">
@@ -320,8 +320,8 @@ function ProposedChangeCard({
         )}
         {change.status === "error" && (
           <div className="flex items-center gap-2">
-            <X size={14} strokeWidth={2} className="text-copper" />
-            <span className="body-text text-sm text-copper">
+            <X size={14} strokeWidth={2} className="text-brass" />
+            <span className="body-text text-sm text-brass">
               {change.error || "Execution failed."}
             </span>
           </div>
@@ -573,8 +573,8 @@ export default function AdminChatPage() {
       {/* Header */}
       <header className="flex-shrink-0 border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <MessageSquare size={18} strokeWidth={1.5} className="text-copper" />
-          <h1 className="heading-serif text-xl text-white/90">
+          <MessageSquare size={18} strokeWidth={1.5} className="text-brass" />
+          <h1 className="heading-display text-xl text-white/90">
             Data Admin
           </h1>
           <span className="data-mono text-xs text-white/25 hidden sm:inline">
@@ -599,7 +599,7 @@ export default function AdminChatPage() {
           {messages.length === 0 && (
             <div className="py-16 text-center">
               <Database size={32} strokeWidth={1} className="text-white/15 mx-auto mb-6" />
-              <h2 className="heading-serif text-2xl text-white/60 mb-2">
+              <h2 className="heading-display text-2xl text-white/60 mb-2">
                 Ask me about the data
               </h2>
               <p className="body-text text-sm text-white/30 mb-10 max-w-md mx-auto">
@@ -633,7 +633,7 @@ export default function AdminChatPage() {
               <div
                 className={`max-w-[85%] sm:max-w-[75%] ${
                   msg.role === "user"
-                    ? "bg-copper/20 border border-copper/30 px-4 py-3"
+                    ? "bg-brass/20 border border-brass/30 px-4 py-3"
                     : "w-full max-w-none sm:max-w-[75%]"
                 } rounded-sm`}
               >
@@ -655,7 +655,7 @@ export default function AdminChatPage() {
                         {isStreaming &&
                           msg.id ===
                             messages[messages.length - 1]?.id && (
-                            <span className="inline-block w-0.5 h-4 bg-copper ml-0.5 align-text-bottom streaming-pulse" />
+                            <span className="inline-block w-0.5 h-4 bg-brass ml-0.5 align-text-bottom streaming-pulse" />
                           )}
                       </div>
                     )}
@@ -667,7 +667,7 @@ export default function AdminChatPage() {
                       (!msg.queries || msg.queries.length === 0) && (
                         <div className="flex items-center gap-2 px-1 py-2">
                           <div
-                            className="w-3.5 h-3.5 border border-white/20 border-t-copper animate-spin"
+                            className="w-3.5 h-3.5 border border-white/20 border-t-brass animate-spin"
                             style={{ borderRadius: "50%" }}
                           />
                           <span className="body-text text-sm text-white/40 italic">
@@ -707,13 +707,13 @@ export default function AdminChatPage() {
               placeholder="Ask about the data..."
               disabled={isStreaming}
               rows={1}
-              className="flex-1 min-h-[44px] max-h-[160px] resize-none px-4 py-3 bg-navy-light border border-white/10 text-white body-text text-sm placeholder:text-white/25 focus:border-copper/60 focus:outline-none transition-colors disabled:opacity-50"
+              className="flex-1 min-h-[44px] max-h-[160px] resize-none px-4 py-3 bg-navy-light border border-white/10 text-white body-text text-sm placeholder:text-white/25 focus:border-brass/60 focus:outline-none transition-colors disabled:opacity-50"
               style={{ borderRadius: "1px" }}
             />
             <button
               onClick={() => sendMessage(input)}
               disabled={isStreaming || !input.trim()}
-              className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-copper text-white hover:bg-copper-dark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-brass text-white hover:bg-brass-dark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               aria-label="Send message"
             >
               <Send size={16} strokeWidth={2} />

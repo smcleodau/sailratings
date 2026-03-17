@@ -1,270 +1,200 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Fira+Code:wght@400;500;600&display=swap");
+/* ── Söhne Font Face Declarations ─────────────────────────────────────── */
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-leicht.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-buch.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-buch-kursiv.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-halbfett.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-halbfett-kursiv.woff2") format("woff2");
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-dreiviertelfett.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-fett.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-extrafett.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@import url("https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
-/* ── Tailwind v4 Theme ───────────────────────────────────────────────── */
 @theme inline {
-  --color-navy: #0B1623;
-  --color-navy-light: #142033;
-  --color-sand: #F7F3ED;
-  --color-copper: #C27B3E;
-  --color-copper-dark: #A8692F;
-  --color-signal: #1B7FA3;
-  --color-signal-light: #2194BC;
-  --color-ink: #1A1A1A;
-  --color-ink-light: #3A3A3A;
-  --color-border: #DDD8CF;
-  --color-border-light: #E8E3DB;
-  --color-cream: #F0EBE3;
+  --color-navy: #0A2240;
+  --color-navy-light: #163156;
+  --color-brass: #C29B61;
+  --color-brass-dark: #A6834D;
+  --color-cream: #F4F1E8;
+  --color-charcoal: #2C2C2C;
+  --color-charcoal-light: #555555;
+  --color-slate: #6B7A8F;
+  --color-border: #D1C8B7;
+  --color-border-light: #E5DFD4;
   --color-white: #FFFFFF;
-  --color-muted: #8A8478;
+  --color-sand: #F4F1E8;
+  --color-muted: #6B7A8F;
 
-  --font-serif: "Cormorant Garamond", "Georgia", serif;
-  --font-body: "Crimson Pro", "Georgia", serif;
-  --font-mono: "Fira Code", "Courier New", monospace;
+  --font-display: "Soehne", system-ui, sans-serif;
+  --font-body: "Soehne", system-ui, sans-serif;
+  --font-mono: "Roboto Mono", "Courier New", monospace;
 }
 
-/* ── Base ─────────────────────────────────────────────────────────────── */
-:root {
-  --page-border-width: 12px;
-  --bracket-size: 24px;
-  --bracket-thickness: 1px;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  scroll-behavior: smooth;
-}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 
 body {
-  background: var(--color-sand);
-  color: var(--color-ink);
-  font-family: "Crimson Pro", Georgia, serif;
-  font-size: 18px;
-  line-height: 1.65;
+  background: var(--color-white);
+  color: var(--color-charcoal);
+  font-family: "Soehne", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Page Border Frame ────────────────────────────────────────────────── */
-.page-border {
-  position: fixed;
-  inset: var(--page-border-width);
-  pointer-events: none;
-  z-index: 9999;
+/* ── Gallery Frame ───────────────────────────────────────────────────── */
+.gallery-frame {
+  padding: 20px;
+  min-height: 100vh;
+}
+@media (max-width: 768px) {
+  .gallery-frame { padding: 10px; }
 }
 
-/* Corner brackets — thin L-shapes at each corner */
-.page-border::before,
-.page-border::after,
-.page-border .corner-bl::before,
-.page-border .corner-br::before {
-  content: "";
+/* ── Hero Image ──────────────────────────────────────────────────────── */
+.hero-image-wrap {
   position: absolute;
-  width: var(--bracket-size);
-  height: var(--bracket-size);
-  pointer-events: none;
+  inset: 0;
 }
-
-/* Top-left */
-.page-border::before {
-  top: 0;
-  left: 0;
-  border-top: var(--bracket-thickness) solid var(--color-signal);
-  border-left: var(--bracket-thickness) solid var(--color-signal);
-}
-
-/* Top-right */
-.page-border::after {
-  top: 0;
-  right: 0;
-  border-top: var(--bracket-thickness) solid var(--color-signal);
-  border-right: var(--bracket-thickness) solid var(--color-signal);
-}
-
-/* Bottom-left */
-.page-border .corner-bl::before {
-  bottom: 0;
-  left: 0;
-  border-bottom: var(--bracket-thickness) solid var(--color-signal);
-  border-left: var(--bracket-thickness) solid var(--color-signal);
-}
-
-/* Bottom-right */
-.page-border .corner-br::before {
-  bottom: 0;
-  right: 0;
-  border-bottom: var(--bracket-thickness) solid var(--color-signal);
-  border-right: var(--bracket-thickness) solid var(--color-signal);
-}
-
-/* ── Vintage Photo Filter — warm, painterly ──────────────────────────── */
-.vintage-photo {
-  filter: saturate(0.7) contrast(1.1) brightness(0.85) sepia(0.2) hue-rotate(-5deg);
-}
-
-.vintage-photo::after {
+.hero-image-wrap::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    to bottom,
-    rgba(11, 22, 35, 0.55) 0%,
-    rgba(11, 22, 35, 0.20) 30%,
-    rgba(11, 22, 35, 0.10) 50%,
-    rgba(11, 22, 35, 0.25) 75%,
-    rgba(11, 22, 35, 0.60) 100%
+  background: linear-gradient(180deg,
+    rgba(0, 0, 0, 0.65) 0%,
+    rgba(0, 0, 0, 0.45) 40%,
+    rgba(0, 0, 0, 0.20) 100%
   );
   pointer-events: none;
 }
 
-/* ── Pulse Indicator (for streaming) ──────────────────────────────────── */
-@keyframes subtle-pulse {
+/* ── Animations ──────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes subtlePulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+.animate-in { animation: fadeIn 0.6s ease-out both; }
+.delay-1 { animation-delay: 100ms; }
+.delay-2 { animation-delay: 250ms; }
+.delay-3 { animation-delay: 400ms; }
+.delay-4 { animation-delay: 550ms; }
+.delay-5 { animation-delay: 700ms; }
+.streaming-pulse { animation: subtlePulse 1.5s ease-in-out infinite; }
 
-.streaming-pulse {
-  animation: subtle-pulse 1.5s ease-in-out infinite;
-}
-
-/* ── Fade-In Up Animation ────────────────────────────────────────────── */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fade-in-up {
-  animation: fadeInUp 0.8s ease-out both;
-}
-
-.animation-delay-200 {
-  animation-delay: 200ms;
-}
-
-.animation-delay-400 {
-  animation-delay: 400ms;
-}
-
-.animation-delay-600 {
-  animation-delay: 600ms;
-}
-
-.animation-delay-800 {
-  animation-delay: 800ms;
-}
-
-/* ── Teaser Fade-Out Gradient ─────────────────────────────────────────── */
-.teaser-fade {
-  position: relative;
-}
-
+/* ── Teaser Fade ─────────────────────────────────────────────────────── */
+.teaser-fade { position: relative; }
 .teaser-fade::after {
   content: "";
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 160px;
-  background: linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.85) 55%,
-    rgba(255, 255, 255, 1) 100%
-  );
+  bottom: 0; left: 0; right: 0; height: 140px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 55%, rgba(255,255,255,1) 100%);
   pointer-events: none;
 }
 
 /* ── Section Divider ──────────────────────────────────────────────────── */
 .section-divider {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 8px 0;
+  display: flex; align-items: center; justify-content: center; gap: 16px; padding: 4px 0;
 }
-
-.section-divider::before,
-.section-divider::after {
-  content: "";
-  flex: 1;
-  max-width: 120px;
-  height: 1px;
-  background: var(--color-border);
+.section-divider::before, .section-divider::after {
+  content: ""; flex: 1; max-width: 80px; height: 1px; background: var(--color-border);
 }
-
 .section-divider .diamond {
-  width: 6px;
-  height: 6px;
-  background: var(--color-border);
-  transform: rotate(45deg);
-  flex-shrink: 0;
+  width: 4px; height: 4px; background: var(--color-brass); transform: rotate(45deg); flex-shrink: 0;
 }
 
-/* ── Typography Helpers ───────────────────────────────────────────────── */
+/* ── Typography ──────────────────────────────────────────────────────── */
+.heading-display {
+  font-family: "Soehne", system-ui, sans-serif;
+  font-weight: 800;
+  font-style: normal;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
 .heading-serif {
-  font-family: "Cormorant Garamond", Georgia, serif;
+  font-family: "Soehne", system-ui, sans-serif;
   font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.15;
-}
-
-.heading-serif-bold {
-  font-family: "Cormorant Garamond", Georgia, serif;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1.1;
+  line-height: 1.2;
 }
 
 .brand-wordmark {
-  font-family: "Cormorant Garamond", Georgia, serif;
+  font-family: "Soehne", system-ui, sans-serif;
   font-weight: 700;
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 16px;
 }
 
 .body-text {
-  font-family: "Crimson Pro", Georgia, serif;
+  font-family: "Soehne", system-ui, sans-serif;
   font-weight: 400;
-  line-height: 1.7;
+  line-height: 1.65;
 }
 
 .data-mono {
-  font-family: "Fira Code", "Courier New", monospace;
+  font-family: "Roboto Mono", "Courier New", monospace;
   font-weight: 500;
   font-feature-settings: "tnum";
   letter-spacing: -0.02em;
 }
 
-/* ── Selection ────────────────────────────────────────────────────────── */
-::selection {
-  background: var(--color-copper);
-  color: white;
-}
-
-/* ── Scrollbar (subtle) ───────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-}
-
-/* ── Focus Styles ─────────────────────────────────────────────────────── */
-input:focus-visible {
-  outline: 1px solid var(--color-navy);
-  outline-offset: -1px;
-}
+/* ── Misc ────────────────────────────────────────────────────────────── */
+::selection { background: var(--color-brass); color: white; }
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+input:focus-visible { outline: 2px solid var(--color-navy); outline-offset: 2px; }

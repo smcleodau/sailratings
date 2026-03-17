@@ -59,7 +59,7 @@ export default function BoatCard({
       <div className="w-full max-w-2xl mx-auto border border-border bg-white p-8">
         <div className="flex items-center gap-3">
           <div
-            className="w-4 h-4 border border-border border-t-navy animate-spin"
+            className="w-4 h-4 border border-border border-t-brass animate-spin"
             style={{ borderRadius: "50%" }}
           />
           <span className="body-text text-muted">
@@ -73,7 +73,7 @@ export default function BoatCard({
   if (error || !boat) {
     return (
       <div className="w-full max-w-2xl mx-auto border border-border bg-white p-8">
-        <p className="body-text text-copper">{error || "Boat not found."}</p>
+        <p className="body-text text-brass">{error || "Boat not found."}</p>
       </div>
     );
   }
@@ -86,7 +86,7 @@ export default function BoatCard({
       <div className="border-b border-border-light px-8 py-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="heading-serif text-3xl sm:text-4xl text-ink">
+            <h2 className="heading-display text-3xl sm:text-4xl text-charcoal">
               {boat.boat_name}
             </h2>
             <div className="flex items-center gap-3 mt-2">
@@ -105,7 +105,7 @@ export default function BoatCard({
           </div>
           {tcc != null && (
             <div className="text-right flex-shrink-0">
-              <div className="data-mono text-3xl sm:text-4xl text-signal font-semibold">
+              <div className="data-mono text-3xl sm:text-4xl text-navy font-semibold">
                 {Number(tcc).toFixed(3)}
               </div>
               <div className="text-xs text-muted uppercase tracking-wider mt-1">
@@ -186,7 +186,7 @@ function DetailCell({
         <span className="text-xs uppercase tracking-wider">{label}</span>
       </div>
       <div
-        className={`text-ink ${
+        className={`text-charcoal ${
           mono ? "data-mono text-sm" : "body-text text-base"
         }`}
       >
