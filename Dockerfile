@@ -13,7 +13,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build arg for API base URL (baked into client JS at build time)
-ARG NEXT_PUBLIC_API_BASE=https://api-production-179d.up.railway.app/v1
+ARG NEXT_PUBLIC_API_BASE=https://api.sailratings.com/v1
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 
 RUN npm run build
