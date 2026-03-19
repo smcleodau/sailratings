@@ -178,13 +178,13 @@ export default function Hero({ onBoatSelected }: HeroProps) {
               {results.map((boat, idx) => (
                 <li key={boat.id} onClick={() => handleSelect(boat)} onMouseEnter={() => setHighlight(idx)}
                   className={`flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-border-light last:border-0 transition-colors ${highlight === idx ? "bg-cream" : "hover:bg-cream/50"}`}>
-                  {boat.country && <Flag country={boat.country} />}
+                  <span className="w-5 text-center flex-shrink-0">{boat.country ? <Flag country={boat.country} /> : null}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex items-baseline gap-2 flex-nowrap overflow-hidden">
                       <span className="font-body font-bold text-sm text-charcoal truncate">{boat.boat_name}</span>
-                      <span className="data-mono text-[11px] text-muted">{boat.sail_number}</span>
+                      <span className="data-mono text-[11px] text-muted flex-shrink-0">{boat.sail_number}</span>
+                      {boat.design && <span className="text-[12px] text-muted flex-shrink-0">&middot; {boat.design}</span>}
                     </div>
-                    {boat.design && <span className="text-[12px] text-muted">{boat.design}</span>}
                   </div>
                 </li>
               ))}
