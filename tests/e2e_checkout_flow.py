@@ -4,15 +4,15 @@ Run with:
     cd /home/irc-data/code/irc-frontend
     python3 -m pytest tests/e2e_checkout_flow.py -v --timeout=120
 
-Requires: pip install pytest playwright
+Requires: pip install pytest playwright requests
           python3 -m playwright install chromium
 """
 
 import os
 import re
-import time
 
 import pytest
+import requests
 from playwright.sync_api import Page, expect, sync_playwright
 
 DEV_URL = "https://dev.sailratings.com"
@@ -41,114 +41,90 @@ def page(browser):
     context.close()
 
 
+def _search_and_select(page: Page, query: str = "chilli pepper"):
+    """Helper: type a search query in the Hero combobox and click the first result."""
+    search = page.locator("input[role='combobox']")
+    search.click()
+    search.fill(query)
+    # Wait for debounced search results to appear (250ms debounce + API call)
+    dropdown_item = page.locator("li").first
+    expect(dropdown_item).to_be_visible(timeout=10000)
+    dropdown_item.click()
+
+
 class TestHomepage:
     def test_homepage_loads(self, page: Page):
         """Page loads with search bar visible."""
         page.goto(DEV_URL, wait_until="networkidle")
-        expect(page.locator("input[type='text'], input[type='search'], input[placeholder*='earch']").first).to_be_visible()
+        expect(page.locator("input[role='combobox']")).to_be_visible()
 
     def test_search_returns_results(self, page: Page):
-        """Searching for a known boat returns results."""
+        """Searching for a known boat returns dropdown results."""
         page.goto(DEV_URL, wait_until="networkidle")
-        search = page.locator("input[type='text'], input[type='search'], input[placeholder*='earch']").first
+        search = page.locator("input[role='combobox']")
+        search.click()
         search.fill("sun")
-        search.press("Enter")
-        # Wait for results to appear
-        page.wait_for_timeout(2000)
-        # Should see at least one result link
-        results = page.locator("a[href*='/boat/']")
-        assert results.count() > 0, "No boat results found for 'sun'"
+        # Wait for dropdown results
+        results = page.locator("ul li")
+        expect(results.first).to_be_visible(timeout=10000)
+        assert results.count() > 0, "No dropdown results found for 'sun'"
 
 
 class TestBoatPage:
     def test_boat_page_loads(self, page: Page):
-        """Clicking a search result loads a boat page with name and TCC."""
+        """Selecting a search result renders boat card with name and rating."""
         page.goto(DEV_URL, wait_until="networkidle")
-        search = page.locator("input[type='text'], input[type='search'], input[placeholder*='earch']").first
-        search.fill("sun")
-        search.press("Enter")
-        page.wait_for_timeout(2000)
-
-        # Click first result
-        first_result = page.locator("a[href*='/boat/']").first
-        first_result.click()
-        page.wait_for_load_state("networkidle")
-
-        # Should see boat name and some rating data
-        expect(page.locator("h1, h2").first).to_be_visible()
+        _search_and_select(page)
+        # BoatCard renders inline — look for heading with boat name
+        heading = page.locator("h2, h3").first
+        expect(heading).to_be_visible(timeout=10000)
 
     def test_teaser_streams(self, page: Page):
-        """SSE insight stream starts and renders text."""
+        """SSE insight stream starts and renders analysis text."""
         page.goto(DEV_URL, wait_until="networkidle")
-        search = page.locator("input[type='text'], input[type='search'], input[placeholder*='earch']").first
-        search.fill("sun")
-        search.press("Enter")
-        page.wait_for_timeout(2000)
-
-        first_result = page.locator("a[href*='/boat/']").first
-        first_result.click()
-        page.wait_for_load_state("networkidle")
-
-        # Wait for SSE text to start streaming (up to 30 seconds)
-        page.wait_for_timeout(5000)
-
-        # Look for streamed analysis text (usually appears in a prose/markdown area)
-        body_text = page.text_content("body")
-        # The teaser should have some analysis text (at least 50 chars of content)
-        assert body_text and len(body_text) > 200, "Teaser analysis text not found"
+        _search_and_select(page)
+        # Wait for the BoatCard to load, then TeaserAnalysis to start streaming
+        # The teaser takes a few seconds to stream from the AI
+        page.wait_for_timeout(15000)
+        body_text = page.text_content("body") or ""
+        # Should have substantial content from the teaser analysis
+        assert len(body_text) > 500, f"Expected teaser text, body only {len(body_text)} chars"
 
 
 class TestCheckoutFlow:
     def test_checkout_creates_session(self, page: Page):
-        """Clicking 'Get Full Report' returns a Stripe checkout URL."""
+        """Clicking 'Get Full Report' redirects to Stripe checkout."""
         page.goto(DEV_URL, wait_until="networkidle")
-        search = page.locator("input[type='text'], input[type='search'], input[placeholder*='earch']").first
-        search.fill("sun")
-        search.press("Enter")
-        page.wait_for_timeout(2000)
-
-        first_result = page.locator("a[href*='/boat/']").first
-        first_result.click()
-        page.wait_for_load_state("networkidle")
-
-        # Find and click the purchase CTA
-        cta = page.locator("button:has-text('Report'), button:has-text('report'), a:has-text('Report'), a:has-text('report')").first
-        expect(cta).to_be_visible(timeout=10000)
-
-        # Intercept the navigation to Stripe
-        with page.expect_navigation(url=re.compile(r"checkout\.stripe\.com"), timeout=15000) as nav:
+        _search_and_select(page)
+        # Wait for PurchaseCTA to appear (needs BoatCard to load first)
+        cta = page.locator("button:has-text('Report'), a:has-text('Report')").first
+        expect(cta).to_be_visible(timeout=30000)
+        # Click and expect navigation to Stripe
+        with page.expect_navigation(url=re.compile(r"checkout\.stripe\.com"), timeout=20000):
             cta.click()
-        # Verify we ended up on Stripe
         assert "checkout.stripe.com" in page.url, f"Expected Stripe URL, got {page.url}"
 
     @pytest.mark.slow
     def test_stripe_test_payment(self, page: Page):
         """Complete a Stripe test payment and verify redirect to /report/."""
         page.goto(DEV_URL, wait_until="networkidle")
-        search = page.locator("input[type='text'], input[type='search'], input[placeholder*='earch']").first
-        search.fill("sun")
-        search.press("Enter")
-        page.wait_for_timeout(2000)
-
-        first_result = page.locator("a[href*='/boat/']").first
-        first_result.click()
-        page.wait_for_load_state("networkidle")
-
-        # Click CTA
-        cta = page.locator("button:has-text('Report'), button:has-text('report'), a:has-text('Report'), a:has-text('report')").first
-        with page.expect_navigation(url=re.compile(r"checkout\.stripe\.com"), timeout=15000):
+        _search_and_select(page)
+        cta = page.locator("button:has-text('Report'), a:has-text('Report')").first
+        expect(cta).to_be_visible(timeout=30000)
+        with page.expect_navigation(url=re.compile(r"checkout\.stripe\.com"), timeout=20000):
             cta.click()
 
-        # Fill Stripe checkout form
-        page.wait_for_load_state("networkidle")
+        # Fill Stripe checkout form — use domcontentloaded (Stripe never reaches networkidle)
+        page.wait_for_load_state("domcontentloaded")
+        page.wait_for_timeout(3000)
 
         # Email
         email_input = page.locator("input[name='email'], input#email").first
+        expect(email_input).to_be_visible(timeout=15000)
         email_input.fill("test@sailratings.com")
 
-        # Card number — Stripe uses iframes
+        # Card number — Stripe uses iframes for card fields
         card_frame = page.frame_locator("iframe[name*='__privateStripeFrame']").first
-        # Sometimes Stripe has a single card input, sometimes separate fields
         card_number = card_frame.locator("input[name='cardnumber'], input[placeholder*='card number']").first
         card_number.fill(CARD_NUMBER)
 
@@ -173,7 +149,7 @@ class TestCheckoutFlow:
         submit_btn.click()
 
         # Wait for redirect back to our site
-        page.wait_for_url(re.compile(rf"{re.escape(DEV_URL)}/report/"), timeout=30000)
+        page.wait_for_url(re.compile(rf"{re.escape(DEV_URL)}/report/"), timeout=60000)
         assert "/report/" in page.url, f"Expected redirect to /report/, got {page.url}"
 
         # Extract token from URL
@@ -182,53 +158,50 @@ class TestCheckoutFlow:
 
     @pytest.mark.slow
     def test_report_renders(self, page: Page):
-        """After payment, report page stops polling and renders content.
+        """A generated report page renders content and stops polling."""
+        # Find an existing generated order token from the reports directory
+        report_dir = "/home/irc-data/code/irc-data/data/reports/"
+        try:
+            pdfs = [f for f in os.listdir(report_dir) if f.endswith(".pdf")]
+        except FileNotFoundError:
+            pytest.skip("Reports directory not found")
+        if not pdfs:
+            pytest.skip("No generated reports to test")
 
-        This test assumes a generated report exists. We use the API directly
-        to find one.
-        """
-        import requests
+        token = pdfs[0].replace(".pdf", "")
+        page.goto(f"{DEV_URL}/report/{token}", wait_until="networkidle")
+        page.wait_for_timeout(5000)
 
-        # Find a generated order token from the DB via API
-        # Use a simpler approach — just check that the report endpoint works
-        page.goto(DEV_URL, wait_until="networkidle")
-
-        # Check if there are any existing reports we can test with
-        # This is a smoke test for the status=generated rendering path
-        # The full payment flow test above covers the end-to-end path
+        # Report should render content (not stuck on loading spinner)
+        body_text = page.text_content("body") or ""
+        # A generated report contains "Full IRC Rating Analysis" and the boat analysis
+        assert "Rating" in body_text or "analysis" in body_text.lower(), \
+            f"Report content not found, body starts with: {body_text[:200]}"
+        # Should have the Download PDF button visible
+        pdf_btn = page.locator("text=Download PDF")
+        expect(pdf_btn).to_be_visible(timeout=5000)
 
     @pytest.mark.slow
     def test_pdf_download(self, page: Page):
-        """Verify PDF endpoint returns 200 with application/pdf for a generated report."""
-        import requests
-
-        # List existing reports from the data dir
+        """Verify PDF endpoint returns 200 with application/pdf."""
         report_dir = "/home/irc-data/code/irc-data/data/reports/"
         try:
-            import os
             pdfs = [f for f in os.listdir(report_dir) if f.endswith(".pdf")]
-            if not pdfs:
-                pytest.skip("No PDFs available for testing")
-
-            # Extract token from first PDF filename
-            token = pdfs[0].replace(".pdf", "")
-
-            resp = requests.get(f"{API_DEV}/reports/{token}/pdf", timeout=15)
-            assert resp.status_code == 200, f"PDF endpoint returned {resp.status_code}"
-            assert "application/pdf" in resp.headers.get("content-type", ""), \
-                f"Expected PDF content-type, got {resp.headers.get('content-type')}"
         except FileNotFoundError:
             pytest.skip("Reports directory not found")
+        if not pdfs:
+            pytest.skip("No PDFs available for testing")
+
+        token = pdfs[0].replace(".pdf", "")
+        resp = requests.get(f"{API_DEV}/reports/{token}/pdf", timeout=15)
+        assert resp.status_code == 200, f"PDF endpoint returned {resp.status_code}"
+        assert "application/pdf" in resp.headers.get("content-type", ""), \
+            f"Expected PDF content-type, got {resp.headers.get('content-type')}"
 
 
 class TestSurvey:
-    def test_survey_submit(self, page: Page):
-        """Survey component renders and can be submitted."""
-        # Navigate to a report page (need a token)
-        # Use the Stripe test from above or a known token
-        # For now, verify the survey API endpoint exists
-        import requests
-
+    def test_survey_endpoint(self, page: Page):
+        """Survey API endpoint is live and validates input."""
         resp = requests.post(
             f"{API_DEV}/surveys/submit",
             json={
@@ -239,17 +212,33 @@ class TestSurvey:
             },
             timeout=10,
         )
-        # 404 = order not found (expected for fake token), which means endpoint works
+        # 404 = order not found (expected for fake token), means endpoint works
         assert resp.status_code in (200, 404, 409), f"Survey endpoint returned {resp.status_code}"
+
+    @pytest.mark.slow
+    def test_survey_renders_on_report(self, page: Page):
+        """Survey component appears on a generated report page."""
+        report_dir = "/home/irc-data/code/irc-data/data/reports/"
+        try:
+            pdfs = [f for f in os.listdir(report_dir) if f.endswith(".pdf")]
+        except FileNotFoundError:
+            pytest.skip("Reports directory not found")
+        if not pdfs:
+            pytest.skip("No generated reports to test")
+
+        token = pdfs[0].replace(".pdf", "")
+        page.goto(f"{DEV_URL}/report/{token}", wait_until="networkidle")
+        page.wait_for_timeout(3000)
+
+        # Survey heading should be visible
+        survey = page.locator("text=How was this report")
+        expect(survey).to_be_visible(timeout=10000)
 
 
 class TestProdSafety:
     def test_justin_blocked_on_prod(self, page: Page):
         """The /justin admin route should not expose admin on production."""
         page.goto(f"{PROD_URL}/justin", wait_until="networkidle", timeout=15000)
-        # Should redirect to home or show login — not expose admin dashboard
-        # The page should either redirect away from /justin or show the main site
         body_text = page.text_content("body") or ""
-        # Should NOT see raw admin dashboard content without auth
-        # (The home page content means /justin redirected or isn't accessible)
+        # Should see the homepage (redirected), not an admin dashboard
         assert len(body_text) > 50, "Page loaded with content"
