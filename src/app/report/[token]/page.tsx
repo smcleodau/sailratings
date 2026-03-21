@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, use } from "react";
 import { getReport, type ReportData } from "@/lib/api";
 import ReportView from "@/components/ReportView";
+import ReportSurvey from "@/components/ReportSurvey";
 import Link from "next/link";
 
 export default function ReportPage({
@@ -25,7 +26,7 @@ export default function ReportPage({
 
         setReport(data);
 
-        if (data.status === "ready" || data.status === "error") {
+        if (data.status === "generated" || data.status === "ready" || data.status === "error") {
           if (pollRef.current) clearInterval(pollRef.current);
         }
       } catch {
@@ -129,6 +130,8 @@ export default function ReportPage({
       </nav>
 
       <ReportView report={report} token={token} />
+
+      <ReportSurvey orderToken={token} />
 
       {/* Footer */}
       <footer className="border-t border-border-light px-6 py-10">

@@ -93,7 +93,7 @@ export interface Rival {
 }
 
 export interface ReportData {
-  status: "pending" | "paid" | "ready" | "error";
+  status: "pending" | "paid" | "generated" | "ready" | "error";
   boat?: BoatDetail;
   report_markdown?: string;
   recommendations?: Recommendation[];
@@ -264,4 +264,30 @@ export async function getReport(token: string): Promise<ReportData> {
 
 export function getReportPdfUrl(token: string): string {
   return `${API_BASE}/reports/${token}/pdf`;
+}
+
+/* ── Survey ──────────────────────────────────────────────────────────── */
+
+export async function submitSurvey(params: {
+  order_token: string;
+  usefulness_score: number | null;
+  newsletter_signup: boolean;
+  user_type: string | null;
+  missing_info?: string;
+  email?: string;
+}): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/surveys/submit`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Survey submit failed: ${res.status}`);
+  }
+
+  return res.json();
 }
