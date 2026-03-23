@@ -1,16 +1,37 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, ChevronDown, ChevronRight, Check, X, Database, AlertTriangle, MessageSquare } from "lucide-react";
+import {
+  Send,
+  ChevronDown,
+  ChevronRight,
+  Check,
+  X,
+  Database,
+  AlertTriangle,
+  MessageSquare,
+  Plus,
+  Trash2,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
 
 /* ── Types ────────────────────────────────────────────────────────────── */
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
 interface AdminSSEEvent {
-  type: "text" | "query" | "proposed_change" | "done" | "error";
-  data: string | QueryData | ProposedChangeData | Record<string, never>;
+  type: "text" | "query" | "proposed_change" | "done" | "error" | "meta";
+  data:
+    | string
+    | QueryData
+    | ProposedChangeData
+    | MetaData
+    | Record<string, never>;
+}
+
+interface MetaData {
+  conversation_id: number;
 }
 
 interface QueryData {
@@ -35,9 +56,22 @@ interface ChatMessage {
 interface ProposedChangeItem {
   id: string;
   data: ProposedChangeData;
-  status: "pending" | "confirmed" | "rejected" | "executing" | "executed" | "error";
+  status:
+    | "pending"
+    | "confirmed"
+    | "rejected"
+    | "executing"
+    | "executed"
+    | "error";
   result?: { status: string; rows_affected: number };
   error?: string;
+}
+
+interface ConversationListItem {
+  id: number;
+  title: string | null;
+  created_at: string;
+  message_count: number;
 }
 
 /* ── SSE Stream Parser ────────────────────────────────────────────────── */
@@ -45,7 +79,13 @@ interface ProposedChangeItem {
 async function* streamAdminChat(
   message: string,
   token: string,
+  conversationId?: number | null
 ): AsyncGenerator<AdminSSEEvent, void, unknown> {
+  const body: Record<string, unknown> = { message };
+  if (conversationId) {
+    body.conversation_id = conversationId;
+  }
+
   const res = await fetch(`${API_BASE}/admin/chat`, {
     method: "POST",
     headers: {
@@ -53,7 +93,7 @@ async function* streamAdminChat(
       Accept: "text/event-stream",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -121,11 +161,11 @@ async function* streamAdminChat(
   }
 }
 
-/* ── Execute Endpoint ─────────────────────────────────────────────────── */
+/* ── API Helpers ──────────────────────────────────────────────────────── */
 
 async function executeChange(
   sql: string,
-  token: string,
+  token: string
 ): Promise<{ status: string; rows_affected: number }> {
   const res = await fetch(`${API_BASE}/admin/execute`, {
     method: "POST",
@@ -141,6 +181,49 @@ async function executeChange(
   }
 
   return res.json();
+}
+
+async function fetchConversations(
+  token: string
+): Promise<ConversationListItem[]> {
+  const res = await fetch(`${API_BASE}/admin/conversations`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch conversations: ${res.status}`);
+  return res.json();
+}
+
+async function fetchConversation(
+  token: string,
+  id: number
+): Promise<{
+  id: number;
+  title: string;
+  messages: Array<{
+    id: number;
+    role: string;
+    content: string | null;
+    queries: QueryData[] | null;
+    proposed_changes: ProposedChangeData[] | null;
+    created_at: string;
+  }>;
+}> {
+  const res = await fetch(`${API_BASE}/admin/conversations/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch conversation: ${res.status}`);
+  return res.json();
+}
+
+async function deleteConversation(
+  token: string,
+  id: number
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/conversations/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to delete conversation: ${res.status}`);
 }
 
 /* ── Example Prompts ──────────────────────────────────────────────────── */
@@ -180,9 +263,7 @@ function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
           <h1 className="heading-display text-3xl text-white/90 mb-2">
             Data Admin
           </h1>
-          <p className="body-text text-white/40 text-sm">
-            sailratings.com
-          </p>
+          <p className="body-text text-white/40 text-sm">sailratings.com</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -194,9 +275,7 @@ function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
             placeholder="Password"
             className="w-full h-12 px-4 bg-navy-light border border-white/10 text-white placeholder:text-white/30 body-text text-base focus:border-brass focus:outline-none transition-colors"
           />
-          {error && (
-            <p className="body-text text-sm text-brass">{error}</p>
-          )}
+          {error && <p className="body-text text-sm text-brass">{error}</p>}
           <button
             type="submit"
             className="w-full h-12 bg-brass text-white body-text text-base font-medium hover:bg-brass-dark transition-colors"
@@ -220,7 +299,11 @@ function QueryCard({ query }: { query: QueryData }) {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-white/5 transition-colors"
       >
-        <Database size={14} strokeWidth={1.5} className="text-signal-light flex-shrink-0" />
+        <Database
+          size={14}
+          strokeWidth={1.5}
+          className="text-signal-light flex-shrink-0"
+        />
         <span className="body-text text-sm text-white/70 flex-1">
           {query.explanation}
         </span>
@@ -255,7 +338,11 @@ function ProposedChangeCard({
   return (
     <div className="my-3 border border-brass/40 bg-brass/5 rounded-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-brass/20 flex items-center gap-2">
-        <AlertTriangle size={14} strokeWidth={1.5} className="text-brass flex-shrink-0" />
+        <AlertTriangle
+          size={14}
+          strokeWidth={1.5}
+          className="text-brass flex-shrink-0"
+        />
         <span className="body-text text-xs uppercase tracking-wider text-brass font-medium">
           Proposed Change
         </span>
@@ -309,7 +396,8 @@ function ProposedChangeCard({
           <div className="flex items-center gap-2">
             <Check size={14} strokeWidth={2} className="text-signal-light" />
             <span className="body-text text-sm text-signal-light">
-              Executed successfully. {change.result.rows_affected} row{change.result.rows_affected !== 1 ? "s" : ""} affected.
+              Executed successfully. {change.result.rows_affected} row
+              {change.result.rows_affected !== 1 ? "s" : ""} affected.
             </span>
           </div>
         )}
@@ -331,6 +419,126 @@ function ProposedChangeCard({
   );
 }
 
+/* ── Conversation Sidebar ────────────────────────────────────────────── */
+
+function ConversationSidebar({
+  conversations,
+  activeId,
+  onSelect,
+  onNew,
+  onDelete,
+  collapsed,
+  onToggle,
+}: {
+  conversations: ConversationListItem[];
+  activeId: number | null;
+  onSelect: (id: number) => void;
+  onNew: () => void;
+  onDelete: (id: number) => void;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const formatTime = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return "just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffDay < 7) return `${diffDay}d ago`;
+    return d.toLocaleDateString();
+  };
+
+  if (collapsed) {
+    return (
+      <div className="flex-shrink-0 border-r border-white/10 flex flex-col items-center py-4 w-12">
+        <button
+          onClick={onToggle}
+          className="text-white/40 hover:text-white/70 transition-colors mb-4"
+          title="Show conversations"
+        >
+          <PanelLeftOpen size={18} strokeWidth={1.5} />
+        </button>
+        <button
+          onClick={onNew}
+          className="text-brass hover:text-brass-dark transition-colors"
+          title="New conversation"
+        >
+          <Plus size={18} strokeWidth={2} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-shrink-0 w-64 border-r border-white/10 flex flex-col bg-navy-light/30">
+      {/* Sidebar header */}
+      <div className="flex items-center justify-between px-3 py-3 border-b border-white/10">
+        <button
+          onClick={onNew}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-brass/20 text-brass text-xs body-text font-medium hover:bg-brass/30 transition-colors rounded-sm"
+        >
+          <Plus size={14} strokeWidth={2} />
+          New
+        </button>
+        <button
+          onClick={onToggle}
+          className="text-white/40 hover:text-white/70 transition-colors"
+          title="Hide sidebar"
+        >
+          <PanelLeftClose size={18} strokeWidth={1.5} />
+        </button>
+      </div>
+
+      {/* Conversation list */}
+      <div className="flex-1 overflow-y-auto">
+        {conversations.length === 0 && (
+          <p className="body-text text-xs text-white/25 px-3 py-6 text-center">
+            No conversations yet
+          </p>
+        )}
+        {conversations.map((conv) => (
+          <div
+            key={conv.id}
+            className={`group flex items-start gap-2 px-3 py-2.5 cursor-pointer border-b border-white/5 transition-colors ${
+              conv.id === activeId
+                ? "bg-brass/10 border-l-2 border-l-brass"
+                : "hover:bg-white/5 border-l-2 border-l-transparent"
+            }`}
+            onClick={() => onSelect(conv.id)}
+          >
+            <div className="flex-1 min-w-0">
+              <p
+                className={`body-text text-sm truncate ${
+                  conv.id === activeId ? "text-white/90" : "text-white/60"
+                }`}
+              >
+                {conv.title || "Untitled"}
+              </p>
+              <p className="data-mono text-xs text-white/25 mt-0.5">
+                {formatTime(conv.created_at)}
+              </p>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(conv.id);
+              }}
+              className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-brass transition-all flex-shrink-0 mt-0.5"
+              title="Delete conversation"
+            >
+              <Trash2 size={13} strokeWidth={1.5} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Main Admin Chat Page ─────────────────────────────────────────────── */
 
 export default function AdminChatPage() {
@@ -338,6 +546,11 @@ export default function AdminChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [conversations, setConversations] = useState<ConversationListItem[]>(
+    []
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -348,6 +561,14 @@ export default function AdminChatPage() {
     const stored = localStorage.getItem("admin_token");
     if (stored) setToken(stored);
   }, []);
+
+  // Load conversations when token is set
+  useEffect(() => {
+    if (!token) return;
+    fetchConversations(token)
+      .then(setConversations)
+      .catch(() => {});
+  }, [token]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -361,6 +582,13 @@ export default function AdminChatPage() {
     }
   }, [isStreaming]);
 
+  const refreshConversations = useCallback(() => {
+    if (!token) return;
+    fetchConversations(token)
+      .then(setConversations)
+      .catch(() => {});
+  }, [token]);
+
   const handleLogin = useCallback((password: string) => {
     localStorage.setItem("admin_token", password);
     setToken(password);
@@ -370,7 +598,80 @@ export default function AdminChatPage() {
     localStorage.removeItem("admin_token");
     setToken(null);
     setMessages([]);
+    setConversationId(null);
+    setConversations([]);
   }, []);
+
+  const handleNewConversation = useCallback(() => {
+    setMessages([]);
+    setConversationId(null);
+    inputRef.current?.focus();
+  }, []);
+
+  const handleSelectConversation = useCallback(
+    async (id: number) => {
+      if (!token || id === conversationId) return;
+
+      try {
+        const data = await fetchConversation(token, id);
+        const loaded: ChatMessage[] = data.messages.map((m, idx) => {
+          if (m.role === "user") {
+            return {
+              id: `loaded-user-${m.id}`,
+              role: "user" as const,
+              content: m.content || "",
+            };
+          }
+          return {
+            id: `loaded-assistant-${m.id}`,
+            role: "assistant" as const,
+            content: m.content || "",
+            queries: m.queries || undefined,
+            proposedChanges: m.proposed_changes
+              ? (m.proposed_changes as unknown as Array<Record<string, unknown>>).map(
+                  (c, ci) => ({
+                    id: `loaded-change-${m.id}-${ci}`,
+                    data: {
+                      sql: (c.sql as string) || "",
+                      explanation: (c.explanation as string) || "",
+                      affected_rows_estimate:
+                        (c.affected_rows_estimate as string) || "",
+                    },
+                    status: ((c.status as string) || "pending") as ProposedChangeItem["status"],
+                    result: c.result as
+                      | { status: string; rows_affected: number }
+                      | undefined,
+                  })
+                )
+              : undefined,
+          };
+        });
+
+        setConversationId(id);
+        setMessages(loaded);
+      } catch (err) {
+        console.error("Failed to load conversation:", err);
+      }
+    },
+    [token, conversationId]
+  );
+
+  const handleDeleteConversation = useCallback(
+    async (id: number) => {
+      if (!token) return;
+      try {
+        await deleteConversation(token, id);
+        if (conversationId === id) {
+          setMessages([]);
+          setConversationId(null);
+        }
+        refreshConversations();
+      } catch (err) {
+        console.error("Failed to delete conversation:", err);
+      }
+    },
+    [token, conversationId, refreshConversations]
+  );
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -396,15 +697,18 @@ export default function AdminChatPage() {
       setIsStreaming(true);
 
       try {
-        const stream = streamAdminChat(text.trim(), token);
+        const stream = streamAdminChat(text.trim(), token, conversationId);
         for await (const event of stream) {
-          if (event.type === "text") {
+          if (event.type === "meta") {
+            const meta = event.data as MetaData;
+            setConversationId(meta.conversation_id);
+          } else if (event.type === "text") {
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
                   ? { ...m, content: m.content + (event.data as string) }
-                  : m,
-              ),
+                  : m
+              )
             );
           } else if (event.type === "query") {
             const queryData = event.data as QueryData;
@@ -412,8 +716,8 @@ export default function AdminChatPage() {
               prev.map((m) =>
                 m.id === assistantId
                   ? { ...m, queries: [...(m.queries || []), queryData] }
-                  : m,
-              ),
+                  : m
+              )
             );
           } else if (event.type === "proposed_change") {
             const changeData = event.data as ProposedChangeData;
@@ -427,10 +731,13 @@ export default function AdminChatPage() {
                 m.id === assistantId
                   ? {
                       ...m,
-                      proposedChanges: [...(m.proposedChanges || []), changeItem],
+                      proposedChanges: [
+                        ...(m.proposedChanges || []),
+                        changeItem,
+                      ],
                     }
-                  : m,
-              ),
+                  : m
+              )
             );
           } else if (event.type === "done") {
             break;
@@ -438,9 +745,16 @@ export default function AdminChatPage() {
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
-                  ? { ...m, content: m.content + "\n\n[Error: " + (event.data as string) + "]" }
-                  : m,
-              ),
+                  ? {
+                      ...m,
+                      content:
+                        m.content +
+                        "\n\n[Error: " +
+                        (event.data as string) +
+                        "]",
+                    }
+                  : m
+              )
             );
             break;
           }
@@ -452,8 +766,8 @@ export default function AdminChatPage() {
           prev.map((m) =>
             m.id === assistantId
               ? { ...m, content: m.content || errorText }
-              : m,
-          ),
+              : m
+          )
         );
 
         // If unauthorized, clear token
@@ -463,9 +777,10 @@ export default function AdminChatPage() {
         }
       } finally {
         setIsStreaming(false);
+        refreshConversations();
       }
     },
-    [token, isStreaming],
+    [token, isStreaming, conversationId, refreshConversations]
   );
 
   const handleConfirmChange = useCallback(
@@ -484,11 +799,13 @@ export default function AdminChatPage() {
             ? {
                 ...m,
                 proposedChanges: m.proposedChanges?.map((c) =>
-                  c.id === changeId ? { ...c, status: "executing" as const } : c,
+                  c.id === changeId
+                    ? { ...c, status: "executing" as const }
+                    : c
                 ),
               }
-            : m,
-        ),
+            : m
+        )
       );
 
       try {
@@ -501,11 +818,11 @@ export default function AdminChatPage() {
                   proposedChanges: m.proposedChanges?.map((c) =>
                     c.id === changeId
                       ? { ...c, status: "executed" as const, result }
-                      : c,
+                      : c
                   ),
                 }
-              : m,
-          ),
+              : m
+          )
         );
       } catch (err) {
         const errorText =
@@ -518,15 +835,15 @@ export default function AdminChatPage() {
                   proposedChanges: m.proposedChanges?.map((c) =>
                     c.id === changeId
                       ? { ...c, status: "error" as const, error: errorText }
-                      : c,
+                      : c
                   ),
                 }
-              : m,
-          ),
+              : m
+          )
         );
       }
     },
-    [token, messages],
+    [token, messages]
   );
 
   const handleRejectChange = useCallback(
@@ -537,14 +854,16 @@ export default function AdminChatPage() {
             ? {
                 ...m,
                 proposedChanges: m.proposedChanges?.map((c) =>
-                  c.id === changeId ? { ...c, status: "rejected" as const } : c,
+                  c.id === changeId
+                    ? { ...c, status: "rejected" as const }
+                    : c
                 ),
               }
-            : m,
-        ),
+            : m
+        )
       );
     },
-    [],
+    []
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -573,10 +892,12 @@ export default function AdminChatPage() {
       {/* Header */}
       <header className="flex-shrink-0 border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <MessageSquare size={18} strokeWidth={1.5} className="text-brass" />
-          <h1 className="heading-display text-xl text-white/90">
-            Data Admin
-          </h1>
+          <MessageSquare
+            size={18}
+            strokeWidth={1.5}
+            className="text-brass"
+          />
+          <h1 className="heading-display text-xl text-white/90">Data Admin</h1>
           <span className="data-mono text-xs text-white/25 hidden sm:inline">
             sailratings.com
           </span>
@@ -589,139 +910,165 @@ export default function AdminChatPage() {
         </button>
       </header>
 
-      {/* Chat Messages */}
-      <div
-        ref={chatContainerRef}
-        className="flex-1 overflow-y-auto px-4 sm:px-6 py-6"
-      >
-        <div className="max-w-3xl mx-auto space-y-4">
-          {/* Empty state with examples */}
-          {messages.length === 0 && (
-            <div className="py-16 text-center">
-              <Database size={32} strokeWidth={1} className="text-white/15 mx-auto mb-6" />
-              <h2 className="heading-display text-2xl text-white/60 mb-2">
-                Ask me about the data
-              </h2>
-              <p className="body-text text-sm text-white/30 mb-10 max-w-md mx-auto">
-                I can query the database, investigate data quality issues, and
-                propose fixes. Ask me anything about boats, certificates, or
-                race results.
-              </p>
+      {/* Main content: sidebar + chat */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Conversation sidebar */}
+        <ConversationSidebar
+          conversations={conversations}
+          activeId={conversationId}
+          onSelect={handleSelectConversation}
+          onNew={handleNewConversation}
+          onDelete={handleDeleteConversation}
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg mx-auto">
-                {EXAMPLE_PROMPTS.map((prompt) => (
-                  <button
-                    key={prompt}
-                    onClick={() => sendMessage(prompt)}
-                    className="text-left px-4 py-3 border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 transition-colors rounded-sm"
-                  >
-                    <span className="body-text text-sm text-white/60">
-                      {prompt}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Messages */}
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[85%] sm:max-w-[75%] ${
-                  msg.role === "user"
-                    ? "bg-brass/20 border border-brass/30 px-4 py-3"
-                    : "w-full max-w-none sm:max-w-[75%]"
-                } rounded-sm`}
-              >
-                {msg.role === "user" ? (
-                  <p className="body-text text-sm text-white/90 whitespace-pre-wrap">
-                    {msg.content}
+        {/* Chat area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Chat Messages */}
+          <div
+            ref={chatContainerRef}
+            className="flex-1 overflow-y-auto px-4 sm:px-6 py-6"
+          >
+            <div className="max-w-3xl mx-auto space-y-4">
+              {/* Empty state with examples */}
+              {messages.length === 0 && (
+                <div className="py-16 text-center">
+                  <Database
+                    size={32}
+                    strokeWidth={1}
+                    className="text-white/15 mx-auto mb-6"
+                  />
+                  <h2 className="heading-display text-2xl text-white/60 mb-2">
+                    Ask me about the data
+                  </h2>
+                  <p className="body-text text-sm text-white/30 mb-10 max-w-md mx-auto">
+                    I can query the database, investigate data quality issues,
+                    and propose fixes. Ask me anything about boats,
+                    certificates, or race results.
                   </p>
-                ) : (
-                  <div>
-                    {/* Queries */}
-                    {msg.queries?.map((q, i) => (
-                      <QueryCard key={`q-${msg.id}-${i}`} query={q} />
-                    ))}
 
-                    {/* Text content */}
-                    {msg.content && (
-                      <div className="body-text text-sm text-white/80 whitespace-pre-wrap leading-relaxed px-1 py-1">
-                        {msg.content}
-                        {isStreaming &&
-                          msg.id ===
-                            messages[messages.length - 1]?.id && (
-                            <span className="inline-block w-0.5 h-4 bg-brass ml-0.5 align-text-bottom streaming-pulse" />
-                          )}
-                      </div>
-                    )}
-
-                    {/* Loading state when nothing rendered yet */}
-                    {isStreaming &&
-                      msg.id === messages[messages.length - 1]?.id &&
-                      !msg.content &&
-                      (!msg.queries || msg.queries.length === 0) && (
-                        <div className="flex items-center gap-2 px-1 py-2">
-                          <div
-                            className="w-3.5 h-3.5 border border-white/20 border-t-brass animate-spin"
-                            style={{ borderRadius: "50%" }}
-                          />
-                          <span className="body-text text-sm text-white/40 italic">
-                            Thinking...
-                          </span>
-                        </div>
-                      )}
-
-                    {/* Proposed changes */}
-                    {msg.proposedChanges?.map((change) => (
-                      <ProposedChangeCard
-                        key={change.id}
-                        change={change}
-                        onConfirm={() => handleConfirmChange(msg.id, change.id)}
-                        onReject={() => handleRejectChange(msg.id, change.id)}
-                      />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg mx-auto">
+                    {EXAMPLE_PROMPTS.map((prompt) => (
+                      <button
+                        key={prompt}
+                        onClick={() => sendMessage(prompt)}
+                        className="text-left px-4 py-3 border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 transition-colors rounded-sm"
+                      >
+                        <span className="body-text text-sm text-white/60">
+                          {prompt}
+                        </span>
+                      </button>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+
+              {/* Messages */}
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[85%] sm:max-w-[75%] ${
+                      msg.role === "user"
+                        ? "bg-brass/20 border border-brass/30 px-4 py-3"
+                        : "w-full max-w-none sm:max-w-[75%]"
+                    } rounded-sm`}
+                  >
+                    {msg.role === "user" ? (
+                      <p className="body-text text-sm text-white/90 whitespace-pre-wrap">
+                        {msg.content}
+                      </p>
+                    ) : (
+                      <div>
+                        {/* Queries */}
+                        {msg.queries?.map((q, i) => (
+                          <QueryCard key={`q-${msg.id}-${i}`} query={q} />
+                        ))}
+
+                        {/* Text content */}
+                        {msg.content && (
+                          <div className="body-text text-sm text-white/80 whitespace-pre-wrap leading-relaxed px-1 py-1">
+                            {msg.content}
+                            {isStreaming &&
+                              msg.id ===
+                                messages[messages.length - 1]?.id && (
+                                <span className="inline-block w-0.5 h-4 bg-brass ml-0.5 align-text-bottom streaming-pulse" />
+                              )}
+                          </div>
+                        )}
+
+                        {/* Loading state when nothing rendered yet */}
+                        {isStreaming &&
+                          msg.id === messages[messages.length - 1]?.id &&
+                          !msg.content &&
+                          (!msg.queries || msg.queries.length === 0) && (
+                            <div className="flex items-center gap-2 px-1 py-2">
+                              <div
+                                className="w-3.5 h-3.5 border border-white/20 border-t-brass animate-spin"
+                                style={{ borderRadius: "50%" }}
+                              />
+                              <span className="body-text text-sm text-white/40 italic">
+                                Thinking...
+                              </span>
+                            </div>
+                          )}
+
+                        {/* Proposed changes */}
+                        {msg.proposedChanges?.map((change) => (
+                          <ProposedChangeCard
+                            key={change.id}
+                            change={change}
+                            onConfirm={() =>
+                              handleConfirmChange(msg.id, change.id)
+                            }
+                            onReject={() =>
+                              handleRejectChange(msg.id, change.id)
+                            }
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              <div ref={messagesEndRef} />
             </div>
-          ))}
-
-          <div ref={messagesEndRef} />
-        </div>
-      </div>
-
-      {/* Input Area */}
-      <div className="flex-shrink-0 border-t border-white/10 px-4 sm:px-6 py-4">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-end gap-3">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask about the data..."
-              disabled={isStreaming}
-              rows={1}
-              className="flex-1 min-h-[44px] max-h-[160px] resize-none px-4 py-3 bg-navy-light border border-white/10 text-white body-text text-sm placeholder:text-white/25 focus:border-brass/60 focus:outline-none transition-colors disabled:opacity-50"
-              style={{ borderRadius: "1px" }}
-            />
-            <button
-              onClick={() => sendMessage(input)}
-              disabled={isStreaming || !input.trim()}
-              className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-brass text-white hover:bg-brass-dark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              aria-label="Send message"
-            >
-              <Send size={16} strokeWidth={2} />
-            </button>
           </div>
-          <p className="body-text text-xs text-white/20 mt-2 text-center">
-            Shift+Enter for new line. Changes require confirmation before executing.
-          </p>
+
+          {/* Input Area */}
+          <div className="flex-shrink-0 border-t border-white/10 px-4 sm:px-6 py-4">
+            <div className="max-w-3xl mx-auto">
+              <div className="flex items-end gap-3">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask about the data..."
+                  disabled={isStreaming}
+                  rows={1}
+                  className="flex-1 min-h-[44px] max-h-[160px] resize-none px-4 py-3 bg-navy-light border border-white/10 text-white body-text text-sm placeholder:text-white/25 focus:border-brass/60 focus:outline-none transition-colors disabled:opacity-50"
+                  style={{ borderRadius: "1px" }}
+                />
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={isStreaming || !input.trim()}
+                  className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-brass text-white hover:bg-brass-dark transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  aria-label="Send message"
+                >
+                  <Send size={16} strokeWidth={2} />
+                </button>
+              </div>
+              <p className="body-text text-xs text-white/20 mt-2 text-center">
+                Shift+Enter for new line. Changes require confirmation before
+                executing.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
