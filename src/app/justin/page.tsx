@@ -516,6 +516,7 @@ function ConversationSidebar({
                   conv.id === activeId ? "text-white/90" : "text-white/60"
                 }`}
               >
+                <span className="data-mono text-xs text-white/30 mr-1.5">#{conv.id}</span>
                 {conv.title || "Untitled"}
               </p>
               <p className="data-mono text-xs text-white/25 mt-0.5">
@@ -901,6 +902,11 @@ export default function AdminChatPage() {
           <span className="data-mono text-xs text-white/25 hidden sm:inline">
             sailratings.com
           </span>
+          {conversationId && (
+            <span className="data-mono text-xs text-brass/60 bg-brass/10 px-2 py-0.5 rounded-sm">
+              #{conversationId}
+            </span>
+          )}
         </div>
         <button
           onClick={handleLogout}
