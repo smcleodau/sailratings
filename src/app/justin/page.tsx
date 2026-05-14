@@ -15,6 +15,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
+import { AdminNav } from "@/components/AdminNav";
 
 /* ── Types ────────────────────────────────────────────────────────────── */
 
@@ -983,44 +984,15 @@ export default function AdminChatPage() {
   return (
     <div className="min-h-screen bg-navy flex flex-col">
       {/* Header */}
-      <header className="flex-shrink-0 border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <MessageSquare
-            size={18}
-            strokeWidth={1.5}
-            className="text-brass"
-          />
-          <h1 className="heading-display text-xl text-white/90">Data Admin</h1>
-          <span className="data-mono text-xs text-white/25 hidden sm:inline">
-            sailratings.com
-          </span>
-          {conversationId && (
+      <AdminNav
+        rightSlot={
+          conversationId ? (
             <span className="data-mono text-xs text-brass/60 bg-brass/10 px-2 py-0.5 rounded-sm">
               #{conversationId}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-4">
-          <a
-            href="/justin/tables"
-            className="body-text text-xs text-white/40 hover:text-brass transition-colors"
-          >
-            Tables →
-          </a>
-          <a
-            href="/justin/corrections"
-            className="body-text text-xs text-white/40 hover:text-brass transition-colors"
-          >
-            Corrections →
-          </a>
-          <button
-            onClick={handleLogout}
-            className="body-text text-xs text-white/30 hover:text-white/60 transition-colors"
-          >
-            Sign Out
-          </button>
-        </div>
-      </header>
+          ) : null
+        }
+      />
 
       {/* Main content: sidebar + chat */}
       <div className="flex-1 flex overflow-hidden">

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, RefreshCw, Lock } from "lucide-react";
+import { RefreshCw, Lock } from "lucide-react";
+import { AdminNav } from "@/components/AdminNav";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -88,23 +89,8 @@ export default function TablesIndex() {
 
   return (
     <div className="min-h-screen bg-navy flex flex-col">
-      <header className="flex-shrink-0 border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <a href="/justin" className="text-white/40 hover:text-white/80">
-            <ArrowLeft size={18} strokeWidth={1.5} />
-          </a>
-          <h1 className="heading-display text-xl text-white/90">Tables</h1>
-          <span className="data-mono text-xs text-white/25 hidden sm:inline">
-            {fmtCount(totalRows)} rows · {fmtBytes(totalSize)}
-          </span>
-        </div>
-        <div className="flex items-center gap-4">
-          <a
-            href="/justin/corrections"
-            className="body-text text-xs text-white/40 hover:text-brass"
-          >
-            Corrections →
-          </a>
+      <AdminNav
+        rightSlot={
           <button
             onClick={load}
             disabled={loading}
@@ -113,8 +99,15 @@ export default function TablesIndex() {
           >
             <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
           </button>
-        </div>
-      </header>
+        }
+      />
+
+      <div className="px-6 py-4 border-b border-white/10 flex items-baseline gap-3">
+        <h1 className="heading-display text-xl text-white/90">Tables</h1>
+        <span className="data-mono text-xs text-white/25">
+          {fmtCount(totalRows)} rows · {fmtBytes(totalSize)}
+        </span>
+      </div>
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-5xl mx-auto px-6 py-6">

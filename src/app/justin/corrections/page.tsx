@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, X, RefreshCw, ArrowLeft } from "lucide-react";
+import { Check, X, RefreshCw } from "lucide-react";
+import { AdminNav } from "@/components/AdminNav";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -114,26 +115,8 @@ export default function CorrectionsPage() {
 
   return (
     <div className="min-h-screen bg-navy flex flex-col">
-      <header className="flex-shrink-0 border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <a href="/justin" className="text-white/40 hover:text-white/80 transition-colors">
-            <ArrowLeft size={18} strokeWidth={1.5} />
-          </a>
-          <h1 className="heading-display text-xl text-white/90">Corrections</h1>
-          <span className="data-mono text-xs text-white/25 hidden sm:inline">moderation queue</span>
-        </div>
-        <div className="flex items-center gap-3">
-          {(["pending", "applied", "rejected"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`body-text text-sm px-3 py-1.5 transition-colors ${
-                tab === t ? "text-brass border-b-2 border-brass" : "text-white/40 hover:text-white/70"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
+      <AdminNav
+        rightSlot={
           <button
             onClick={() => load(tab)}
             disabled={loading}
@@ -142,8 +125,28 @@ export default function CorrectionsPage() {
           >
             <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
           </button>
+        }
+      />
+
+      <div className="px-6 py-3 border-b border-white/10 flex items-center justify-between gap-3">
+        <div className="flex items-baseline gap-3">
+          <h1 className="heading-display text-lg text-white/90">Corrections</h1>
+          <span className="data-mono text-xs text-white/25">moderation queue</span>
         </div>
-      </header>
+        <div className="flex items-center gap-1">
+          {(["pending", "applied", "rejected"] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`data-mono text-[10px] uppercase tracking-[0.16em] px-3 py-1.5 transition-colors ${
+                tab === t ? "text-brass border-b border-brass" : "text-white/40 hover:text-white/70"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-6 py-6">

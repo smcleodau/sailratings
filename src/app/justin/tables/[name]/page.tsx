@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import { ArrowLeft, RefreshCw, ChevronLeft, ChevronRight, Lock, Check, X } from "lucide-react";
+import { AdminNav } from "@/components/AdminNav";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -162,12 +163,18 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
 
   return (
     <div className="min-h-screen bg-navy flex flex-col">
-      <header className="flex-shrink-0 border-b border-white/10 px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
+      <AdminNav />
+
+      <div className="px-6 py-3 border-b border-white/10 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
-          <a href="/justin/tables" className="text-white/40 hover:text-white/80">
-            <ArrowLeft size={18} strokeWidth={1.5} />
+          <a
+            href="/justin/tables"
+            className="text-white/40 hover:text-white/80"
+            title="Back to all tables"
+          >
+            <ArrowLeft size={16} strokeWidth={1.5} />
           </a>
-          <h1 className="heading-display text-xl text-white/90 truncate">
+          <h1 className="heading-display text-lg text-white/90 truncate">
             <span className="data-mono">{name}</span>
           </h1>
           {data && (
@@ -217,7 +224,7 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
             <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
-      </header>
+      </div>
 
       {error && (
         <div className="bg-brass/15 border-b border-brass/30 px-6 py-2">
