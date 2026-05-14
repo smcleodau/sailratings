@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Hero from "@/components/Hero";
 import BoatCard from "@/components/BoatCard";
 import TeaserAnalysis from "@/components/TeaserAnalysis";
-import PurchaseCTA from "@/components/PurchaseCTA";
 import CorrectionForm from "@/components/CorrectionForm";
 import type { SearchResult, BoatDetail } from "@/lib/api";
 
@@ -59,18 +58,8 @@ export default function Home() {
               key={`teaser-${selectedBoat.id}`}
               boatId={selectedBoat.id}
               boatName={selectedBoat.boat_name}
-              onComplete={handleTeaserComplete}
-            />
-          )}
-          {boatLoaded && boatDetail && (
-            <div className="section-divider" aria-hidden="true"><span className="diamond" /></div>
-          )}
-          {boatLoaded && boatDetail && (
-            <PurchaseCTA
-              boatId={selectedBoat.id}
-              boatName={selectedBoat.boat_name}
               searchQuery={searchQuery}
-              teaserText={teaserText}
+              onComplete={handleTeaserComplete}
             />
           )}
           {boatLoaded && boatDetail && (

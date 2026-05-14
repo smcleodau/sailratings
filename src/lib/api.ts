@@ -62,9 +62,14 @@ export interface BoatDetail {
   [key: string]: unknown;
 }
 
+export interface SSEStep {
+  label: string;
+  detail?: string;
+}
+
 export interface SSEEvent {
-  type: "text" | "done" | "error";
-  data: string;
+  type: "text" | "done" | "error" | "step";
+  data: string | SSEStep | Record<string, unknown>;
 }
 
 export interface CheckoutSessionResponse {
