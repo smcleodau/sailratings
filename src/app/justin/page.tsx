@@ -1002,6 +1002,12 @@ export default function AdminChatPage() {
         </div>
         <div className="flex items-center gap-4">
           <a
+            href="/justin/tables"
+            className="body-text text-xs text-white/40 hover:text-brass transition-colors"
+          >
+            Tables →
+          </a>
+          <a
             href="/justin/corrections"
             className="body-text text-xs text-white/40 hover:text-brass transition-colors"
           >
