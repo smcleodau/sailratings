@@ -37,6 +37,11 @@ interface MetaData {
 interface QueryData {
   sql: string;
   explanation: string;
+  columns?: string[];
+  rows?: (string | number | boolean | null)[][];
+  total_rows?: number;
+  truncated?: boolean;
+  error?: string;
 }
 
 interface ProposedChangeData {
@@ -292,6 +297,16 @@ function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
 
 function QueryCard({ query }: { query: QueryData }) {
   const [expanded, setExpanded] = useState(false);
+  const [showSql, setShowSql] = useState(false);
+
+  const hasResults =
+    (query.rows?.length ?? 0) > 0 || (query.total_rows ?? 0) > 0;
+  const summary =
+    query.error !== undefined
+      ? `error: ${query.error}`
+      : query.total_rows !== undefined
+        ? `${query.total_rows} row${query.total_rows === 1 ? "" : "s"}`
+        : "";
 
   return (
     <div className="my-3 border border-white/10 bg-white/5 rounded-sm overflow-hidden">
@@ -302,11 +317,16 @@ function QueryCard({ query }: { query: QueryData }) {
         <Database
           size={14}
           strokeWidth={1.5}
-          className="text-signal-light flex-shrink-0"
+          className={`flex-shrink-0 ${query.error ? "text-brass" : "text-signal-light"}`}
         />
         <span className="body-text text-sm text-white/70 flex-1">
-          {query.explanation}
+          {query.explanation || query.sql.slice(0, 80)}
         </span>
+        {summary && (
+          <span className="data-mono text-xs text-white/40 flex-shrink-0">
+            {summary}
+          </span>
+        )}
         {expanded ? (
           <ChevronDown size={14} className="text-white/40 flex-shrink-0" />
         ) : (
@@ -314,10 +334,82 @@ function QueryCard({ query }: { query: QueryData }) {
         )}
       </button>
       {expanded && (
-        <div className="px-4 pb-3 border-t border-white/5">
-          <pre className="data-mono text-xs text-signal-light/80 whitespace-pre-wrap break-all mt-2 leading-relaxed">
-            {query.sql}
-          </pre>
+        <div className="border-t border-white/5">
+          {hasResults && query.columns && query.rows && (
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <table className="w-full data-mono text-xs">
+                <thead className="sticky top-0 bg-navy-light/95 backdrop-blur">
+                  <tr>
+                    {query.columns.map((c) => (
+                      <th
+                        key={c}
+                        className="text-left px-3 py-2 text-white/50 font-normal border-b border-white/10 whitespace-nowrap"
+                      >
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {query.rows.map((row, i) => (
+                    <tr
+                      key={i}
+                      className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                    >
+                      {row.map((cell, j) => (
+                        <td
+                          key={j}
+                          className="px-3 py-1.5 text-white/80 align-top"
+                          title={cell === null ? "NULL" : String(cell)}
+                        >
+                          {cell === null ? (
+                            <span className="text-white/25 italic">NULL</span>
+                          ) : typeof cell === "object" ? (
+                            <span className="text-signal-light/80">
+                              {JSON.stringify(cell).slice(0, 80)}
+                            </span>
+                          ) : (
+                            String(cell).slice(0, 200)
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {query.truncated && (
+                <p className="data-mono text-xs text-white/30 px-3 py-2 border-t border-white/5">
+                  Showing first {query.rows.length} of {query.total_rows} rows
+                </p>
+              )}
+            </div>
+          )}
+          {!hasResults && !query.error && (
+            <p className="data-mono text-xs text-white/30 px-4 py-3">
+              0 rows
+            </p>
+          )}
+          {query.error && (
+            <p className="data-mono text-xs text-brass px-4 py-3 whitespace-pre-wrap">
+              {query.error}
+            </p>
+          )}
+          <div className="px-4 py-2 border-t border-white/5">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowSql(!showSql);
+              }}
+              className="body-text text-xs text-white/30 hover:text-white/60 transition-colors"
+            >
+              {showSql ? "Hide SQL" : "Show SQL"}
+            </button>
+            {showSql && (
+              <pre className="data-mono text-xs text-signal-light/80 whitespace-pre-wrap break-all mt-2 leading-relaxed">
+                {query.sql}
+              </pre>
+            )}
+          </div>
         </div>
       )}
     </div>
