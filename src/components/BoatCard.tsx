@@ -8,6 +8,8 @@ import {
   Calendar,
   Users,
   Move,
+  Compass,
+  Hammer,
 } from "lucide-react";
 import { getBoat, type BoatDetail } from "@/lib/api";
 
@@ -116,7 +118,17 @@ export default function BoatCard({
                 {Number(tcc).toFixed(3)}
               </div>
               <div className="text-xs text-muted uppercase tracking-wider mt-1">
-                TCC
+                <span className="text-brass font-medium">IRC</span> TCC
+              </div>
+            </div>
+          )}
+          {tcc == null && boat.orc_gph != null && (
+            <div className="text-right flex-shrink-0">
+              <div className="data-mono text-3xl sm:text-4xl text-navy font-semibold">
+                {Number(boat.orc_gph).toFixed(1)}
+              </div>
+              <div className="text-xs text-muted uppercase tracking-wider mt-1">
+                <span className="text-brass font-medium">ORC</span> GPH
               </div>
             </div>
           )}
@@ -137,6 +149,20 @@ export default function BoatCard({
             icon={<Anchor size={16} strokeWidth={1.5} />}
             label="Design"
             value={boat.design}
+          />
+        )}
+        {boat.designer && (
+          <DetailCell
+            icon={<Compass size={16} strokeWidth={1.5} />}
+            label="Designer"
+            value={boat.designer}
+          />
+        )}
+        {boat.builder && (
+          <DetailCell
+            icon={<Hammer size={16} strokeWidth={1.5} />}
+            label="Builder"
+            value={boat.builder}
           />
         )}
         {boat.year_built != null && (
