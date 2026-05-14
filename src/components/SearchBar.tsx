@@ -2,7 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Search, X } from "lucide-react";
-import { searchBoats, type SearchResult } from "@/lib/api";
+import {
+  searchBoatsFull,
+  type SearchResult,
+  type SearchSuggestion,
+} from "@/lib/api";
 
 interface SearchBarProps {
   onBoatSelected: (boat: SearchResult) => void;
@@ -72,10 +76,12 @@ function CountryFlag({ country }: { country: string }) {
 export default function SearchBar({ onBoatSelected }: SearchBarProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [error, setError] = useState<string | null>(null);
+  const [searchedQuery, setSearchedQuery] = useState("");
 
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,7 +92,9 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
   const doSearch = useCallback(async (q: string) => {
     if (q.trim().length < 2) {
       setResults([]);
+      setSuggestions([]);
       setIsOpen(false);
+      setSearchedQuery("");
       return;
     }
 
@@ -98,14 +106,18 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
     setError(null);
 
     try {
-      const data = await searchBoats(q);
-      setResults(data);
-      setIsOpen(data.length > 0);
+      const data = await searchBoatsFull(q);
+      setResults(data.results);
+      setSuggestions(data.suggestions ?? []);
+      setSearchedQuery(q.trim());
+      // Open the dropdown when we have anything to show (results OR suggestions)
+      setIsOpen(data.results.length > 0 || (data.suggestions?.length ?? 0) > 0);
       setHighlightIndex(-1);
     } catch (err) {
       if (err instanceof Error && err.name !== "AbortError") {
         setError("Search failed. Please try again.");
         setResults([]);
+        setSuggestions([]);
         setIsOpen(false);
       }
     } finally {
@@ -119,17 +131,20 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
     debounceRef.current = setTimeout(() => doSearch(value), 250);
   };
 
-  const handleSelect = (boat: SearchResult) => {
+  const handleSelect = (boat: SearchResult | SearchSuggestion) => {
     setQuery(boat.boat_name);
     setIsOpen(false);
     setResults([]);
-    onBoatSelected(boat);
+    setSuggestions([]);
+    onBoatSelected({ ...boat, score: 0 } as SearchResult);
   };
 
   const handleClear = () => {
     setQuery("");
     setResults([]);
+    setSuggestions([]);
     setIsOpen(false);
+    setSearchedQuery("");
     setError(null);
     inputRef.current?.focus();
   };
@@ -243,8 +258,19 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
         <p className="mt-2 text-sm text-teak font-body">{error}</p>
       )}
 
-      {/* Dropdown */}
-      {isOpen && results.length > 0 && (
+      {/* Empty state — searched but zero matches and zero suggestions */}
+      {!isLoading &&
+        searchedQuery &&
+        searchedQuery === query.trim() &&
+        results.length === 0 &&
+        suggestions.length === 0 && (
+          <p className="mt-3 text-center text-sm text-muted font-body">
+            No boats matching <span className="data-mono">{searchedQuery}</span>. Try a name or a different sail number.
+          </p>
+        )}
+
+      {/* Dropdown — results AND/OR suggestions */}
+      {isOpen && (results.length > 0 || suggestions.length > 0) && (
         <ul
           id="search-results"
           role="listbox"
@@ -261,6 +287,47 @@ export default function SearchBar({ onBoatSelected }: SearchBarProps) {
               className={`flex items-center gap-4 px-5 py-3.5 cursor-pointer transition-colors border-b border-border-light last:border-b-0 ${
                 highlightIndex === index ? "bg-sand" : "hover:bg-sand/50"
               }`}
+            >
+              {boat.country && <CountryFlag country={boat.country} />}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="heading-display text-lg text-charcoal truncate">
+                    {boat.boat_name}
+                  </span>
+                  <span className="data-mono text-xs text-muted">
+                    {boat.sail_number}
+                  </span>
+                </div>
+                {boat.design && (
+                  <span className="body-text text-sm text-muted">
+                    {boat.design}
+                  </span>
+                )}
+              </div>
+              {boat.country && (
+                <span className="data-mono text-xs text-muted whitespace-nowrap">
+                  {boat.country}
+                </span>
+              )}
+            </li>
+          ))}
+
+          {/* Suggestions header + rows when primary returned nothing */}
+          {results.length === 0 && suggestions.length > 0 && (
+            <li
+              className="px-5 py-2 bg-sand/40 text-xs uppercase tracking-wider text-muted body-text"
+              aria-hidden="true"
+            >
+              Did you mean…
+            </li>
+          )}
+          {suggestions.map((boat) => (
+            <li
+              key={`sug-${boat.id}`}
+              role="option"
+              aria-selected={false}
+              onClick={() => handleSelect(boat)}
+              className="flex items-center gap-4 px-5 py-3.5 cursor-pointer transition-colors border-b border-border-light last:border-b-0 hover:bg-sand/50"
             >
               {boat.country && <CountryFlag country={boat.country} />}
               <div className="flex-1 min-w-0">

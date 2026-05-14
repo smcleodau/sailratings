@@ -13,12 +13,22 @@ export interface SearchResult {
   score: number;
 }
 
+export interface SearchSuggestion {
+  id: number;
+  boat_name: string;
+  sail_number: string;
+  design: string | null;
+  country: string | null;
+  year_built: number | null;
+}
+
 export interface SearchResponse {
   query: string;
   total: number;
   limit: number;
   offset: number;
   results: SearchResult[];
+  suggestions?: SearchSuggestion[];
 }
 
 export interface BoatDetail {
@@ -105,7 +115,14 @@ export interface ReportData {
 /* ── Search ───────────────────────────────────────────────────────────── */
 
 export async function searchBoats(query: string): Promise<SearchResult[]> {
-  if (!query || query.trim().length < 2) return [];
+  const data = await searchBoatsFull(query);
+  return data.results;
+}
+
+export async function searchBoatsFull(query: string): Promise<SearchResponse> {
+  if (!query || query.trim().length < 2) {
+    return { query, total: 0, limit: 20, offset: 0, results: [], suggestions: [] };
+  }
 
   const res = await fetch(
     `${API_BASE}/search?q=${encodeURIComponent(query.trim())}`,
@@ -119,8 +136,7 @@ export async function searchBoats(query: string): Promise<SearchResult[]> {
     throw new Error(`Search failed: ${res.status}`);
   }
 
-  const data: SearchResponse = await res.json();
-  return data.results ?? [];
+  return res.json();
 }
 
 /* ── Boat Detail ──────────────────────────────────────────────────────── */
