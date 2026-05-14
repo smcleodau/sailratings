@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { RefreshCw, Lock } from "lucide-react";
-import { AdminNav } from "@/components/AdminNav";
+import { useAdminNavRightSlot } from "@/components/AdminNavShell";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -68,9 +68,21 @@ export default function TablesIndex() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // Inject refresh button into the shared nav's right slot
+  useAdminNavRightSlot(
+    <button
+      onClick={load}
+      disabled={loading}
+      className="text-white/40 hover:text-white/80 disabled:opacity-30"
+      title="Refresh"
+    >
+      <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
+    </button>,
+  );
+
   if (!token) {
     return (
-      <div className="min-h-screen bg-navy flex items-center justify-center px-6">
+      <div className="flex-1 flex items-center justify-center px-6">
         <div className="text-center">
           <p className="body-text text-white/60 mb-4">
             Sign in via{" "}
@@ -88,20 +100,7 @@ export default function TablesIndex() {
   const totalSize = rows.reduce((sum, t) => sum + t.total_bytes, 0);
 
   return (
-    <div className="min-h-screen bg-navy flex flex-col">
-      <AdminNav
-        rightSlot={
-          <button
-            onClick={load}
-            disabled={loading}
-            className="text-white/40 hover:text-white/80 disabled:opacity-30"
-            title="Refresh"
-          >
-            <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
-          </button>
-        }
-      />
-
+    <>
       <div className="px-6 py-4 border-b border-white/10 flex items-baseline gap-3">
         <h1 className="heading-display text-xl text-white/90">Tables</h1>
         <span className="data-mono text-xs text-white/25">
@@ -109,7 +108,7 @@ export default function TablesIndex() {
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto bg-navy">
         <div className="max-w-5xl mx-auto px-6 py-6">
           {error && (
             <div className="border border-brass/40 bg-brass/10 px-4 py-3 mb-4">
@@ -157,6 +156,6 @@ export default function TablesIndex() {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

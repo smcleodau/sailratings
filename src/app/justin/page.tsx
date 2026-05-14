@@ -15,7 +15,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { AdminNav } from "@/components/AdminNav";
+import { useAdminNavRightSlot } from "@/components/AdminNavShell";
 
 /* ── Types ────────────────────────────────────────────────────────────── */
 
@@ -263,7 +263,7 @@ function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
   };
 
   return (
-    <div className="min-h-screen bg-navy flex items-center justify-center px-6">
+    <div className="flex-1 flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="heading-display text-3xl text-white/90 mb-2">
@@ -977,22 +977,20 @@ export default function AdminChatPage() {
 
   /* ── Render ─────────────────────────────────────────────────────────── */
 
+  useAdminNavRightSlot(
+    conversationId ? (
+      <span className="data-mono text-xs text-brass/60 bg-brass/10 px-2 py-0.5 rounded-sm">
+        #{conversationId}
+      </span>
+    ) : null,
+  );
+
   if (!token) {
     return <LoginGate onLogin={handleLogin} />;
   }
 
   return (
-    <div className="min-h-screen bg-navy flex flex-col">
-      {/* Header */}
-      <AdminNav
-        rightSlot={
-          conversationId ? (
-            <span className="data-mono text-xs text-brass/60 bg-brass/10 px-2 py-0.5 rounded-sm">
-              #{conversationId}
-            </span>
-          ) : null
-        }
-      />
+    <>
 
       {/* Main content: sidebar + chat */}
       <div className="flex-1 flex overflow-hidden">
@@ -1155,6 +1153,6 @@ export default function AdminChatPage() {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

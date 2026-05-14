@@ -1,8 +1,9 @@
 "use client";
 
 import { use, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { ArrowLeft, RefreshCw, ChevronLeft, ChevronRight, Lock, Check, X } from "lucide-react";
-import { AdminNav } from "@/components/AdminNav";
+import { useAdminNavRightSlot } from "@/components/AdminNavShell";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -151,9 +152,20 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
     }
   };
 
+  useAdminNavRightSlot(
+    <button
+      onClick={() => void load()}
+      disabled={loading}
+      className="text-white/40 hover:text-white/80 disabled:opacity-30"
+      title="Refresh"
+    >
+      <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
+    </button>,
+  );
+
   if (!token) {
     return (
-      <div className="min-h-screen bg-navy flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center">
         <p className="body-text text-white/60">
           Sign in via <a className="text-brass underline" href="/justin">/justin</a> first.
         </p>
@@ -162,18 +174,16 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
   }
 
   return (
-    <div className="min-h-screen bg-navy flex flex-col">
-      <AdminNav />
-
+    <>
       <div className="px-6 py-3 border-b border-white/10 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
-          <a
+          <Link
             href="/justin/tables"
             className="text-white/40 hover:text-white/80"
             title="Back to all tables"
           >
             <ArrowLeft size={16} strokeWidth={1.5} />
-          </a>
+          </Link>
           <h1 className="heading-display text-lg text-white/90 truncate">
             <span className="data-mono">{name}</span>
           </h1>
@@ -214,14 +224,6 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
             className="data-mono text-xs uppercase tracking-wider text-white/60 hover:text-white border border-white/15 hover:border-white/30 px-3 py-1.5 transition-colors"
           >
             Filter
-          </button>
-          <button
-            onClick={() => void load()}
-            disabled={loading}
-            className="text-white/40 hover:text-white/80 disabled:opacity-30"
-            title="Refresh"
-          >
-            <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
@@ -353,6 +355,6 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

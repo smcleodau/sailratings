@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Check, X, RefreshCw } from "lucide-react";
-import { AdminNav } from "@/components/AdminNav";
+import { useAdminNavRightSlot } from "@/components/AdminNavShell";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -101,9 +101,20 @@ export default function CorrectionsPage() {
     return d.toLocaleDateString();
   };
 
+  useAdminNavRightSlot(
+    <button
+      onClick={() => load(tab)}
+      disabled={loading}
+      className="text-white/40 hover:text-white/80 transition-colors disabled:opacity-30"
+      title="Refresh"
+    >
+      <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
+    </button>,
+  );
+
   if (!token) {
     return (
-      <div className="min-h-screen bg-navy flex items-center justify-center px-6">
+      <div className="flex-1 flex items-center justify-center px-6">
         <div className="w-full max-w-sm text-center">
           <p className="body-text text-white/60 mb-4">
             Sign in via <a className="text-brass underline" href="/justin">/justin</a> first.
@@ -114,20 +125,7 @@ export default function CorrectionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-navy flex flex-col">
-      <AdminNav
-        rightSlot={
-          <button
-            onClick={() => load(tab)}
-            disabled={loading}
-            className="text-white/40 hover:text-white/80 transition-colors disabled:opacity-30"
-            title="Refresh"
-          >
-            <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
-          </button>
-        }
-      />
-
+    <>
       <div className="px-6 py-3 border-b border-white/10 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
           <h1 className="heading-display text-lg text-white/90">Corrections</h1>
@@ -241,6 +239,6 @@ export default function CorrectionsPage() {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

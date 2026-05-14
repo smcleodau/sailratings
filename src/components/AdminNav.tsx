@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
 import { LogOut } from "lucide-react";
 
 interface AdminNavProps {
@@ -35,45 +36,47 @@ const SECTIONS = [
 
 export function AdminNav({ rightSlot }: AdminNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
 
   const handleSignOut = () => {
     if (typeof window === "undefined") return;
     localStorage.removeItem("admin_token");
-    window.location.href = "/justin";
+    router.push("/justin");
+    router.refresh();
   };
 
   return (
     <header className="flex-shrink-0 border-b border-white/10 bg-navy px-6 py-3 flex items-center justify-between gap-6 flex-wrap">
       {/* Brand */}
-      <a
+      <Link
         href="/justin"
+        prefetch
         className="flex items-baseline gap-2 group flex-shrink-0"
       >
         <span className="brand-wordmark text-white text-sm">Sail Ratings</span>
         <span className="data-mono text-[10px] uppercase tracking-[0.18em] text-white/30 group-hover:text-white/60 transition-colors">
           Admin
         </span>
-      </a>
+      </Link>
 
       {/* Section tabs */}
       <nav className="flex items-center gap-0 -mb-3 flex-1" aria-label="Admin sections">
         {SECTIONS.map((s) => {
           const active = s.match(pathname);
           return (
-            <a
+            <Link
               key={s.href}
               href={s.href}
+              prefetch
               className={`relative data-mono text-[11px] uppercase tracking-[0.16em] px-4 py-3 transition-colors ${
-                active
-                  ? "text-brass"
-                  : "text-white/40 hover:text-white/70"
+                active ? "text-brass" : "text-white/40 hover:text-white/70"
               }`}
             >
               {s.label}
               {active && (
                 <span className="absolute left-3 right-3 bottom-0 h-px bg-brass" aria-hidden />
               )}
-            </a>
+            </Link>
           );
         })}
       </nav>

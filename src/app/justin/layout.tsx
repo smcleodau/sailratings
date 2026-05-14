@@ -1,8 +1,18 @@
-import type { Metadata } from "next";
-
 /**
- * /justin — internal page. Keep out of search engines.
+ * /justin layout — shared chrome for every admin page.
+ *
+ * The AdminNav is rendered once at this layout level so React keeps the
+ * nav DOM mounted across client-side route changes between /justin,
+ * /justin/tables, /justin/corrections, /justin/tables/[name] and
+ * /justin/tables/admin_edits.
+ *
+ * The metadata { robots: noindex } stays — admin pages should never be
+ * indexed.
  */
+
+import type { Metadata } from "next";
+import { AdminNavShell } from "@/components/AdminNavShell";
+
 export const metadata: Metadata = {
   title: "Internal",
   robots: {
@@ -15,5 +25,5 @@ export const metadata: Metadata = {
 export default function JustinLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  return children;
+  return <AdminNavShell>{children}</AdminNavShell>;
 }
