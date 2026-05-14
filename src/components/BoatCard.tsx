@@ -37,6 +37,13 @@ export default function BoatCard({
         if (!cancelled) {
           setBoat(data);
           onBoatLoaded(data);
+          const { track } = await import("@/lib/posthog");
+          track("boat_viewed", {
+            boat_id: boatId,
+            boat_name: data.boat_name ?? boatName,
+            design: data.design ?? null,
+            country: data.country ?? null,
+          });
         }
       } catch {
         if (!cancelled) {
