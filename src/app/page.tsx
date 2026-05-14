@@ -5,6 +5,7 @@ import Hero from "@/components/Hero";
 import BoatCard from "@/components/BoatCard";
 import TeaserAnalysis from "@/components/TeaserAnalysis";
 import PurchaseCTA from "@/components/PurchaseCTA";
+import CorrectionForm from "@/components/CorrectionForm";
 import type { SearchResult, BoatDetail } from "@/lib/api";
 
 export default function Home() {
@@ -71,6 +72,9 @@ export default function Home() {
               searchQuery={searchQuery}
               teaserText={teaserText}
             />
+          )}
+          {boatLoaded && boatDetail && (
+            <CorrectionForm key={`corr-${selectedBoat.id}`} boat={boatDetail} />
           )}
         </section>
       )}

@@ -138,6 +138,37 @@ export async function getBoat(id: number): Promise<BoatDetail> {
   return res.json();
 }
 
+/* ── Owner Corrections ────────────────────────────────────────────────── */
+
+export type CorrectionField =
+  | "designer"
+  | "builder"
+  | "year_built"
+  | "design_canonical"
+  | "new_design_class";
+
+export interface CorrectionSubmission {
+  field_name: CorrectionField;
+  proposed_value: string;
+  submitted_email?: string;
+}
+
+export async function submitCorrection(
+  boatId: number,
+  body: CorrectionSubmission,
+): Promise<{ id: number; status: string }> {
+  const res = await fetch(`${API_BASE}/boats/${boatId}/corrections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Correction submit failed (${res.status}): ${detail.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
 /* ── SSE Streaming Insights ───────────────────────────────────────────── */
 
 export async function* streamInsights(

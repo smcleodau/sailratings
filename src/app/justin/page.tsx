@@ -1000,12 +1000,20 @@ export default function AdminChatPage() {
             </span>
           )}
         </div>
-        <button
-          onClick={handleLogout}
-          className="body-text text-xs text-white/30 hover:text-white/60 transition-colors"
-        >
-          Sign Out
-        </button>
+        <div className="flex items-center gap-4">
+          <a
+            href="/justin/corrections"
+            className="body-text text-xs text-white/40 hover:text-brass transition-colors"
+          >
+            Corrections →
+          </a>
+          <button
+            onClick={handleLogout}
+            className="body-text text-xs text-white/30 hover:text-white/60 transition-colors"
+          >
+            Sign Out
+          </button>
+        </div>
       </header>
 
       {/* Main content: sidebar + chat */}
