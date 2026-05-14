@@ -58,16 +58,30 @@ export default function PurchaseCTA({
     setIsLoading(true);
     setError(null);
 
+    const { track } = await import("@/lib/posthog");
+    track("buy_clicked", {
+      boat_id: boatId,
+      boat_name: boatName,
+      currency: currency.code,
+      search_query: searchQuery,
+    });
+
     try {
-      const { checkout_url } = await createCheckoutSession({
+      const { checkout_url, order_token } = await createCheckoutSession({
         boat_id: boatId,
         boat_name: boatName,
         currency: currency.code,
         search_query: searchQuery,
         teaser_text: teaserText,
       });
+      track("checkout_redirect", {
+        boat_id: boatId,
+        order_token,
+        currency: currency.code,
+      });
       window.location.href = checkout_url;
     } catch {
+      track("buy_failed", { boat_id: boatId });
       setError("Something went wrong. Please try again.");
       setIsLoading(false);
     }

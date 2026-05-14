@@ -59,6 +59,7 @@ export interface SSEEvent {
 
 export interface CheckoutSessionResponse {
   checkout_url: string;
+  order_token: string;
 }
 
 export interface Recommendation {

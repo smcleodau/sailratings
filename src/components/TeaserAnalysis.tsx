@@ -34,6 +34,9 @@ export default function TeaserAnalysis({
       setError(null);
       setText("");
       textRef.current = "";
+      const startedAt = Date.now();
+      const { track } = await import("@/lib/posthog");
+      track("teaser_started", { boat_id: boatId });
 
       try {
         const stream = streamInsights(boatId, "free");
@@ -58,6 +61,12 @@ export default function TeaserAnalysis({
         if (!cancelled) {
           setIsStreaming(false);
           setIsDone(true);
+          track("teaser_completed", {
+            boat_id: boatId,
+            duration_ms: Date.now() - startedAt,
+            char_count: textRef.current.length,
+            had_error: !!error,
+          });
           if (textRef.current && onComplete) {
             onComplete(textRef.current);
           }
