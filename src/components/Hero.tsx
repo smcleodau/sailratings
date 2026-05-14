@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { Search, X } from "lucide-react";
-import { searchBoats, type SearchResult } from "@/lib/api";
+import { searchBoatsFull, type SearchResult, type SearchSuggestion } from "@/lib/api";
 
 const SYSTEMS = ["IRC", "ORC"];
 const CYCLE_MS = 3500;
@@ -56,6 +56,8 @@ interface HeroProps { onBoatSelected: (boat: SearchResult) => void; }
 export default function Hero({ onBoatSelected }: HeroProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [searchedQuery, setSearchedQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [highlight, setHighlight] = useState(-1);
@@ -64,15 +66,21 @@ export default function Hero({ onBoatSelected }: HeroProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const doSearch = useCallback(async (q: string) => {
-    if (q.trim().length < 2) { setResults([]); setIsOpen(false); return; }
+    if (q.trim().length < 2) { setResults([]); setSuggestions([]); setIsOpen(false); setSearchedQuery(""); return; }
     setIsLoading(true);
-    try { const data = await searchBoats(q); setResults(data); setIsOpen(data.length > 0); setHighlight(-1); }
-    catch { setResults([]); setIsOpen(false); }
+    try {
+      const data = await searchBoatsFull(q);
+      setResults(data.results);
+      setSuggestions(data.suggestions ?? []);
+      setSearchedQuery(q.trim());
+      setIsOpen(data.results.length > 0 || (data.suggestions?.length ?? 0) > 0);
+      setHighlight(-1);
+    } catch { setResults([]); setSuggestions([]); setIsOpen(false); }
     finally { setIsLoading(false); }
   }, []);
 
   const handleChange = (v: string) => { setQuery(v); clearTimeout(debounceRef.current); debounceRef.current = setTimeout(() => doSearch(v), 250); };
-  const handleSelect = (boat: SearchResult) => { setQuery(boat.boat_name); setIsOpen(false); setResults([]); onBoatSelected(boat); };
+  const handleSelect = (boat: SearchResult | SearchSuggestion) => { setQuery(boat.boat_name); setIsOpen(false); setResults([]); setSuggestions([]); onBoatSelected({ ...boat, score: 0 } as SearchResult); };
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isOpen || !results.length) return;
     if (e.key === "ArrowDown") { e.preventDefault(); setHighlight((p) => (p < results.length - 1 ? p + 1 : 0)); }
@@ -145,11 +153,12 @@ export default function Hero({ onBoatSelected }: HeroProps) {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} strokeWidth={1.5} />
             <input
               ref={inputRef}
+              id="main-search"
               type="text"
               value={query}
               onChange={(e) => handleChange(e.target.value)}
               onKeyDown={handleKeyDown}
-              onFocus={() => { if (results.length > 0) setIsOpen(true); }}
+              onFocus={() => { if (results.length > 0 || suggestions.length > 0) setIsOpen(true); }}
               placeholder="Enter your boat name or sail number..."
               className="w-full h-13 pl-11 pr-24 bg-white/15 backdrop-blur-md text-white text-[14px] font-body placeholder:text-white/50 rounded-lg border border-white/30 focus:outline-none focus:border-white/60 focus:bg-white/20 transition-all"
               autoComplete="off"
@@ -172,12 +181,38 @@ export default function Hero({ onBoatSelected }: HeroProps) {
             </button>
           </div>
 
-          {/* Dropdown */}
-          {isOpen && results.length > 0 && (
-            <ul className="absolute z-50 w-full mt-2 bg-white border border-border rounded-xl shadow-xl max-h-72 overflow-y-auto">
+          {/* Empty state — search returned nothing AND no suggestions */}
+          {!isLoading && searchedQuery && searchedQuery === query.trim() && results.length === 0 && suggestions.length === 0 && (
+            <p id="search-empty-state" className="mt-3 text-[13px] text-white/80 font-body text-center">
+              No boats matching <span className="data-mono">{searchedQuery}</span>. Try a name or different sail number.
+            </p>
+          )}
+
+          {/* Dropdown — results AND/OR suggestions */}
+          {isOpen && (results.length > 0 || suggestions.length > 0) && (
+            <ul id="search-results" className="absolute z-50 w-full mt-2 bg-white border border-border rounded-xl shadow-xl max-h-72 overflow-y-auto">
               {results.map((boat, idx) => (
                 <li key={boat.id} onClick={() => handleSelect(boat)} onMouseEnter={() => setHighlight(idx)}
                   className={`flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-border-light last:border-0 transition-colors ${highlight === idx ? "bg-cream" : "hover:bg-cream/50"}`}>
+                  <span className="w-5 text-center flex-shrink-0">{boat.country ? <Flag country={boat.country} /> : null}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 flex-nowrap overflow-hidden">
+                      <span className="font-body font-bold text-sm text-charcoal truncate">{boat.boat_name}</span>
+                      <span className="data-mono text-[11px] text-muted flex-shrink-0">{boat.sail_number}</span>
+                      {boat.design && <span className="text-[12px] text-muted flex-shrink-0">&middot; {boat.design}</span>}
+                    </div>
+                  </div>
+                </li>
+              ))}
+
+              {results.length === 0 && suggestions.length > 0 && (
+                <li className="px-4 py-2 bg-cream/60 text-[10px] uppercase tracking-wider text-muted font-body">
+                  Did you mean…
+                </li>
+              )}
+              {suggestions.map((boat) => (
+                <li key={`sug-${boat.id}`} onClick={() => handleSelect(boat)}
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-border-light last:border-0 transition-colors hover:bg-cream/50">
                   <span className="w-5 text-center flex-shrink-0">{boat.country ? <Flag country={boat.country} /> : null}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2 flex-nowrap overflow-hidden">
