@@ -20,8 +20,9 @@ export function initPostHog(): void {
   posthog.init(key, {
     api_host: host,
     ui_host: uiHost,
-    capture_pageview: "history_change",
+    capture_pageview: true,
     capture_pageleave: true,
+    capture_performance: { web_vitals: true, network_timing: true },
     person_profiles: "identified_only",
     defaults: "2025-05-24",
   });
