@@ -1,36 +1,49 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Loader2 } from "lucide-react";
 import Hero from "@/components/Hero";
-import BoatCard from "@/components/BoatCard";
 import TeaserAnalysis from "@/components/TeaserAnalysis";
-import CorrectionForm from "@/components/CorrectionForm";
-import type { SearchResult, BoatDetail } from "@/lib/api";
+import { getBoat, type SearchResult, type BoatDetail } from "@/lib/api";
 
 export default function Home() {
   const [selectedBoat, setSelectedBoat] = useState<SearchResult | null>(null);
-  const [boatLoaded, setBoatLoaded] = useState(false);
   const [boatDetail, setBoatDetail] = useState<BoatDetail | null>(null);
+  const [boatError, setBoatError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [teaserText, setTeaserText] = useState("");
+  const [, setTeaserText] = useState("");
   const resultsRef = useRef<HTMLDivElement>(null);
 
   const handleBoatSelected = (boat: SearchResult) => {
     setSelectedBoat(boat);
-    setBoatLoaded(false);
     setBoatDetail(null);
+    setBoatError(null);
     setTeaserText("");
     setSearchQuery(boat.boat_name);
-  };
-
-  const handleBoatLoaded = (boat: BoatDetail) => {
-    setBoatDetail(boat);
-    setBoatLoaded(true);
   };
 
   const handleTeaserComplete = useCallback((text: string) => {
     setTeaserText(text);
   }, []);
+
+  // Fetch boat detail in page.tsx (was BoatCard's job)
+  useEffect(() => {
+    if (!selectedBoat) return;
+    let cancelled = false;
+    setBoatDetail(null);
+    setBoatError(null);
+    (async () => {
+      try {
+        const data = await getBoat(selectedBoat.id);
+        if (!cancelled) setBoatDetail(data);
+      } catch {
+        if (!cancelled) setBoatError("Failed to load boat details.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBoat]);
 
   useEffect(() => {
     if (selectedBoat && resultsRef.current) {
@@ -44,31 +57,33 @@ export default function Home() {
     <main className="min-h-screen bg-cream">
       <Hero onBoatSelected={handleBoatSelected} />
 
-      {/* Results — on cream background */}
       {selectedBoat && (
-        <section ref={resultsRef} className="px-6 py-16 space-y-10">
-          <BoatCard
-            key={selectedBoat.id}
-            boatId={selectedBoat.id}
-            boatName={selectedBoat.boat_name}
-            onBoatLoaded={handleBoatLoaded}
-          />
-          {boatLoaded && boatDetail && (
+        <section ref={resultsRef} className="px-6 py-14 sm:py-20">
+          {!boatDetail && !boatError && (
+            <div className="max-w-3xl mx-auto flex items-center gap-3 py-12">
+              <Loader2 size={16} className="animate-spin text-brass" />
+              <span className="body-text text-charcoal/60 text-sm">
+                Pulling {selectedBoat.boat_name}&rsquo;s file…
+              </span>
+            </div>
+          )}
+          {boatError && (
+            <div className="max-w-3xl mx-auto py-12">
+              <p className="body-text text-brass text-sm">{boatError}</p>
+            </div>
+          )}
+          {boatDetail && (
             <TeaserAnalysis
               key={`teaser-${selectedBoat.id}`}
-              boatId={selectedBoat.id}
-              boatName={selectedBoat.boat_name}
+              boat={boatDetail}
               searchQuery={searchQuery}
               onComplete={handleTeaserComplete}
             />
           )}
-          {boatLoaded && boatDetail && (
-            <CorrectionForm key={`corr-${selectedBoat.id}`} boat={boatDetail} />
-          )}
         </section>
       )}
 
-      <footer className="border-t border-border px-6 py-8">
+      <footer className="border-t border-border px-6 py-8 bg-cream">
         <div className="max-w-2xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-muted">
           <span className="brand-wordmark text-muted/40">Sail Ratings</span>
           <span className="body-text text-center">

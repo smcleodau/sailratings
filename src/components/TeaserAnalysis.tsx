@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Lock, Loader2, ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2, Check, X } from "lucide-react";
 import {
   streamInsights,
   createCheckoutSession,
+  submitCorrection,
+  type BoatDetail,
+  type CorrectionField,
   type SSEStep,
 } from "@/lib/api";
 import { detectCurrency } from "@/lib/currency";
 
 interface TeaserAnalysisProps {
-  boatId: number;
-  boatName: string;
+  boat: BoatDetail;
   searchQuery?: string;
   onComplete?: (text: string) => void;
 }
@@ -20,52 +22,220 @@ interface StepEntry extends SSEStep {
   state: "active" | "done";
 }
 
-const SECTIONS: { title: string; description: string }[] = [
+type RedactedLine = { prefix: string; widths: number[] };
+type Section = { title: string; description: string; lines: RedactedLine[] };
+
+const SECTIONS: Section[] = [
   {
-    title: "Executive Summary",
-    description:
-      "Where your TCC sits today, and the one number that matters this season.",
+    title: "Where she sits",
+    description: "Where your TCC sits today, and the one number that matters this season.",
+    lines: [], // §1 is the visible one
   },
   {
     title: "Rating Drift",
     description:
       "How your TCC has moved across every IRC formula revision since you've owned the boat.",
+    lines: [
+      { prefix: "Year-on-year delta:", widths: [4, 7, 3] },
+      { prefix: "Largest single jump:", widths: [6, 3, 8] },
+      { prefix: "Cumulative drift since first cert:", widths: [9] },
+    ],
   },
   {
     title: "Measurement Sensitivity",
     description:
       "Regression on every certificate input — which measurements are quietly costing you tenths.",
+    lines: [
+      { prefix: "Top lever:", widths: [11, 5] },
+      { prefix: "Next two:", widths: [9, 4, 7] },
+      { prefix: "Class-mean reference:", widths: [12] },
+    ],
   },
   {
     title: "Fleet Performance",
     description:
       "Racing Advantage Index against your actual results: what the rating predicts vs what you sail.",
+    lines: [
+      { prefix: "RAI:", widths: [4, 8] },
+      { prefix: "Wins / podiums:", widths: [2, 3, 4] },
+      { prefix: "Strongest format:", widths: [10, 6] },
+    ],
   },
   {
     title: "Sister Boats",
     description:
       "Side-by-side with every boat of your design on the register — where yours rates light, where it rates heavy.",
+    lines: [
+      { prefix: "Class certified:", widths: [3, 5] },
+      { prefix: "You rate light vs:", widths: [10] },
+      { prefix: "You rate heavy vs:", widths: [12] },
+    ],
   },
   {
     title: "Head-to-Head Rivals",
     description:
       "The boats within ±0.005 TCC you're scored against most weekends, and how their certificates differ from yours.",
+    lines: [
+      { prefix: "Within ±0.005:", widths: [3, 5] },
+      { prefix: "Top rival:", widths: [10, 3, 4] },
+      { prefix: "Their declaration differs by:", widths: [11] },
+    ],
   },
   {
     title: "Trial Certificate Model",
     description:
       "Re-rating scenarios costed out: does a re-measure actually move you, or are you near the floor.",
+    lines: [
+      { prefix: "Best scenario:", widths: [9, 4, 5] },
+      { prefix: "Estimated saving:", widths: [4, 3, 7] },
+      { prefix: "Floor distance:", widths: [9] },
+    ],
   },
   {
     title: "Action Plan",
     description:
       "Ranked, specific measurement changes — what to do before your next certificate, in order of TCC return.",
+    lines: [
+      { prefix: "1.", widths: [12, 5] },
+      { prefix: "2.", widths: [10, 7] },
+      { prefix: "3.", widths: [9, 6, 4] },
+    ],
   },
 ];
 
-export default function TeaserAnalysis({
+/** Build a "drafted but sealed" sketch line — prefix in pencil tone, then
+ * varied █▓▒ blocks per width spec. Reads as analysis-on-tracing-paper. */
+function RedactedSketch({ line }: { line: RedactedLine }) {
+  // Stable per-prefix block characters (no random — must match SSR)
+  const seed = line.prefix.length;
+  const blocks = line.widths.map((w, i) => {
+    // Vary block char a little for visual texture
+    const palette = ["█", "▓", "▒"];
+    const ch = palette[(seed + i) % palette.length];
+    return ch.repeat(w);
+  });
+  return (
+    <div className="font-mono text-[12px] text-charcoal/55 leading-[1.8]">
+      <span className="text-charcoal/65">{line.prefix}</span>{" "}
+      {blocks.map((b, i) => (
+        <span key={i} className="text-charcoal/35 mr-1 select-none">
+          {b}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function nowStamp(): string {
+  const d = new Date();
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const mon = d.toLocaleString("en-GB", { month: "short", timeZone: "UTC" });
+  const yr = d.getUTCFullYear();
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${day} ${mon} ${yr} · ${hh}:${mm} UTC`;
+}
+
+/** Inline editable masthead field — click ? to correct, submits to /corrections. */
+function MastheadField({
   boatId,
-  boatName,
+  label,
+  value,
+  fieldName,
+  onPending,
+}: {
+  boatId: number;
+  label: string;
+  value: string | number | null | undefined;
+  fieldName: CorrectionField;
+  onPending: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value != null ? String(value) : "");
+  const [pending, setPending] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const send = async () => {
+    const v = draft.trim();
+    if (!v) return;
+    setPending(true);
+    try {
+      await submitCorrection(boatId, {
+        field_name: fieldName,
+        proposed_value: v,
+      });
+      setSubmitted(true);
+      setEditing(false);
+      onPending();
+    } catch {
+      // Silently swallow — moderation queue is best-effort
+    } finally {
+      setPending(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-1.5 align-baseline">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void send();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          className="bg-cream border border-brass/50 text-charcoal px-2 py-0.5 text-[13px] font-body w-44 focus:outline-none focus:border-brass"
+        />
+        <button
+          onClick={() => void send()}
+          disabled={pending || !draft.trim()}
+          className="text-brass hover:text-brass-dark disabled:opacity-30"
+          aria-label="Submit correction"
+        >
+          {pending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="text-charcoal/30 hover:text-charcoal"
+          aria-label="Cancel"
+        >
+          <X size={12} />
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-baseline gap-1 group">
+      <span className="data-mono text-[10px] uppercase tracking-[0.14em] text-charcoal/40 mr-1">
+        {label}
+      </span>
+      <span className="body-text text-charcoal text-[13px]">
+        {value != null && String(value).trim() !== "" ? value : (
+          <span className="text-charcoal/30 italic">unknown</span>
+        )}
+      </span>
+      {submitted ? (
+        <span className="data-mono text-[9px] uppercase tracking-wider text-signal-light ml-0.5">
+          pending review
+        </span>
+      ) : (
+        <button
+          onClick={() => setEditing(true)}
+          className="text-brass/40 hover:text-brass text-[10px] opacity-0 group-hover:opacity-100 transition-opacity ml-0.5"
+          aria-label={`Correct ${label.toLowerCase()}`}
+          title={`Correct ${label.toLowerCase()}`}
+        >
+          ?
+        </button>
+      )}
+    </span>
+  );
+}
+
+export default function TeaserAnalysis({
+  boat,
   searchQuery,
   onComplete,
 }: TeaserAnalysisProps) {
@@ -77,16 +247,21 @@ export default function TeaserAnalysis({
   const [error, setError] = useState<string | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [stickyVisible, setStickyVisible] = useState(false);
+  const [compileMs, setCompileMs] = useState<number | null>(null);
   const startedRef = useRef(false);
   const textRef = useRef("");
+  const proseRef = useRef<HTMLDivElement>(null);
   const currency = useMemo(() => detectCurrency(), []);
+  const dateline = useMemo(() => nowStamp(), []);
+  const [, forceRender] = useState(0);
 
+  // Stream the report
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
 
     let cancelled = false;
-    let lastStepAddedAt = 0;
 
     async function run() {
       setIsStreaming(true);
@@ -97,16 +272,15 @@ export default function TeaserAnalysis({
       setStreamStarted(false);
       const startedAt = Date.now();
       const { track } = await import("@/lib/posthog");
-      track("teaser_started", { boat_id: boatId });
+      track("teaser_started", { boat_id: boat.id });
 
       try {
-        const stream = streamInsights(boatId, "free");
+        const stream = streamInsights(boat.id, "free");
         for await (const event of stream) {
           if (cancelled) break;
 
           if (event.type === "step") {
             const stepData = event.data as SSEStep;
-            // Mark previous step done, push new one as active
             setSteps((prev) => {
               const next: StepEntry[] = prev.map((s) =>
                 s.state === "active" ? { ...s, state: "done" } : s,
@@ -114,9 +288,7 @@ export default function TeaserAnalysis({
               next.push({ ...stepData, state: "active" });
               return next;
             });
-            lastStepAddedAt = Date.now();
           } else if (event.type === "text") {
-            // First text event — mark final step done
             if (!streamStarted) {
               setStreamStarted(true);
               setSteps((prev) =>
@@ -135,29 +307,23 @@ export default function TeaserAnalysis({
           }
         }
       } catch {
-        if (!cancelled) {
-          setError("Failed to load analysis. Please try again.");
-        }
+        if (!cancelled) setError("Failed to load analysis. Please try again.");
       } finally {
         if (!cancelled) {
           setIsStreaming(false);
           setIsDone(true);
-          // Mark any remaining active step done
           setSteps((prev) =>
-            prev.map((s) =>
-              s.state === "active" ? { ...s, state: "done" } : s,
-            ),
+            prev.map((s) => (s.state === "active" ? { ...s, state: "done" } : s)),
           );
+          const ms = Date.now() - startedAt;
+          setCompileMs(ms);
           track("teaser_completed", {
-            boat_id: boatId,
-            duration_ms: Date.now() - startedAt,
+            boat_id: boat.id,
+            duration_ms: ms,
             char_count: textRef.current.length,
             had_error: !!error,
-            step_count: lastStepAddedAt ? steps.length : 0,
           });
-          if (textRef.current && onComplete) {
-            onComplete(textRef.current);
-          }
+          if (textRef.current && onComplete) onComplete(textRef.current);
         }
       }
     }
@@ -167,37 +333,45 @@ export default function TeaserAnalysis({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boatId]);
+  }, [boat.id]);
 
-  const handleCheckout = async () => {
+  // Sticky CTA pill: show only after the owner has scrolled past the prose
+  useEffect(() => {
+    const handler = () => {
+      const el = proseRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      // Show pill once the prose top has scrolled above the viewport top
+      setStickyVisible(rect.bottom < window.innerHeight * 0.6 && isDone);
+    };
+    handler();
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, [isDone]);
+
+  const handleCheckout = async (placement: "inline" | "sticky") => {
     setIsCheckingOut(true);
     setCheckoutError(null);
-
     const { track } = await import("@/lib/posthog");
     track("buy_clicked", {
-      boat_id: boatId,
-      boat_name: boatName,
+      boat_id: boat.id,
+      boat_name: boat.boat_name,
       currency: currency.code,
       search_query: searchQuery,
-      placement: "teaser_inline",
+      placement: `bench_${placement}`,
     });
-
     try {
       const { checkout_url, order_token } = await createCheckoutSession({
-        boat_id: boatId,
-        boat_name: boatName,
+        boat_id: boat.id,
+        boat_name: boat.boat_name,
         currency: currency.code,
         search_query: searchQuery,
         teaser_text: textRef.current,
       });
-      track("checkout_redirect", {
-        boat_id: boatId,
-        order_token,
-        currency: currency.code,
-      });
+      track("checkout_redirect", { boat_id: boat.id, order_token, currency: currency.code });
       window.location.href = checkout_url;
     } catch {
-      track("buy_failed", { boat_id: boatId, placement: "teaser_inline" });
+      track("buy_failed", { boat_id: boat.id, placement: `bench_${placement}` });
       setCheckoutError("Something went wrong. Please try again.");
       setIsCheckingOut(false);
     }
@@ -205,173 +379,294 @@ export default function TeaserAnalysis({
 
   if (error && !text) {
     return (
-      <div className="w-full max-w-3xl mx-auto border border-border bg-white p-8">
+      <div className="w-full max-w-3xl mx-auto px-6 py-12">
         <p className="body-text text-brass">{error}</p>
       </div>
     );
   }
 
+  const tcc = boat.irc_tcc;
+  const ratingLabel = tcc != null ? "IRC" : boat.orc_gph != null ? "ORC" : null;
+  const ratingValue = tcc != null
+    ? Number(tcc).toFixed(4)
+    : boat.orc_gph != null
+    ? Number(boat.orc_gph).toFixed(1)
+    : null;
+  const ratingUnit = tcc != null ? "TCC" : "GPH";
+
+  const compileLine = (() => {
+    const fragments: string[] = [];
+    if (compileMs != null) fragments.push(`Compiled in ${(compileMs / 1000).toFixed(1)} s`);
+    // Pull a few numbers from steps for the masthead stamp
+    const finishStep = steps.find((s) => /race finishes/i.test(s.label));
+    if (finishStep) {
+      const m = finishStep.label.match(/(\d[\d,]*)\s+race\s+finishes/i);
+      if (m) fragments.push(`${m[1]} finishes`);
+      const e = finishStep.detail?.match(/(\d[\d,]*)\s+events?/i);
+      if (e) fragments.push(`${e[1]} events`);
+    }
+    const sisterStep = steps.find((s) => /sister boats/i.test(s.label));
+    if (sisterStep) {
+      const m = sisterStep.label.match(/(\d[\d,]*)\s+sister/i);
+      if (m) fragments.push(`${m[1]} sisters`);
+    }
+    return fragments.join("   ·   ");
+  })();
+
   return (
-    <div className="w-full max-w-3xl mx-auto border border-border bg-white">
-      {/* Header */}
-      <div className="border-b border-border-light px-8 py-5 sm:px-10 flex items-baseline justify-between flex-wrap gap-3">
-        <div>
-          <div className="data-mono text-[10px] uppercase tracking-[0.14em] text-muted/70 mb-1">
-            Rating File
-          </div>
-          <h3 className="heading-display text-xl sm:text-2xl text-charcoal">
-            {boatName}{" "}
-            <span className="text-muted font-normal text-base sm:text-lg">
-              — Executive Summary
-            </span>
-          </h3>
-        </div>
-        <div className="data-mono text-[11px] text-muted/60">
-          Section 1 of 8
-        </div>
+    <article
+      id="bench"
+      className="relative w-full max-w-3xl mx-auto bg-cream/90 text-charcoal"
+      style={{
+        backgroundImage:
+          "radial-gradient(rgba(44,44,44,0.025) 1px, transparent 1px)",
+        backgroundSize: "12px 12px",
+        boxShadow: "0 1px 0 rgba(44,44,44,0.04), 0 30px 80px -30px rgba(0,0,0,0.18)",
+      }}
+    >
+      {/* Dateline */}
+      <div className="flex items-baseline justify-between px-8 sm:px-12 pt-6 pb-3 border-b border-charcoal/10">
+        <span className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/50">
+          Sail Ratings · The Bench
+        </span>
+        <span className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/40">
+          {dateline}
+        </span>
       </div>
 
-      {/* Working steps */}
-      {(steps.length > 0 || !streamStarted) && (
-        <div className="border-b border-border-light px-8 py-5 sm:px-10 bg-cream/30">
-          <div className="data-mono text-[10px] uppercase tracking-[0.14em] text-muted/70 mb-3">
-            Compiling the report
-          </div>
-          <ul className="space-y-2">
-            {steps.map((s, i) => (
-              <li key={i} className="flex items-start gap-3 text-[13px] sm:text-sm">
-                <span className="flex-shrink-0 mt-0.5 w-4 h-4">
-                  {s.state === "done" ? (
-                    <Check size={16} strokeWidth={2.25} className="text-signal-light" />
-                  ) : (
-                    <Loader2 size={14} strokeWidth={2} className="text-brass animate-spin" />
-                  )}
-                </span>
-                <span className="flex-1 min-w-0">
-                  <span className={`body-text ${s.state === "done" ? "text-charcoal" : "text-charcoal"}`}>
-                    {s.label}
-                  </span>
-                  {s.detail && (
-                    <span className="data-mono text-[11px] text-muted/80 ml-2">
-                      · {s.detail}
-                    </span>
-                  )}
-                </span>
-              </li>
-            ))}
-            {!streamStarted && steps.length === 0 && (
-              <li className="flex items-center gap-3 text-[13px]">
-                <Loader2 size={14} strokeWidth={2} className="text-brass animate-spin" />
-                <span className="body-text text-muted italic">
-                  Opening the certificate registry…
-                </span>
-              </li>
-            )}
-          </ul>
+      {/* Masthead */}
+      <header className="px-8 sm:px-12 pt-8 pb-5">
+        <div className="flex items-start justify-between gap-6 flex-wrap">
+          <h1
+            className="heading-display text-charcoal leading-[0.95]"
+            style={{
+              fontSize: "clamp(2.4rem, 5vw, 3.8rem)",
+              letterSpacing: "-0.015em",
+              textTransform: "uppercase",
+            }}
+          >
+            {boat.boat_name}
+          </h1>
+          {ratingValue && (
+            <div className="text-right">
+              <div className="data-mono text-charcoal font-semibold" style={{ fontSize: "clamp(1.6rem, 3vw, 2.4rem)" }}>
+                {ratingValue}
+              </div>
+              <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/50 mt-1">
+                <span className="text-brass font-semibold">{ratingLabel}</span>
+                {" "}{ratingUnit}
+              </div>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Streamed analysis */}
-      <div className="px-8 py-7 sm:px-10 sm:py-9">
-        {text && (
-          <div className="body-text text-charcoal-light text-base sm:text-[17px] leading-relaxed whitespace-pre-wrap">
+        {/* Metadata strip — inline editable */}
+        <div className="mt-4 flex flex-wrap items-baseline gap-x-5 gap-y-2 text-charcoal/80">
+          {boat.sail_number && (
+            <span className="data-mono text-[12px] text-charcoal/70">{boat.sail_number}</span>
+          )}
+          {boat.design && (
+            <MastheadField
+              boatId={boat.id}
+              label="Design"
+              value={boat.design}
+              fieldName="design_canonical"
+              onPending={() => forceRender((n) => n + 1)}
+            />
+          )}
+          {boat.country && (
+            <span className="body-text text-[13px] text-charcoal">{boat.country}</span>
+          )}
+          <MastheadField
+            boatId={boat.id}
+            label="Year"
+            value={boat.year_built}
+            fieldName="year_built"
+            onPending={() => forceRender((n) => n + 1)}
+          />
+          <MastheadField
+            boatId={boat.id}
+            label="Designer"
+            value={boat.designer}
+            fieldName="designer"
+            onPending={() => forceRender((n) => n + 1)}
+          />
+          <MastheadField
+            boatId={boat.id}
+            label="Builder"
+            value={boat.builder}
+            fieldName="builder"
+            onPending={() => forceRender((n) => n + 1)}
+          />
+        </div>
+
+        {/* Compile stamp / live working steps */}
+        {!isDone ? (
+          <div className="mt-5 space-y-1">
+            {steps.length === 0 ? (
+              <div className="flex items-center gap-2 data-mono text-[11px] uppercase tracking-[0.14em] text-charcoal/40">
+                <Loader2 size={11} className="animate-spin text-brass" />
+                Opening the certificate registry…
+              </div>
+            ) : (
+              steps.map((s, i) => (
+                <div
+                  key={i}
+                  className="flex items-baseline gap-2 data-mono text-[11px] uppercase tracking-[0.12em] text-charcoal/60"
+                >
+                  <span className="flex-shrink-0 w-3">
+                    {s.state === "done" ? (
+                      <Check size={11} strokeWidth={2.5} className="text-signal-light" />
+                    ) : (
+                      <Loader2 size={10} className="animate-spin text-brass" />
+                    )}
+                  </span>
+                  <span className="truncate">
+                    {s.label}
+                    {s.detail && (
+                      <span className="text-charcoal/40 ml-2 normal-case tracking-normal">
+                        {s.detail}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          compileLine && (
+            <div className="mt-5 data-mono text-[10px] uppercase tracking-[0.16em] text-charcoal/45">
+              {compileLine}
+            </div>
+          )
+        )}
+      </header>
+
+      {/* Brass hairline rule */}
+      <div className="mx-8 sm:mx-12 h-px bg-brass/40" />
+
+      {/* §1 — Where she sits */}
+      <section ref={proseRef} className="px-8 sm:px-12 py-8 sm:py-10">
+        <h2 className="flex items-baseline gap-3 mb-5">
+          <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§1</span>
+          <span className="heading-display text-charcoal text-xl sm:text-2xl">
+            {SECTIONS[0].title}
+          </span>
+        </h2>
+        {text ? (
+          <div className="body-text text-charcoal text-[17px] leading-[1.62] whitespace-pre-wrap" style={{ maxWidth: "62ch" }}>
             {text}
             {isStreaming && streamStarted && (
               <span className="inline-block w-0.5 h-5 bg-brass ml-0.5 align-text-bottom streaming-pulse" />
             )}
           </div>
+        ) : (
+          !streamStarted && (
+            <div className="body-text text-charcoal/40 italic text-[15px]">
+              Drafting…
+            </div>
+          )
         )}
-      </div>
+      </section>
 
-      {/* Section TOC — what's locked */}
+      {/* Brass hairline rule */}
+      {isDone && <div className="mx-8 sm:mx-12 h-px bg-brass/40" />}
+
+      {/* Redacted §2–§8 — drafted but sealed. Each section shows real-looking
+          analysis-prefix lines with █▓▒ blocks where the specific values would
+          sit. Reads as work-on-the-bench, not a TOC. */}
       {isDone && (
-        <>
-          <div className="border-t border-border-light px-8 py-5 sm:px-10 bg-cream/20">
-            <div className="data-mono text-[10px] uppercase tracking-[0.14em] text-muted/70 mb-3">
-              The full report — 8 sections
+        <section className="px-8 sm:px-12 py-8" aria-label="Sealed sections">
+          <div className="flex items-baseline justify-between mb-6">
+            <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/50">
+              Drafted · Seven sections sealed
             </div>
-            <ol className="space-y-2">
-              {SECTIONS.map((sec, i) => {
-                const locked = i > 0;
-                return (
-                  <li
-                    key={i}
-                    className={`flex items-baseline gap-3 text-[13px] ${
-                      locked ? "" : ""
-                    }`}
-                  >
-                    <span className="data-mono text-muted/60 w-5 flex-shrink-0 text-right">
-                      {i + 1}.
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span
-                        className={`body-text font-medium ${
-                          locked ? "text-charcoal" : "text-charcoal"
-                        }`}
-                      >
-                        {sec.title}
-                      </span>
-                      <span className="body-text text-muted ml-2">
-                        — {sec.description}
-                      </span>
-                    </span>
-                    <span className="flex-shrink-0 w-4">
-                      {locked ? (
-                        <Lock size={12} strokeWidth={1.75} className="text-brass/70" />
-                      ) : (
-                        <Check size={14} strokeWidth={2} className="text-signal-light" />
-                      )}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
+            <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/35 hidden sm:block">
+              Hover to see what&rsquo;s in each
+            </div>
           </div>
-
-          {/* Inline CTA panel */}
-          <div className="border-t border-brass/30 px-8 py-7 sm:px-10 sm:py-8 bg-gradient-to-b from-cream/60 to-cream/30">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 justify-between">
-              <div className="flex-1 min-w-0">
-                <p className="body-text text-charcoal text-base sm:text-lg leading-relaxed">
-                  Section&nbsp;1 covers where you sit. Sections&nbsp;2 through&nbsp;8
-                  cover what to change, in what order, for what return.
-                </p>
-                <p className="body-text text-muted text-[13px] mt-2">
-                  Delivered as a PDF the moment payment clears. One certificate, one report, yours to keep.
-                </p>
-              </div>
-              <div className="flex-shrink-0 w-full sm:w-auto">
-                <button
-                  onClick={handleCheckout}
-                  disabled={isCheckingOut}
-                  className="group inline-flex items-center justify-center gap-3 bg-navy text-cream px-6 py-3.5 text-[14px] font-body font-semibold tracking-wide hover:bg-charcoal active:translate-y-px transition-all w-full sm:w-auto disabled:opacity-60 disabled:cursor-not-allowed rounded-sm"
+          <ol className="space-y-5">
+            {SECTIONS.slice(1).map((sec, i) => {
+              const num = i + 2;
+              return (
+                <li
+                  key={num}
+                  className="group flex items-baseline gap-5 border-l border-transparent hover:border-brass/40 pl-2 -ml-2 transition-colors"
+                  title={sec.description}
                 >
-                  {isCheckingOut ? (
-                    <>
-                      <Loader2 size={16} strokeWidth={2} className="animate-spin" />
-                      Opening checkout…
-                    </>
-                  ) : (
-                    <>
-                      Open the full report — {currency.display}
-                      <ArrowRight
-                        size={16}
-                        strokeWidth={2}
-                        className="transition-transform group-hover:translate-x-1"
-                      />
-                    </>
-                  )}
-                </button>
-                {checkoutError && (
-                  <p className="body-text text-xs text-brass mt-2 text-right">
-                    {checkoutError}
-                  </p>
+                  <span className="data-mono text-brass text-[12px] uppercase tracking-[0.18em] flex-shrink-0 w-8 pt-0.5">
+                    §{num}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="heading-display text-charcoal text-[15px] sm:text-[17px] font-semibold uppercase tracking-[0.02em] mb-1.5">
+                      {sec.title}
+                    </div>
+                    <div className="space-y-0">
+                      {sec.lines.map((line, li) => (
+                        <RedactedSketch key={li} line={line} />
+                      ))}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
+
+      {/* Inline CTA at the bottom of the bench */}
+      {isDone && (
+        <div className="bg-navy text-cream px-8 sm:px-12 py-7 sm:py-8">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-5 sm:gap-8 justify-between">
+            <div className="flex-1 min-w-0">
+              <p className="body-text text-cream text-[15px] sm:text-base leading-relaxed">
+                Seven more sections drafted for{" "}
+                <span className="font-semibold">{boat.boat_name}</span>. Open the file
+                and see what to change, in what order, for what return.
+              </p>
+              <p className="body-text text-cream/60 text-[12px] mt-2">
+                Delivered as a PDF the moment payment clears. One certificate, one report.
+              </p>
+            </div>
+            <div className="flex-shrink-0">
+              <button
+                onClick={() => void handleCheckout("inline")}
+                disabled={isCheckingOut}
+                className="group inline-flex items-center gap-3 bg-brass text-navy px-6 py-3.5 text-[13px] font-body font-semibold uppercase tracking-[0.08em] hover:bg-cream active:translate-y-px transition-all disabled:opacity-60"
+              >
+                {isCheckingOut ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Opening checkout…
+                  </>
+                ) : (
+                  <>
+                    Send me the file — {currency.display}
+                    <ArrowRight size={14} strokeWidth={2.5} className="transition-transform group-hover:translate-x-1" />
+                  </>
                 )}
-              </div>
+              </button>
+              {checkoutError && (
+                <p className="body-text text-[12px] text-brass mt-2 text-right">{checkoutError}</p>
+              )}
             </div>
           </div>
-        </>
+        </div>
       )}
-    </div>
+
+      {/* Sticky lower-right CTA pill (only after scrolling past §1) */}
+      {isDone && stickyVisible && (
+        <div className="fixed bottom-6 right-6 z-40 animate-in fade-in">
+          <button
+            onClick={() => void handleCheckout("sticky")}
+            disabled={isCheckingOut}
+            className="inline-flex items-center gap-2 bg-navy text-cream px-5 py-3 text-[12px] font-body font-semibold uppercase tracking-[0.1em] shadow-2xl shadow-black/40 hover:bg-charcoal active:translate-y-px transition-all"
+          >
+            {currency.display} — full file
+            <ArrowRight size={12} strokeWidth={2.5} />
+          </button>
+        </div>
+      )}
+    </article>
   );
 }
