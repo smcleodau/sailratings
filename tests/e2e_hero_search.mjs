@@ -53,18 +53,11 @@ async function runOnce(browser, iter) {
       },
     },
     {
-      name: "Search button click on '3375' selects SUN FISH (boat card appears)",
+      name: "no separate Search button exists (dropdown is the only action)",
       run: async () => {
-        await page.goto(`${BASE}/?cb=${Date.now()}`, { waitUntil: "networkidle", timeout: 20000 });
-        const input = page.locator("#main-search");
-        await input.click();
-        await input.fill("3375");
-        // wait for dropdown so the click has data to pick from
-        await page.locator("#search-results-wrap").waitFor({ state: "visible", timeout: 8000 });
         const btn = page.getByRole("button", { name: /^Search$/ });
-        await btn.click();
-        // After selection, the boat card / TeaserAnalysis appear on the page
-        await page.getByText(/SUN FISH/i).first().waitFor({ state: "visible", timeout: 8000 });
+        const n = await btn.count();
+        if (n !== 0) throw new Error(`expected 0 Search buttons, found ${n}`);
       },
     },
     {

@@ -182,10 +182,20 @@ export default function Hero({ onBoatSelected }: HeroProps) {
           We analyze over 31,000 race results and every certificate ever published to find where your points are hiding.
         </p>
 
-        {/* Search bar */}
-        <div ref={containerRef} className="relative w-full max-w-lg mt-8 animate-in delay-4">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} strokeWidth={1.5} />
+        {/* Search bar — solid cream card, dropdown-only interaction (no separate Search button) */}
+        <div ref={containerRef} className="relative w-full max-w-xl mt-8 animate-in delay-4">
+          <div
+            className={`relative bg-cream/95 backdrop-blur-sm shadow-[0_20px_60px_-12px_rgba(0,0,0,0.45)] ring-1 ring-charcoal/10 transition-all duration-200 focus-within:ring-2 focus-within:ring-brass/70 focus-within:shadow-[0_24px_72px_-12px_rgba(0,0,0,0.55)] ${
+              isOpen && (results.length > 0 || suggestions.length > 0)
+                ? "rounded-t-md"
+                : "rounded-md"
+            }`}
+          >
+            <Search
+              className="absolute left-5 top-1/2 -translate-y-1/2 text-charcoal/40"
+              size={18}
+              strokeWidth={1.5}
+            />
             <input
               ref={inputRef}
               id="main-search"
@@ -194,77 +204,102 @@ export default function Hero({ onBoatSelected }: HeroProps) {
               onChange={(e) => handleChange(e.target.value)}
               onKeyDown={handleKeyDown}
               onFocus={() => { if (results.length > 0 || suggestions.length > 0) setIsOpen(true); }}
-              placeholder="Enter your boat name or sail number..."
-              className="w-full h-13 pl-11 pr-24 bg-white/15 backdrop-blur-md text-white text-[14px] font-body placeholder:text-white/50 rounded-lg border border-white/30 focus:outline-none focus:border-white/60 focus:bg-white/20 transition-all"
+              placeholder="Boat name, sail number, or design"
+              className="w-full h-14 pl-12 pr-24 bg-transparent text-charcoal text-[15px] font-body placeholder:text-charcoal/40 focus:outline-none rounded-md"
               autoComplete="off"
               role="combobox"
               aria-expanded={isOpen}
             />
-            {query && !isLoading && (
-              <button onClick={() => { setQuery(""); setResults([]); setIsOpen(false); inputRef.current?.focus(); }}
-                className="absolute right-[88px] top-1/2 -translate-y-1/2 text-white/30 hover:text-white">
-                <X size={15} strokeWidth={1.5} />
-              </button>
-            )}
-            {isLoading && (
-              <div className="absolute right-[88px] top-1/2 -translate-y-1/2">
-                <div className="w-4 h-4 border-2 border-white/20 border-t-white animate-spin rounded-full" />
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => void handleSubmit()}
-              disabled={isLoading || query.trim().length < 2}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-charcoal text-white text-[13px] font-body font-semibold px-6 py-2 rounded hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Search
-            </button>
+
+            {/* Right-hand status cluster: spinner / clear / ↵ hint, always anchored to the same spot */}
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
+              {isLoading && (
+                <div
+                  className="w-4 h-4 border-2 border-charcoal/15 border-t-brass animate-spin rounded-full"
+                  aria-label="searching"
+                />
+              )}
+              {!isLoading && query && (
+                <button
+                  onClick={() => {
+                    setQuery("");
+                    setResults([]);
+                    resultsRef.current = [];
+                    setSuggestions([]);
+                    suggestionsRef.current = [];
+                    setIsOpen(false);
+                    setSearchedQuery("");
+                    inputRef.current?.focus();
+                  }}
+                  className="pointer-events-auto text-charcoal/30 hover:text-charcoal transition-colors"
+                  aria-label="Clear search"
+                >
+                  <X size={16} strokeWidth={1.5} />
+                </button>
+              )}
+              {!isLoading && query.trim().length >= 2 && (results.length > 0 || suggestions.length > 0) && (
+                <span className="data-mono text-[10px] uppercase tracking-wider text-charcoal/40 pl-1 border-l border-charcoal/10 pl-2">
+                  ↵
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Empty state — search returned nothing AND no suggestions */}
           {!isLoading && searchedQuery && searchedQuery === query.trim() && results.length === 0 && suggestions.length === 0 && (
-            <p id="search-empty-state" className="mt-3 text-[13px] text-white/80 font-body text-center">
+            <p id="search-empty-state" className="mt-3 text-[13px] text-white/85 font-body text-center">
               No boats matching <span className="data-mono">{searchedQuery}</span>. Try a name or different sail number.
             </p>
           )}
 
-          {/* Dropdown — results AND/OR suggestions. Attaches visually to the input
-              (rounded-b only, top edge merges with input) and has a small header
-              row so a single result no longer reads as a stray pill. */}
+          {/* Dropdown — flush to the input below, same cream card, no separate float */}
           {isOpen && (results.length > 0 || suggestions.length > 0) && (
-            <div id="search-results-wrap" className="absolute z-50 w-full mt-1 bg-white border border-white/30 rounded-b-lg shadow-xl max-h-80 overflow-y-auto">
-              {/* Header so users see this is the results list */}
-              <div className="px-4 py-2 bg-cream/70 border-b border-border-light flex items-baseline justify-between">
-                <span className="text-[10px] uppercase tracking-wider text-muted font-body font-medium">
+            <div
+              id="search-results-wrap"
+              className="absolute z-50 left-0 right-0 bg-cream/95 backdrop-blur-sm rounded-b-md ring-1 ring-charcoal/10 shadow-[0_28px_72px_-12px_rgba(0,0,0,0.5)] max-h-96 overflow-y-auto border-t border-charcoal/10"
+            >
+              <div className="px-4 py-2 flex items-baseline justify-between border-b border-charcoal/10">
+                <span className="text-[10px] uppercase tracking-[0.12em] text-charcoal/50 font-body font-medium">
                   {results.length > 0
                     ? `${results.length} match${results.length === 1 ? "" : "es"}`
                     : "Did you mean…"}
                 </span>
-                <span className="text-[10px] text-muted/60 font-body">Click or press Enter</span>
+                <span className="data-mono text-[10px] uppercase tracking-wider text-charcoal/30">
+                  ↑↓ to navigate · ↵ to open
+                </span>
               </div>
               <ul id="search-results">
                 {results.map((boat, idx) => (
-                  <li key={boat.id} onClick={() => handleSelect(boat)} onMouseEnter={() => setHighlight(idx)}
-                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-border-light last:border-0 transition-colors ${highlight === idx ? "bg-cream" : "hover:bg-cream/50"}`}>
+                  <li
+                    key={boat.id}
+                    onClick={() => handleSelect(boat)}
+                    onMouseEnter={() => setHighlight(idx)}
+                    className={`flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-charcoal/5 last:border-0 transition-colors ${
+                      highlight === idx ? "bg-brass/10" : "hover:bg-brass/5"
+                    }`}
+                  >
                     <span className="w-5 text-center flex-shrink-0">{boat.country ? <Flag country={boat.country} /> : null}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline gap-2 flex-nowrap overflow-hidden">
                         <span className="font-body font-bold text-sm text-charcoal truncate">{boat.boat_name}</span>
-                        <span className="data-mono text-[11px] text-muted flex-shrink-0">{boat.sail_number}</span>
-                        {boat.design && <span className="text-[12px] text-muted flex-shrink-0">&middot; {boat.design}</span>}
+                        <span className="data-mono text-[11px] text-charcoal/55 flex-shrink-0">{boat.sail_number}</span>
+                        {boat.design && <span className="text-[12px] text-charcoal/55 flex-shrink-0">&middot; {boat.design}</span>}
                       </div>
                     </div>
                   </li>
                 ))}
                 {suggestions.map((boat) => (
-                  <li key={`sug-${boat.id}`} onClick={() => handleSelect(boat)}
-                    className="flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-border-light last:border-0 transition-colors hover:bg-cream/50">
+                  <li
+                    key={`sug-${boat.id}`}
+                    onClick={() => handleSelect(boat)}
+                    className="flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-charcoal/5 last:border-0 transition-colors hover:bg-brass/5"
+                  >
                     <span className="w-5 text-center flex-shrink-0">{boat.country ? <Flag country={boat.country} /> : null}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline gap-2 flex-nowrap overflow-hidden">
                         <span className="font-body font-bold text-sm text-charcoal truncate">{boat.boat_name}</span>
-                        <span className="data-mono text-[11px] text-muted flex-shrink-0">{boat.sail_number}</span>
-                        {boat.design && <span className="text-[12px] text-muted flex-shrink-0">&middot; {boat.design}</span>}
+                        <span className="data-mono text-[11px] text-charcoal/55 flex-shrink-0">{boat.sail_number}</span>
+                        {boat.design && <span className="text-[12px] text-charcoal/55 flex-shrink-0">&middot; {boat.design}</span>}
                       </div>
                     </div>
                   </li>
