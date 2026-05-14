@@ -12,9 +12,18 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build arg for API base URL (baked into client JS at build time)
+# Build args for client-bundled env vars (Next.js inlines NEXT_PUBLIC_* at build time)
 ARG NEXT_PUBLIC_API_BASE=https://api.sailratings.com/v1
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
+
+ARG NEXT_PUBLIC_POSTHOG_KEY
+ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY
+
+ARG NEXT_PUBLIC_POSTHOG_HOST
+ENV NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST
+
+ARG NEXT_PUBLIC_ENABLE_ADMIN
+ENV NEXT_PUBLIC_ENABLE_ADMIN=$NEXT_PUBLIC_ENABLE_ADMIN
 
 RUN npm run build
 
