@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IRC Rating Report — {{ boat_name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 20mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --navy: #0B1623;
+      --sand: #F7F3ED;
+      --copper: #C27B3E;
+      --signal: #1B7FA3;
+      --ink: #1A1A1A;
+      --ink-light: #3A3A3A;
+      --muted: #8A8478;
+      --border: #DDD8CF;
+      --border-light: #E8E3DB;
+      --white: #FFFFFF;
+    }
+
+    body {
+      font-family: "Crimson Pro", Georgia, serif;
+      font-size: 11pt;
+      line-height: 1.6;
+      color: var(--ink);
+      background: var(--white);
+    }
+
+    /* ── Cover Page ─────────────────────────────────────────────── */
+    .cover {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      page-break-after: always;
+    }
+
+    .cover-wordmark {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-weight: 700;
+      font-size: 14pt;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--navy);
+      margin-bottom: 80px;
+    }
+
+    .cover-boat-name {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-weight: 700;
+      font-size: 36pt;
+      line-height: 1.1;
+      color: var(--navy);
+      margin-bottom: 16px;
+    }
+
+    .cover-sail-number {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-size: 14pt;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    .cover-detail {
+      font-family: "Crimson Pro", Georgia, serif;
+      font-size: 12pt;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .cover-tcc {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-size: 24pt;
+      font-weight: 600;
+      color: var(--signal);
+      margin-top: 40px;
+      margin-bottom: 4px;
+    }
+
+    .cover-tcc-label {
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--muted);
+    }
+
+    .cover-date {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-size: 9pt;
+      color: var(--muted);
+      margin-top: 60px;
+    }
+
+    /* ── Page Header/Footer ─────────────────────────────────────── */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .page-header-wordmark {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-weight: 700;
+      font-size: 9pt;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .page-header-boat {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-size: 8pt;
+      color: var(--muted);
+    }
+
+    .page-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 12px 20mm;
+      border-top: 1px solid var(--border-light);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7.5pt;
+      color: var(--muted);
+    }
+
+    .page-footer a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    /* ── Typography ─────────────────────────────────────────────── */
+    h1 {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-weight: 700;
+      font-size: 22pt;
+      line-height: 1.15;
+      color: var(--navy);
+      margin-top: 32px;
+      margin-bottom: 16px;
+    }
+
+    h2 {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-weight: 600;
+      font-size: 16pt;
+      line-height: 1.2;
+      color: var(--navy);
+      margin-top: 28px;
+      margin-bottom: 12px;
+      page-break-after: avoid;
+    }
+
+    h3 {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-weight: 600;
+      font-size: 13pt;
+      line-height: 1.25;
+      color: var(--ink);
+      margin-top: 20px;
+      margin-bottom: 8px;
+      page-break-after: avoid;
+    }
+
+    p {
+      margin-bottom: 10px;
+      color: var(--ink-light);
+    }
+
+    strong {
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    em {
+      font-style: italic;
+    }
+
+    /* ── Section Break ──────────────────────────────────────────── */
+    .section-break {
+      page-break-before: always;
+    }
+
+    /* ── Recommendations Table ──────────────────────────────────── */
+    .rec-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      margin-bottom: 24px;
+      font-size: 9.5pt;
+    }
+
+    .rec-table th {
+      font-family: "Crimson Pro", Georgia, serif;
+      font-weight: 600;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      padding: 8px 10px;
+      border-bottom: 2px solid var(--border);
+      text-align: left;
+    }
+
+    .rec-table th.right {
+      text-align: right;
+    }
+
+    .rec-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-light);
+      vertical-align: top;
+    }
+
+    .rec-table tr:nth-child(even) {
+      background: var(--sand);
+    }
+
+    .rec-rank {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-weight: 600;
+      color: var(--copper);
+      font-size: 10pt;
+    }
+
+    .rec-field {
+      font-weight: 500;
+      color: var(--ink);
+    }
+
+    .rec-category {
+      color: var(--muted);
+      font-size: 9pt;
+    }
+
+    .rec-value {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-size: 9pt;
+      text-align: right;
+    }
+
+    .rec-delta {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-weight: 600;
+      font-size: 9pt;
+      text-align: right;
+    }
+
+    .rec-delta.negative { color: var(--signal); }
+    .rec-delta.positive { color: var(--copper); }
+
+    .rec-explanation {
+      margin-top: 8px;
+      margin-bottom: 12px;
+      padding-left: 24px;
+      font-size: 10pt;
+      color: var(--ink-light);
+    }
+
+    .rec-explanation-rank {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-weight: 600;
+      color: var(--copper);
+      font-size: 9pt;
+    }
+
+    .rec-explanation-field {
+      font-weight: 500;
+      color: var(--ink);
+    }
+
+    .rec-evidence {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-size: 7.5pt;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── RAI Card ───────────────────────────────────────────────── */
+    .rai-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-top: 16px;
+      margin-bottom: 16px;
+    }
+
+    .rai-stat {
+      text-align: center;
+      padding: 12px;
+      background: var(--sand);
+      border: 1px solid var(--border-light);
+    }
+
+    .rai-stat-value {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-size: 18pt;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .rai-stat-label {
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .rai-ci {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-size: 9pt;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .rai-interpretation {
+      font-size: 10.5pt;
+      color: var(--ink-light);
+    }
+
+    /* ── Rivals Table ───────────────────────────────────────────── */
+    .rivals-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 9.5pt;
+    }
+
+    .rivals-table th {
+      font-family: "Crimson Pro", Georgia, serif;
+      font-weight: 600;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      padding: 8px 10px;
+      border-bottom: 2px solid var(--border);
+      text-align: left;
+    }
+
+    .rivals-table th.right {
+      text-align: right;
+    }
+
+    .rivals-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .rivals-table tr:nth-child(even) {
+      background: var(--sand);
+    }
+
+    .rivals-boat {
+      font-weight: 500;
+      color: var(--ink);
+    }
+
+    .rivals-sail {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-size: 9pt;
+      color: var(--muted);
+    }
+
+    .rivals-num {
+      font-family: "Fira Code", "Courier New", monospace;
+      font-size: 9.5pt;
+      text-align: right;
+    }
+
+    .rivals-wins { color: var(--signal); }
+    .rivals-winrate { font-weight: 600; color: var(--ink); }
+  </style>
+</head>
+<body>
+
+  <!-- ── Cover Page ──────────────────────────────────────────────── -->
+  <div class="cover">
+    <div class="cover-wordmark">Sail Ratings</div>
+    <div class="cover-boat-name">{{ boat_name }}</div>
+    <div class="cover-sail-number">{{ sail_number }}</div>
+    {% if design %}
+    <div class="cover-detail">{{ design }}</div>
+    {% endif %}
+    {% if country %}
+    <div class="cover-detail">{{ country }}</div>
+    {% endif %}
+    {% if tcc %}
+    <div class="cover-tcc">{{ "%.3f"|format(tcc) }}</div>
+    <div class="cover-tcc-label">IRC TCC Rating</div>
+    {% endif %}
+    <div class="cover-date">Report generated {{ report_date }}</div>
+  </div>
+
+  <!-- ── Analysis ────────────────────────────────────────────────── -->
+  <div class="section-break">
+    <div class="page-header">
+      <span class="page-header-wordmark">Sail Ratings</span>
+      <span class="page-header-boat">{{ boat_name }} &mdash; {{ sail_number }}</span>
+    </div>
+
+    {{ report_html }}
+  </div>
+
+  <!-- ── Recommendations ─────────────────────────────────────────── -->
+  {% if recommendations and recommendations|length > 0 %}
+  <div class="section-break">
+    <div class="page-header">
+      <span class="page-header-wordmark">Sail Ratings</span>
+      <span class="page-header-boat">{{ boat_name }} &mdash; {{ sail_number }}</span>
+    </div>
+
+    <h2>Optimisation Recommendations</h2>
+
+    <table class="rec-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Field</th>
+          <th>Category</th>
+          <th class="right">Current</th>
+          <th class="right">Mean</th>
+          <th class="right">TCC Delta</th>
+          <th>Feasibility</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rec in recommendations %}
+        <tr>
+          <td><span class="rec-rank">{{ rec.rank }}</span></td>
+          <td><span class="rec-field">{{ rec.field }}</span></td>
+          <td><span class="rec-category">{{ rec.category }}</span></td>
+          <td class="rec-value">{{ rec.current_value }}</td>
+          <td class="rec-value">{{ rec.mean_value }}</td>
+          <td class="rec-delta {% if rec.tcc_delta < 0 %}negative{% else %}positive{% endif %}">
+            {% if rec.tcc_delta > 0 %}+{% endif %}{{ "%.4f"|format(rec.tcc_delta) }}
+          </td>
+          <td><span class="rec-category">{{ rec.feasibility }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% for rec in recommendations %}
+    <div class="rec-explanation">
+      <span class="rec-explanation-rank">{{ rec.rank }}.</span>
+      <span class="rec-explanation-field">{{ rec.field }}</span>
+      {% if rec.evidence_strength %}
+      <span class="rec-evidence">&middot; {{ rec.evidence_strength }}</span>
+      {% endif %}
+      <br>
+      {{ rec.explanation }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ── RAI ─────────────────────────────────────────────────────── -->
+  {% if rai %}
+  <div class="section-break">
+    <div class="page-header">
+      <span class="page-header-wordmark">Sail Ratings</span>
+      <span class="page-header-boat">{{ boat_name }} &mdash; {{ sail_number }}</span>
+    </div>
+
+    <h2>Racing Performance Index</h2>
+
+    <div class="rai-grid">
+      <div class="rai-stat">
+        <div class="rai-stat-value">{{ "%.2f"|format(rai.rai_score) }}</div>
+        <div class="rai-stat-label">RAI Score</div>
+      </div>
+      <div class="rai-stat">
+        <div class="rai-stat-value">{{ rai.n_races }}</div>
+        <div class="rai-stat-label">Races</div>
+      </div>
+      <div class="rai-stat">
+        <div class="rai-stat-value">{{ rai.wins }}</div>
+        <div class="rai-stat-label">Wins</div>
+      </div>
+      <div class="rai-stat">
+        <div class="rai-stat-value">{{ rai.podiums }}</div>
+        <div class="rai-stat-label">Podiums</div>
+      </div>
+    </div>
+
+    <p class="rai-ci">95% CI: {{ "%.2f"|format(rai.ci_low) }} &ndash; {{ "%.2f"|format(rai.ci_high) }}</p>
+
+    {% if rai.interpretation %}
+    <p class="rai-interpretation">{{ rai.interpretation }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- ── Rivals ──────────────────────────────────────────────────── -->
+  {% if rivals and rivals|length > 0 %}
+  <div class="section-break">
+    <div class="page-header">
+      <span class="page-header-wordmark">Sail Ratings</span>
+      <span class="page-header-boat">{{ boat_name }} &mdash; {{ sail_number }}</span>
+    </div>
+
+    <h2>Head-to-Head Rivals</h2>
+
+    <table class="rivals-table">
+      <thead>
+        <tr>
+          <th>Boat</th>
+          <th>Sail #</th>
+          <th class="right">W</th>
+          <th class="right">L</th>
+          <th class="right">Win %</th>
+          <th class="right">Events</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rival in rivals %}
+        <tr>
+          <td><span class="rivals-boat">{{ rival.boat_name }}</span></td>
+          <td><span class="rivals-sail">{{ rival.sail_number }}</span></td>
+          <td class="rivals-num rivals-wins">{{ rival.wins }}</td>
+          <td class="rivals-num">{{ rival.losses }}</td>
+          <td class="rivals-num rivals-winrate">{{ "%.0f"|format(rival.win_rate * 100) }}%</td>
+          <td class="rivals-num">{{ rival.events }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- ── Footer ──────────────────────────────────────────────────── -->
+  <div class="page-footer">
+    <span>sailratings.com</span>
+    <span>IRC rating data sourced from public certificates. Not affiliated with the RORC Rating Office.</span>
+  </div>
+
+</body>
+</html>

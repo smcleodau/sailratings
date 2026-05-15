@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: irc_data
+      POSTGRES_USER: irc
+      POSTGRES_PASSWORD: irc
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    command: postgres -c shared_preload_libraries='' -c work_mem=256MB -c shared_buffers=2GB
+    restart: unless-stopped
+
+  api:
+    build: .
+    ports:
+      - "4100:4100"
+    environment:
+      DATABASE_URL: postgresql+psycopg://irc:irc@db:5432/irc_data
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on: [db]
+    command: uvicorn irc_data.api.app:app --host 0.0.0.0 --port 4100 --workers 2
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    depends_on: [api]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  caddy_data:

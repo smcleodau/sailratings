@@ -1,0 +1,200 @@
+/* ── Söhne Font Face Declarations ─────────────────────────────────────── */
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-leicht.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-buch.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-buch-kursiv.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-halbfett.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-halbfett-kursiv.woff2") format("woff2");
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-dreiviertelfett.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-fett.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Soehne";
+  src: url("/fonts/soehne-extrafett.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@import url("https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&display=swap");
+@import "tailwindcss";
+
+@theme inline {
+  --color-navy: #0A2240;
+  --color-navy-light: #163156;
+  --color-brass: #C29B61;
+  --color-brass-dark: #A6834D;
+  --color-cream: #F4F1E8;
+  --color-charcoal: #2C2C2C;
+  --color-charcoal-light: #555555;
+  --color-slate: #6B7A8F;
+  --color-border: #D1C8B7;
+  --color-border-light: #E5DFD4;
+  --color-white: #FFFFFF;
+  --color-sand: #F4F1E8;
+  --color-muted: #6B7A8F;
+
+  --font-display: "Soehne", system-ui, sans-serif;
+  --font-body: "Soehne", system-ui, sans-serif;
+  --font-mono: "Roboto Mono", "Courier New", monospace;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--color-white);
+  color: var(--color-charcoal);
+  font-family: "Soehne", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Gallery Frame ───────────────────────────────────────────────────── */
+.gallery-frame {
+  padding: 20px;
+  min-height: 100vh;
+}
+@media (max-width: 768px) {
+  .gallery-frame { padding: 10px; }
+}
+
+/* ── Hero Image ──────────────────────────────────────────────────────── */
+.hero-image-wrap {
+  position: absolute;
+  inset: 0;
+}
+.hero-image-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg,
+    rgba(0, 0, 0, 0.65) 0%,
+    rgba(0, 0, 0, 0.45) 40%,
+    rgba(0, 0, 0, 0.20) 100%
+  );
+  pointer-events: none;
+}
+
+/* ── Animations ──────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes subtlePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.animate-in { animation: fadeIn 0.6s ease-out both; }
+.delay-1 { animation-delay: 100ms; }
+.delay-2 { animation-delay: 250ms; }
+.delay-3 { animation-delay: 400ms; }
+.delay-4 { animation-delay: 550ms; }
+.delay-5 { animation-delay: 700ms; }
+.streaming-pulse { animation: subtlePulse 1.5s ease-in-out infinite; }
+
+/* ── Teaser Fade ─────────────────────────────────────────────────────── */
+.teaser-fade { position: relative; }
+.teaser-fade::after {
+  content: "";
+  position: absolute;
+  bottom: 0; left: 0; right: 0; height: 140px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 55%, rgba(255,255,255,1) 100%);
+  pointer-events: none;
+}
+
+/* ── Section Divider ──────────────────────────────────────────────────── */
+.section-divider {
+  display: flex; align-items: center; justify-content: center; gap: 16px; padding: 4px 0;
+}
+.section-divider::before, .section-divider::after {
+  content: ""; flex: 1; max-width: 80px; height: 1px; background: var(--color-border);
+}
+.section-divider .diamond {
+  width: 4px; height: 4px; background: var(--color-brass); transform: rotate(45deg); flex-shrink: 0;
+}
+
+/* ── Typography ──────────────────────────────────────────────────────── */
+.heading-display {
+  font-family: "Soehne", system-ui, sans-serif;
+  font-weight: 800;
+  font-style: normal;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.heading-serif {
+  font-family: "Soehne", system-ui, sans-serif;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.brand-wordmark {
+  font-family: "Soehne", system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-size: 16px;
+}
+
+.body-text {
+  font-family: "Soehne", system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1.65;
+}
+
+.data-mono {
+  font-family: "Roboto Mono", "Courier New", monospace;
+  font-weight: 500;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.02em;
+}
+
+/* ── Misc ────────────────────────────────────────────────────────────── */
+::selection { background: var(--color-brass); color: white; }
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+input:focus-visible { outline: 2px solid var(--color-navy); outline-offset: 2px; }

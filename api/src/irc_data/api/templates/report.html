@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IRC Rating Report — {{ boat_name }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 20mm 15mm 25mm 15mm;
+            @bottom-center {
+                content: counter(page) " / " counter(pages);
+                font-size: 9px;
+                color: #94a3b8;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            font-size: 11px;
+            line-height: 1.6;
+            color: #1e293b;
+        }
+
+        /* --- Header --- */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 3px solid #1e3a5f;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+        }
+
+        .header-brand {
+            color: #1e3a5f;
+        }
+
+        .header-brand h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .header-brand .tagline {
+            font-size: 10px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 2px;
+        }
+
+        .header-meta {
+            text-align: right;
+            font-size: 10px;
+            color: #64748b;
+        }
+
+        /* --- Boat identity card --- */
+        .boat-card {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2b5a8f 100%);
+            color: white;
+            padding: 20px 24px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+
+        .boat-card h2 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .boat-card .sail-number {
+            font-size: 14px;
+            opacity: 0.85;
+            margin-bottom: 12px;
+        }
+
+        .boat-card .meta-row {
+            display: flex;
+            gap: 32px;
+            font-size: 11px;
+            opacity: 0.9;
+        }
+
+        .boat-card .meta-row .label {
+            opacity: 0.7;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .boat-card .meta-row .value {
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        /* --- Report content --- */
+        .report-content {
+            margin-bottom: 32px;
+        }
+
+        .report-content h1 {
+            font-size: 18px;
+            color: #1e3a5f;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 6px;
+            margin: 20px 0 12px 0;
+        }
+
+        .report-content h2 {
+            font-size: 15px;
+            color: #1e3a5f;
+            margin: 18px 0 10px 0;
+        }
+
+        .report-content h3 {
+            font-size: 13px;
+            color: #334155;
+            margin: 14px 0 8px 0;
+        }
+
+        .report-content p {
+            margin-bottom: 8px;
+            text-align: justify;
+        }
+
+        .report-content ul {
+            margin: 8px 0 8px 20px;
+        }
+
+        .report-content li {
+            margin-bottom: 4px;
+        }
+
+        .report-content strong {
+            color: #1e3a5f;
+        }
+
+        /* --- Analytics sections --- */
+        .section-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1e3a5f;
+            border-bottom: 2px solid #1e3a5f;
+            padding-bottom: 4px;
+            margin: 28px 0 16px 0;
+            page-break-after: avoid;
+        }
+
+        /* --- Recommendations table --- */
+        .rec-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            margin-bottom: 16px;
+        }
+
+        .rec-table th {
+            background: #f1f5f9;
+            color: #475569;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 8px;
+            letter-spacing: 0.5px;
+            padding: 8px 6px;
+            text-align: left;
+            border-bottom: 2px solid #cbd5e1;
+        }
+
+        .rec-table td {
+            padding: 7px 6px;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: top;
+        }
+
+        .rec-table tr:nth-child(even) {
+            background: #f8fafc;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-admin { background: #dcfce7; color: #166534; }
+        .badge-sail { background: #dbeafe; color: #1e40af; }
+        .badge-hardware { background: #fef3c7; color: #92400e; }
+        .badge-strong { background: #dcfce7; color: #166534; }
+        .badge-moderate { background: #fef9c3; color: #854d0e; }
+        .badge-limited { background: #fee2e2; color: #991b1b; }
+
+        .tcc-delta {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-weight: 700;
+        }
+
+        .tcc-positive { color: #dc2626; }
+        .tcc-negative { color: #16a34a; }
+
+        /* --- RAI card --- */
+        .rai-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+        }
+
+        .rai-value {
+            font-size: 28px;
+            font-weight: 800;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+
+        .rai-positive { color: #16a34a; }
+        .rai-negative { color: #dc2626; }
+
+        .rai-stats {
+            display: flex;
+            gap: 24px;
+            margin-top: 8px;
+            font-size: 10px;
+            color: #64748b;
+        }
+
+        .rai-stats .stat-value {
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 13px;
+        }
+
+        /* --- Rivals table --- */
+        .rivals-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            margin-bottom: 16px;
+        }
+
+        .rivals-table th {
+            background: #f1f5f9;
+            padding: 6px;
+            text-align: left;
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #cbd5e1;
+        }
+
+        .rivals-table td {
+            padding: 5px 6px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        /* --- Footer --- */
+        .footer {
+            margin-top: 40px;
+            padding-top: 12px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 8px;
+            color: #94a3b8;
+            text-align: center;
+        }
+
+        .footer a {
+            color: #64748b;
+            text-decoration: none;
+        }
+
+        /* Page break helpers */
+        .page-break { page-break-before: always; }
+        .avoid-break { page-break-inside: avoid; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <div class="header-brand">
+            <h1>SailRatings</h1>
+            <div class="tagline">IRC &amp; ORC Rating Intelligence</div>
+        </div>
+        <div class="header-meta">
+            <div>Report generated {{ report_date }}</div>
+            <div>Ref: {{ order_token[:8] }}...</div>
+        </div>
+    </div>
+
+    <!-- Boat identity card -->
+    <div class="boat-card avoid-break">
+        <h2>{{ boat_name }}</h2>
+        <div class="sail-number">{{ sail_number }}</div>
+        <div class="meta-row">
+            <div>
+                <div class="label">Design</div>
+                <div class="value">{{ design }}</div>
+            </div>
+            {% if tcc %}
+            <div>
+                <div class="label">Current TCC</div>
+                <div class="value">{{ tcc }}</div>
+            </div>
+            {% endif %}
+            {% if country %}
+            <div>
+                <div class="label">Country</div>
+                <div class="value">{{ country }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- AI Analysis -->
+    <div class="report-content">
+        {{ report_html }}
+    </div>
+
+    <!-- Optimisation Recommendations -->
+    {% if recommendations %}
+    <div class="section-title">Optimisation Recommendations</div>
+    <table class="rec-table avoid-break">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Measurement</th>
+                <th>Category</th>
+                <th>Current</th>
+                <th>Class Mean</th>
+                <th>Est. TCC Impact</th>
+                <th>Feasibility</th>
+                <th>Evidence</th>
+                <th>Detail</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rec in recommendations %}
+            <tr>
+                <td>{{ rec.rank or loop.index }}</td>
+                <td><strong>{{ rec.field }}</strong></td>
+                <td>
+                    <span class="badge badge-{{ rec.category }}">{{ rec.category }}</span>
+                </td>
+                <td>{{ rec.current_value if rec.current_value is not none else '—' }}</td>
+                <td>{{ rec.class_mean if rec.class_mean is not none else '—' }}</td>
+                <td class="tcc-delta {% if rec.estimated_tcc_delta < 0 %}tcc-negative{% else %}tcc-positive{% endif %}">
+                    {{ '%+.4f'|format(rec.estimated_tcc_delta) }}
+                </td>
+                <td>{{ rec.feasibility_label }}</td>
+                <td>
+                    <span class="badge badge-{{ rec.evidence_strength }}">{{ rec.evidence_strength }}</span>
+                </td>
+                <td>{{ rec.explanation }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Racing Performance -->
+    {% if rai %}
+    <div class="section-title">Racing Performance (RAI)</div>
+    <div class="rai-card avoid-break">
+        <div>
+            <span class="rai-value {% if rai.rai > 0 %}rai-positive{% else %}rai-negative{% endif %}">
+                {{ '%+.1f'|format(rai.rai) }}
+            </span>
+            <span style="font-size: 11px; color: #64748b; margin-left: 8px;">Rating Advantage Index</span>
+        </div>
+        <div style="margin-top: 6px; font-size: 10px; color: #475569;">
+            {{ rai.interpretation }}
+        </div>
+        <div class="rai-stats">
+            <div>
+                <div class="stat-value">{{ rai.n_races }}</div>
+                <div>Races</div>
+            </div>
+            <div>
+                <div class="stat-value">{{ rai.wins }}</div>
+                <div>Wins</div>
+            </div>
+            <div>
+                <div class="stat-value">{{ rai.podiums }}</div>
+                <div>Podiums</div>
+            </div>
+            <div>
+                <div class="stat-value">[{{ '%+.1f'|format(rai.ci_lower) }}, {{ '%+.1f'|format(rai.ci_upper) }}]</div>
+                <div>95% CI</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Head-to-Head Rivals -->
+    {% if rivals %}
+    <div class="section-title">Head-to-Head Records</div>
+    <table class="rivals-table avoid-break">
+        <thead>
+            <tr>
+                <th>Rival</th>
+                <th>Sail #</th>
+                <th>Wins</th>
+                <th>Losses</th>
+                <th>Win Rate</th>
+                <th>Events Together</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rivals %}
+            <tr>
+                <td><strong>{{ r.rival_name }}</strong></td>
+                <td>{{ r.rival_sail_number }}</td>
+                <td>{{ r.wins }}</td>
+                <td>{{ r.losses }}</td>
+                <td>
+                    {% set total = r.wins + r.losses %}
+                    {% if total > 0 %}{{ '%.0f'|format(r.wins / total * 100) }}%{% else %}—{% endif %}
+                </td>
+                <td>{{ r.events_together }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Footer -->
+    <div class="footer">
+        <p>
+            This report is generated from publicly available IRC and ORC rating data combined with AI analysis.
+            Measurement sensitivity coefficients are statistical observations from fleet data, not IRC formula disclosures.
+            Always confirm changes with a trial certificate before committing.
+        </p>
+        <p style="margin-top: 6px;">
+            &copy; SailRatings.com &nbsp;|&nbsp; <a href="https://sailratings.com">sailratings.com</a>
+        </p>
+    </div>
+
+</body>
+</html>

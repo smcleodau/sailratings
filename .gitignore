@@ -1,0 +1,45 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Env files (NEVER commit real values)
+.env
+.env.local
+.env.*.local
+!.env.dev.template
+!.env.prod.template
+
+# Logs
+/logs/
+*.log
+
+# Data — regeneratable scraper output, externalised to /home/irc-data/data-raw/
+# `api/data/raw` is a symlink to that location (see HANDOFF.md / Phase 3.6).
+# `data/reports/` and `data/audit_extend/` are small artefacts — committed.
+api/data/raw
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Local Claude state (sessions are per-machine)
+.claude/sessions/
+.claude/projects/

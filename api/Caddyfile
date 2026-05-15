@@ -1,0 +1,8 @@
+{
+    # For local development, disable automatic HTTPS
+    auto_https off
+}
+
+:80 {
+    reverse_proxy api:4100
+}

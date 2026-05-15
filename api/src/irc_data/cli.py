@@ -1,0 +1,2196 @@
+"""CLI for IRC data collection and analysis."""
+
+import shutil
+from datetime import date
+from pathlib import Path
+
+import click
+from rich.console import Console
+from rich.table import Table
+
+from sqlalchemy import text
+
+from irc_data.config import IMPORTS_DIR, TCC_LISTINGS_DIR
+from irc_data.db.connection import get_engine, init_db
+from irc_data.db.operations import (
+    get_boat_detail,
+    get_stats,
+    list_boats,
+    upsert_boat,
+    upsert_tcc_snapshot,
+)
+from irc_data.parsers.tcc_csv import detect_country, detect_design, parse_tcc_csv
+
+console = Console()
+
+
+@click.group()
+@click.option("--db-url", envvar="IRC_DATABASE_URL", default=None, help="Database URL")
+@click.pass_context
+def cli(ctx, db_url):
+    """IRC sailing data collection & analysis."""
+    ctx.ensure_object(dict)
+    if db_url:
+        ctx.obj["engine"] = get_engine(db_url)
+    else:
+        ctx.obj["engine"] = get_engine()
+
+
+@cli.command()
+@click.pass_context
+def init(ctx):
+    """Initialize the database schema."""
+    engine = ctx.obj["engine"]
+    init_db()
+    console.print("[green]Database initialized.[/green]")
+    stats = get_stats(engine)
+    console.print(f"  Boats: {stats['boats']}, Snapshots: {stats['snapshots']}")
+
+
+@cli.command(name="import")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option("--snapshot-date", default=str(date.today()), help="Date for this snapshot")
+@click.pass_context
+def import_csv(ctx, path: Path, snapshot_date: str):
+    """Import a TCC listing CSV into the database."""
+    engine = ctx.obj["engine"]
+    snap_date = date.fromisoformat(snapshot_date)
+
+    # Copy to archive locations
+    IMPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    TCC_LISTINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+    import_dest = IMPORTS_DIR / path.name
+    if not import_dest.exists():
+        shutil.copy2(path, import_dest)
+        console.print(f"Copied to {import_dest}")
+
+    listing_dest = TCC_LISTINGS_DIR / f"tcc_listing_{snap_date}.csv"
+    if not listing_dest.exists():
+        shutil.copy2(path, listing_dest)
+        console.print(f"Archived as {listing_dest}")
+
+    # Parse
+    console.print(f"Parsing {path.name}...")
+    rows = parse_tcc_csv(path)
+    console.print(f"  Parsed {len(rows)} rows")
+
+    # Import
+    imported = 0
+    with console.status("Importing boats...") as status:
+        for row in rows:
+            country = detect_country(row.sail_number)
+            design = detect_design(row.lh, row.beam)
+
+            boat_id = upsert_boat(
+                engine,
+                boat_name=row.boat_name,
+                sail_number=row.sail_number,
+                cert_number=row.cert_number,
+                design=design,
+                country=country,
+                year_built=row.series_date,
+            )
+
+            snapshot_fields = {
+                "cert_year": row.cert_year,
+                "tcc": row.tcc,
+                "non_spi_tcc": row.non_spi_tcc,
+                "endorsed": row.endorsed,
+                "secondary": row.secondary,
+                "crew": row.crew,
+                "dlr": row.dlr,
+                "lh": row.lh,
+                "beam": row.beam,
+                "draft": row.draft,
+                "single_furling_headsail": row.single_furling_headsail,
+                "headsails": row.headsails,
+                "flying_headsails": row.flying_headsails,
+                "spinnakers": row.spinnakers,
+                "series_date": row.series_date,
+                "age_date": row.age_date,
+                "racing_area": row.racing_area,
+                "ssb_base_value": row.ssb_base_value,
+                "stix": row.stix,
+                "avs": row.avs,
+                "category": row.category,
+            }
+            upsert_tcc_snapshot(engine, boat_id, snap_date, **snapshot_fields)
+            imported += 1
+
+            if imported % 200 == 0:
+                status.update(f"Importing boats... {imported}/{len(rows)}")
+
+    console.print(f"[green]Imported {imported} boats with TCC snapshots.[/green]")
+    stats = get_stats(engine)
+    console.print(
+        f"  Total: {stats['boats']} boats, {stats['countries']} countries, "
+        f"{stats['designs']} detected designs"
+    )
+
+
+@cli.command()
+@click.option("--country", "-c", help="Filter by country code (e.g. AUS, GBR)")
+@click.option("--design", "-d", help="Filter by design (e.g. 'Sunfast 3300')")
+@click.option("--limit", "-n", default=50, help="Max rows to display")
+@click.pass_context
+def list(ctx, country, design, limit):
+    """List boats with optional filters."""
+    engine = ctx.obj["engine"]
+    boats = list_boats(engine, country=country, design=design)
+
+    if not boats:
+        console.print("[yellow]No boats found.[/yellow]")
+        return
+
+    table = Table(title=f"IRC Boats ({len(boats)} total)")
+    table.add_column("Boat Name", style="bold")
+    table.add_column("Sail No")
+    table.add_column("TCC", justify="right")
+    table.add_column("Non-Spi", justify="right")
+    table.add_column("DLR", justify="right")
+    table.add_column("LH", justify="right")
+    table.add_column("Beam", justify="right")
+    table.add_column("Draft", justify="right")
+    table.add_column("HS", justify="right")
+    table.add_column("Spi", justify="right")
+    table.add_column("Design")
+    table.add_column("Country")
+
+    for b in boats[:limit]:
+        table.add_row(
+            b["boat_name"],
+            b["sail_number"],
+            str(b["tcc"]) if b.get("tcc") else "-",
+            str(b["non_spi_tcc"]) if b.get("non_spi_tcc") else "-",
+            str(b["dlr"]) if b.get("dlr") else "-",
+            str(b["lh"]) if b.get("lh") else "-",
+            str(b["beam"]) if b.get("beam") else "-",
+            str(b["draft"]) if b.get("draft") else "-",
+            str(b["headsails"]) if b.get("headsails") else "-",
+            str(b["spinnakers"]) if b.get("spinnakers") else "-",
+            b.get("design") or "-",
+            b.get("country") or "-",
+        )
+
+    if len(boats) > limit:
+        console.print(f"  [dim]Showing {limit} of {len(boats)} boats[/dim]")
+    console.print(table)
+
+
+@cli.command()
+@click.argument("sail_number")
+@click.pass_context
+def show(ctx, sail_number):
+    """Show detailed info for a boat by sail number."""
+    engine = ctx.obj["engine"]
+    boat = get_boat_detail(engine, sail_number)
+
+    if not boat:
+        console.print(f"[red]No boat found with sail number '{sail_number}'[/red]")
+        return
+
+    table = Table(title=f"{boat['boat_name']} ({boat['sail_number']})")
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+
+    fields = [
+        ("Sail Number", "sail_number"),
+        ("Cert Number", "cert_number"),
+        ("Design", "design"),
+        ("Country", "country"),
+        ("Year Built", "year_built"),
+        ("TCC", "tcc"),
+        ("Non-Spi TCC", "non_spi_tcc"),
+        ("DLR", "dlr"),
+        ("Crew", "crew"),
+        ("LH", "lh"),
+        ("Beam", "beam"),
+        ("Draft", "draft"),
+        ("Headsails", "headsails"),
+        ("Flying Headsails", "flying_headsails"),
+        ("Spinnakers", "spinnakers"),
+        ("Single Furling Headsail", "single_furling_headsail"),
+        ("Series Date", "series_date"),
+        ("Age Date", "age_date"),
+        ("Racing Area", "racing_area"),
+        ("STIX", "stix"),
+        ("AVS", "avs"),
+        ("Category", "category"),
+        ("Snapshot Date", "snapshot_date"),
+    ]
+
+    for label, key in fields:
+        val = boat.get(key)
+        if val is not None:
+            table.add_row(label, str(val))
+
+    console.print(table)
+
+
+@cli.command()
+@click.pass_context
+def stats(ctx):
+    """Show database statistics."""
+    engine = ctx.obj["engine"]
+    s = get_stats(engine)
+    console.print(f"Boats:           {s['boats']}")
+    console.print(f"TCC Snapshots:   {s['snapshots']}")
+    console.print(f"Certificates:    {s['certificates']}")
+    console.print(f"ORC Certificates: {s.get('orc_certificates', 0)}")
+    console.print(f"Race Results:    {s['race_results']}")
+    console.print(f"Countries:       {s['countries']}")
+    console.print(f"Designs:         {s['designs']}")
+
+
+# --- Scraper commands ---
+
+
+@cli.group()
+def scrape():
+    """Scrape data from external sources."""
+    pass
+
+
+@scrape.command(name="certs")
+@click.option("--search", "-s", multiple=True, help="Search term (sail prefix, boat name)")
+@click.option("--all-targets", is_flag=True, help="Download all AUS + Sunfast 3300 certs")
+@click.option("--exhaustive", is_flag=True, help="2-letter exhaustive search (AA..ZZ, ~17min)")
+@click.pass_context
+def scrape_certs(ctx, search, all_targets, exhaustive):
+    """Download certificate PDFs from ircrating.org."""
+    import asyncio
+
+    if exhaustive:
+        from irc_data.scrapers.certificate_bulk import (
+            download_certificates,
+            exhaustive_enumerate,
+        )
+
+        console.print("Running exhaustive 2-letter enumeration...")
+        certs = asyncio.run(exhaustive_enumerate())
+        console.print(f"Found {len(certs)} unique certificates")
+        console.print("Downloading new certificates...")
+        downloaded = asyncio.run(download_certificates(certs))
+        console.print(f"[green]Downloaded {len(downloaded)} certificate PDFs.[/green]")
+        return
+
+    if all_targets:
+        from irc_data.scrapers.certificate_search import download_all_target_certificates
+
+        console.print("Downloading certificates for all target boats...")
+        downloaded = asyncio.run(download_all_target_certificates())
+    elif search:
+        from irc_data.scrapers.certificate_search import search_and_download_certificates
+
+        console.print(f"Searching for: {', '.join(search)}")
+        downloaded = asyncio.run(search_and_download_certificates(list(search)))
+    else:
+        console.print("[yellow]Specify --search TERM, --all-targets, or --exhaustive[/yellow]")
+        return
+
+    console.print(f"[green]Downloaded {len(downloaded)} certificate PDFs.[/green]")
+
+
+@scrape.command(name="wayback")
+@click.option("--boat", help="Filter by sail number")
+@click.pass_context
+def scrape_wayback(ctx, boat):
+    """Search Wayback Machine for historical IRC certificate PDFs."""
+    import asyncio
+
+    from irc_data.scrapers.wayback import find_and_download_all
+
+    console.print("Searching Wayback Machine for archived IRC PDFs...")
+    downloaded = asyncio.run(find_and_download_all())
+    console.print(f"[green]Downloaded {len(downloaded)} historical PDFs.[/green]")
+
+
+@scrape.command(name="results")
+@click.option(
+    "--source",
+    type=click.Choice(["sailsys", "cyca", "sailracehq", "sailwave", "topyacht", "rorc", "isora", "cowesweek", "rhkyc", "sydneyhobart"]),
+    default="sailsys",
+    help="Race results source",
+)
+@click.option("--club", default="CYCA", help="Club name for SailSys (CYCA, RPAYC, RSYS, MHYC, MYC, CSC, SPS, NCYC, RQYS, SHCC, ...)")
+@click.option("--all-clubs", is_flag=True, help="Scrape all SailSys clubs in sequence")
+@click.option("--incremental/--full", default=True, help="Only fetch races newer than last scrape")
+@click.option("--max-series", type=int, default=None, help="Limit number of series to scrape")
+@click.option("--year", type=int, default=None, help="Year to scrape (RORC, ISORA, Cowes Week, RHKYC, Sydney Hobart)")
+@click.option("--store/--no-store", default=True, help="Store results in database")
+@click.pass_context
+def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, store):
+    """Scrape race results from various sources."""
+    import asyncio
+
+    engine = ctx.obj["engine"]
+    results = []
+
+    if source == "sailsys":
+        from irc_data.scrapers.sailsys import CLUBS as _CLUB_MAP
+        from irc_data.scrapers.sailsys import scrape_club_irc_results
+
+        # Determine which clubs to scrape
+        if all_clubs:
+            clubs_to_scrape = [pair for pair in _CLUB_MAP.items()]
+        else:
+            clubs_to_scrape = [(club.upper(), _CLUB_MAP.get(club.upper(), 3))]
+
+        # Determine incremental cutoff
+        since = None
+        if incremental:
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text("""
+                        SELECT max(created_at)::date - interval '1 day'
+                        FROM race_results WHERE source = 'sailsys'
+                    """)
+                ).first()
+                if row and row[0]:
+                    since = row[0].date() if hasattr(row[0], 'date') else row[0]
+                    console.print(f"[dim]Incremental mode: only races after {since}[/dim]")
+
+        all_results = []
+        for club_name, club_id in clubs_to_scrape:
+            console.print(f"\nScraping SailSys results for [bold]{club_name}[/bold] (club {club_id})...")
+            try:
+                club_results = asyncio.run(scrape_club_irc_results(
+                    club_id, max_series=max_series, since=since,
+                ))
+                all_results.extend(club_results)
+                console.print(f"  [green]{len(club_results)} results[/green]")
+
+                # Store incrementally per club (avoids memory buildup)
+                if store and club_results:
+                    from irc_data.scrapers.result_import import import_scraper_results
+
+                    stats = import_scraper_results(
+                        engine, club_results, source="sailsys",
+                        organizing_club=club_name,
+                    )
+                    console.print(f"  Imported: {stats['imported']}, Matched: {stats['matched']}")
+            except Exception as e:
+                console.print(f"  [red]Error scraping {club_name}: {e}[/red]")
+
+        console.print(f"\n[green]Total: {len(all_results)} results across {len(clubs_to_scrape)} clubs[/green]")
+        return
+
+    elif source == "cyca":
+        from irc_data.scrapers.race_results import scrape_cyca_results
+
+        console.print("Scraping CYCA race results...")
+        results = asyncio.run(scrape_cyca_results())
+    elif source == "rorc":
+        from datetime import date as date_type
+
+        from irc_data.scrapers.rorc import RORCSource
+
+        console.print(f"Scraping RORC results{f' for {year}' if year else ''}...")
+        rorc = RORCSource()
+        since = date_type(year, 1, 1) if year else None
+        events = asyncio.run(rorc.discover_events(since=since))
+        console.print(f"  Found {len(events)} result files")
+
+        all_results = []
+        for event in events:
+            event_results = asyncio.run(rorc.scrape_event(event))
+            if event_results:
+                all_results.extend(event_results)
+                console.print(f"  {event.event_name}: {len(event_results)} results")
+
+        if store and all_results:
+            from irc_data.scrapers.result_import import _find_boat_by_name
+            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
+            from irc_data.matching.identity import normalize_sail
+
+            def _enrich_raw_data(r):
+                """Inject boat_name/sail_number into raw_data for rematching."""
+                rd = dict(r.raw_data) if r.raw_data else {}
+                if r.boat_name and "boat_name" not in rd:
+                    rd["boat_name"] = r.boat_name
+                if r.sail_number and "sail_number" not in rd:
+                    rd["sail_number"] = r.sail_number
+                return rd
+
+            log_id = log_ingestion_start(engine, "rorc")
+            imported = matched = 0
+            for r in all_results:
+                boat_id = None
+                if r.sail_number:
+                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
+                if not boat_id:
+                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
+                if boat_id:
+                    matched += 1
+                try:
+                    upsert_race_result(
+                        engine, boat_id=boat_id,
+                        event_name=r.event_name, event_date=r.event_date,
+                        race_name=r.race_name, event_series=r.event_series,
+                        organizing_club=r.organizing_club, event_type=r.event_type,
+                        source="rorc", source_url=r.source_url,
+                        rating_type=r.rating_type, rating_value=r.rating_value,
+                        place=r.place, fleet_size=r.fleet_size,
+                        status=r.status, raw_data=_enrich_raw_data(r),
+                    )
+                    imported += 1
+                except Exception as e:
+                    if imported < 3:
+                        console.print(f"    [yellow]Error: {e}[/yellow]")
+
+            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
+            console.print(f"\n[green]RORC: {imported} results stored ({matched} matched to boats)[/green]")
+        elif all_results:
+            console.print(f"\n[green]Found {len(all_results)} RORC results (not stored, use --store)[/green]")
+        return
+    elif source == "sydneyhobart":
+        from datetime import date as date_type
+
+        from irc_data.scrapers.sydneyhobart import SydneyHobartSource
+
+        console.print(f"Scraping Sydney Hobart results{f' for {year}' if year else ''}...")
+        sh = SydneyHobartSource()
+        since = date_type(year, 1, 1) if year else None
+        events = asyncio.run(sh.discover_events(since=since))
+
+        if year:
+            events = [e for e in events if e.metadata and e.metadata.get("year") == year]
+
+        console.print(f"  Found {len(events)} race editions")
+
+        all_results = []
+        for event in events:
+            event_results = asyncio.run(sh.scrape_event(event))
+            if event_results:
+                all_results.extend(event_results)
+                console.print(f"  {event.event_name}: {len(event_results)} results")
+
+        if store and all_results:
+            from irc_data.scrapers.result_import import _find_boat_by_name
+            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
+            from irc_data.matching.identity import normalize_sail
+
+            log_id = log_ingestion_start(engine, "sydneyhobart")
+            imported = matched = 0
+            for r in all_results:
+                boat_id = None
+                if r.sail_number:
+                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
+                if not boat_id:
+                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
+                if boat_id:
+                    matched += 1
+                try:
+                    upsert_race_result(
+                        engine, boat_id=boat_id,
+                        event_name=r.event_name, event_date=r.event_date,
+                        race_name=r.race_name, event_series=r.event_series,
+                        organizing_club=r.organizing_club, event_type=r.event_type,
+                        source="sydneyhobart", source_url=r.source_url,
+                        rating_type=r.rating_type, rating_value=r.rating_value,
+                        place=r.place, fleet_size=r.fleet_size,
+                        status=r.status, raw_data=_enrich_raw_data(r),
+                    )
+                    imported += 1
+                except Exception as e:
+                    if imported < 3:
+                        console.print(f"    [yellow]Error: {e}[/yellow]")
+
+            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
+            console.print(f"\n[green]Sydney Hobart: {imported} results stored ({matched} matched to boats)[/green]")
+        elif all_results:
+            console.print(f"\n[green]Found {len(all_results)} Sydney Hobart results (not stored, use --store)[/green]")
+        return
+    elif source == "isora":
+        from datetime import date as date_type
+
+        from irc_data.scrapers.isora import ISORASource
+
+        console.print(f"Scraping ISORA results{f' for {year}' if year else ''}...")
+        isora = ISORASource()
+        since = date_type(year, 1, 1) if year else None
+        events = asyncio.run(isora.discover_events(since=since))
+        console.print(f"  Found {len(events)} result pages")
+
+        all_results = []
+        for event in events:
+            event_results = asyncio.run(isora.scrape_event(event))
+            if event_results:
+                all_results.extend(event_results)
+                console.print(f"  {event.event_name}: {len(event_results)} results")
+
+        if store and all_results:
+            from irc_data.scrapers.result_import import _find_boat_by_name
+            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
+            from irc_data.matching.identity import normalize_sail
+
+            log_id = log_ingestion_start(engine, "isora")
+            imported = matched = 0
+            for r in all_results:
+                boat_id = None
+                if r.sail_number:
+                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
+                if not boat_id:
+                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
+                if boat_id:
+                    matched += 1
+                try:
+                    upsert_race_result(
+                        engine, boat_id=boat_id,
+                        event_name=r.event_name, event_date=r.event_date,
+                        race_name=r.race_name, event_series=r.event_series,
+                        organizing_club=r.organizing_club, event_type=r.event_type,
+                        source="isora", source_url=r.source_url,
+                        rating_type=r.rating_type, rating_value=r.rating_value,
+                        place=r.place, fleet_size=r.fleet_size,
+                        class_name=r.class_name,
+                        status=r.status, raw_data=_enrich_raw_data(r),
+                    )
+                    imported += 1
+                except Exception as e:
+                    if imported < 3:
+                        console.print(f"    [yellow]Error: {e}[/yellow]")
+
+            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
+            console.print(f"\n[green]ISORA: {imported} results stored ({matched} matched to boats)[/green]")
+        elif all_results:
+            irc_count = sum(1 for r in all_results if r.rating_value)
+            console.print(f"\n[green]Found {len(all_results)} ISORA results ({irc_count} with IRC ratings)[/green]")
+        else:
+            console.print("[yellow]No ISORA results found.[/yellow]")
+        return
+    elif source == "cowesweek":
+        from datetime import date as date_type
+
+        from irc_data.scrapers.cowesweek import CowesWeekSource
+
+        console.print(f"Scraping Cowes Week results{f' for {year}' if year else ''}...")
+        cw = CowesWeekSource()
+        since = date_type(year, 1, 1) if year else None
+        events = asyncio.run(cw.discover_events(since=since))
+        console.print(f"  Found {len(events)} IRC class/year combinations")
+
+        if max_series:
+            events = events[:max_series]
+
+        all_results = []
+        for event in events:
+            event_results = asyncio.run(cw.scrape_event(event))
+            if event_results:
+                all_results.extend(event_results)
+                console.print(f"  {event.event_name}: {len(event_results)} results")
+
+        if store and all_results:
+            from irc_data.scrapers.result_import import _find_boat_by_name
+            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
+            from irc_data.matching.identity import normalize_sail
+
+            log_id = log_ingestion_start(engine, "cowesweek")
+            imported = matched = 0
+            for r in all_results:
+                boat_id = None
+                if r.sail_number:
+                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
+                if not boat_id:
+                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
+                if boat_id:
+                    matched += 1
+                try:
+                    upsert_race_result(
+                        engine, boat_id=boat_id,
+                        event_name=r.event_name, event_date=r.event_date,
+                        race_name=r.race_name, event_series=r.event_series,
+                        organizing_club=r.organizing_club, event_type=r.event_type,
+                        source="cowesweek", source_url=r.source_url,
+                        rating_type=r.rating_type, rating_value=r.rating_value,
+                        place=r.place, fleet_size=r.fleet_size,
+                        class_name=r.class_name,
+                        status=r.status, raw_data=_enrich_raw_data(r),
+                    )
+                    imported += 1
+                except Exception as e:
+                    if imported < 3:
+                        console.print(f"    [yellow]Error: {e}[/yellow]")
+
+            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
+            console.print(f"\n[green]Cowes Week: {imported} results stored ({matched} matched to boats)[/green]")
+        elif all_results:
+            irc_count = sum(1 for r in all_results if r.rating_value)
+            console.print(f"\n[green]Found {len(all_results)} Cowes Week results ({irc_count} with IRC ratings)[/green]")
+        else:
+            console.print("[yellow]No Cowes Week results found.[/yellow]")
+        return
+    elif source == "rhkyc":
+        from datetime import date as date_type
+
+        from irc_data.scrapers.rhkyc import RHKYCSource
+
+        console.print(f"Scraping RHKYC results{f' for {year}' if year else ''}...")
+        rhkyc = RHKYCSource()
+        since = date_type(year, 1, 1) if year else None
+        events = asyncio.run(rhkyc.discover_events(since=since))
+        console.print(f"  Found {len(events)} result files")
+
+        if max_series:
+            events = events[:max_series]
+
+        all_results = []
+        for event in events:
+            event_results = asyncio.run(rhkyc.scrape_event(event))
+            if event_results:
+                all_results.extend(event_results)
+                console.print(f"  {event.event_name}: {len(event_results)} results")
+
+        if store and all_results:
+            from irc_data.scrapers.result_import import _find_boat_by_name
+            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
+            from irc_data.matching.identity import normalize_sail
+
+            log_id = log_ingestion_start(engine, "rhkyc")
+            imported = matched = 0
+            for r in all_results:
+                boat_id = None
+                if r.sail_number:
+                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
+                if not boat_id:
+                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
+                if boat_id:
+                    matched += 1
+                try:
+                    upsert_race_result(
+                        engine, boat_id=boat_id,
+                        event_name=r.event_name, event_date=r.event_date,
+                        race_name=r.race_name, event_series=r.event_series,
+                        organizing_club=r.organizing_club, event_type=r.event_type,
+                        source="rhkyc", source_url=r.source_url,
+                        rating_type=r.rating_type, rating_value=r.rating_value,
+                        place=r.place, fleet_size=r.fleet_size,
+                        class_name=r.class_name,
+                        status=r.status, raw_data=_enrich_raw_data(r),
+                    )
+                    imported += 1
+                except Exception as e:
+                    if imported < 3:
+                        console.print(f"    [yellow]Error: {e}[/yellow]")
+
+            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
+            console.print(f"\n[green]RHKYC: {imported} results stored ({matched} matched to boats)[/green]")
+        elif all_results:
+            irc_count = sum(1 for r in all_results if r.rating_value)
+            console.print(f"\n[green]Found {len(all_results)} RHKYC results ({irc_count} with IRC ratings)[/green]")
+        else:
+            console.print("[yellow]No RHKYC results found.[/yellow]")
+        return
+    elif source == "sailracehq":
+        from datetime import date as date_type
+
+        from irc_data.scrapers.sailracehq import SailRaceHQSource
+
+        console.print(f"Scraping SailRaceHQ (RORC 2023+) results{f' for {year}' if year else ''}...")
+        srhq = SailRaceHQSource()
+        since = date_type(year, 1, 1) if year else date_type(2023, 1, 1)
+        events = asyncio.run(srhq.discover_events(since=since))
+        console.print(f"  Found {len(events)} events/races")
+
+        if max_series:
+            events = events[:max_series]
+
+        all_results = []
+        for i, event in enumerate(events):
+            console.print(f"\n  [{i + 1}/{len(events)}] {event.event_name}")
+            try:
+                event_results = asyncio.run(srhq.scrape_event(event))
+                if event_results:
+                    all_results.extend(event_results)
+                    irc_count = sum(1 for r in event_results if r.rating_value)
+                    console.print(f"    -> {len(event_results)} results ({irc_count} with IRC TCC)")
+            except Exception as e:
+                console.print(f"    [red]Error: {e}[/red]")
+
+        if store and all_results:
+            from irc_data.scrapers.result_import import _find_boat_by_name
+            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
+            from irc_data.matching.identity import normalize_sail
+
+            log_id = log_ingestion_start(engine, "sailracehq")
+            imported = matched = 0
+            for r in all_results:
+                boat_id = None
+                if r.sail_number:
+                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
+                if not boat_id:
+                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
+                if boat_id:
+                    matched += 1
+                try:
+                    upsert_race_result(
+                        engine, boat_id=boat_id,
+                        event_name=r.event_name, event_date=r.event_date,
+                        race_name=r.race_name, event_series=r.event_series,
+                        organizing_club=r.organizing_club, event_type=r.event_type,
+                        source="sailracehq", source_url=r.source_url,
+                        rating_type=r.rating_type, rating_value=r.rating_value,
+                        place=r.place, fleet_size=r.fleet_size,
+                        status=r.status, raw_data=_enrich_raw_data(r),
+                    )
+                    imported += 1
+                except Exception as e:
+                    if imported < 3:
+                        console.print(f"    [yellow]Error: {e}[/yellow]")
+
+            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
+            console.print(f"\n[green]SailRaceHQ: {imported} results stored ({matched} matched to boats)[/green]")
+        elif all_results:
+            irc_count = sum(1 for r in all_results if r.rating_value)
+            console.print(f"\n[green]Found {len(all_results)} SailRaceHQ results ({irc_count} with IRC ratings)[/green]")
+        else:
+            console.print("[yellow]No SailRaceHQ results found.[/yellow]")
+        return
+    elif source == "topyacht":
+        from irc_data.scrapers.topyacht import TOPYACHT_CLUBS, scrape_all_clubs, scrape_club
+
+        # Determine incremental cutoff
+        since = None
+        if incremental:
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text("""
+                        SELECT max(created_at)::date - interval '1 day'
+                        FROM race_results WHERE source = 'topyacht'
+                    """)
+                ).first()
+                if row and row[0]:
+                    since = row[0].date() if hasattr(row[0], 'date') else row[0]
+                    console.print(f"[dim]Incremental mode: only races after {since}[/dim]")
+
+        # Determine which clubs to scrape
+        if all_clubs or club.upper() not in TOPYACHT_CLUBS:
+            console.print(f"Scraping TopYacht IRC results for all {len(TOPYACHT_CLUBS)} clubs...")
+            all_results = asyncio.run(scrape_all_clubs(since=since, max_series=max_series))
+        else:
+            club_key = club.upper()
+            club_name = TOPYACHT_CLUBS[club_key]["club_name"]
+            console.print(f"Scraping TopYacht IRC results for [bold]{club_name}[/bold]...")
+            all_results = asyncio.run(scrape_club(club_key, since=since, max_series=max_series))
+
+        if store and all_results:
+            from irc_data.scrapers.result_import import import_scraper_results
+
+            stats = import_scraper_results(
+                engine, all_results, source="topyacht",
+                organizing_club=TOPYACHT_CLUBS.get(club.upper(), {}).get("club_name"),
+            )
+            console.print(f"\n[green]TopYacht: {stats['imported']} results stored ({stats['matched']} matched to boats)[/green]")
+        elif all_results:
+            irc_count = sum(1 for r in all_results if r.tcc_at_race)
+            console.print(f"\n[green]Found {len(all_results)} TopYacht results ({irc_count} with IRC TCC)[/green]")
+        else:
+            console.print("[yellow]No TopYacht results found.[/yellow]")
+        return
+    elif source == "sailwave":
+        from irc_data.scrapers.race_results import scrape_sailwave_results
+
+        console.print("Scraping Sailwave results...")
+        results = asyncio.run(scrape_sailwave_results())
+    else:
+        console.print(f"[yellow]Source '{source}' not yet implemented.[/yellow]")
+        return
+
+    console.print(f"[green]Found {len(results)} race results.[/green]")
+
+    # Store results in DB if requested
+    if store and results:
+        from irc_data.scrapers.result_import import import_scraper_results
+
+        stats = import_scraper_results(engine, results, source=source, organizing_club=club if source == "sailsys" else None)
+        console.print(f"  Imported: {stats['imported']}, Matched to boats: {stats['matched']}")
+    elif results:
+        irc_results = [r for r in results if r.tcc_at_race]
+        if irc_results:
+            console.print(f"  {len(irc_results)} results have IRC TCC values")
+
+
+@scrape.command(name="tcc")
+@click.option(
+    "--no-import",
+    is_flag=True,
+    help="Only download the CSV; do not import into tcc_snapshots.",
+)
+@click.pass_context
+def scrape_tcc(ctx, no_import: bool):
+    """Download latest TCC listing CSV from ircrating.org and import it.
+
+    By default also imports the CSV into tcc_snapshots so a single cron line
+    (`irc-data scrape tcc`) keeps IRC rating data fresh end-to-end. Pass
+    --no-import to skip the database import.
+    """
+    import asyncio
+    import sys
+
+    from irc_data.scrapers.tcc_listing import download_tcc_listing
+
+    console.print("Downloading TCC listing...")
+    path = asyncio.run(download_tcc_listing())
+    if not path:
+        console.print("[red]Download failed.[/red]")
+        sys.exit(1)
+    console.print(f"[green]Saved: {path}[/green]")
+
+    if no_import:
+        return
+
+    console.print("Importing into tcc_snapshots...")
+    ctx.invoke(import_csv, path=path, snapshot_date=str(date.today()))
+
+
+@scrape.command(name="historical-certs")
+@click.option("--dry-run", is_flag=True, help="Show URLs without downloading")
+@click.option("--no-offset", is_flag=True, help="Skip ±10 cert number offset probes")
+@click.pass_context
+def scrape_historical_certs(ctx, dry_run, no_offset):
+    """Download historical certs by probing URLs from CSV data (Strategy 1)."""
+    import asyncio
+
+    from irc_data.scrapers.historical_certs import download_all_historical
+
+    console.print("Probing for historical certificates from CSV data...")
+    stats = asyncio.run(
+        download_all_historical(dry_run=dry_run, include_offset=not no_offset)
+    )
+    if dry_run:
+        console.print(f"[yellow]Dry run: {stats['total']} URLs to try[/yellow]")
+    else:
+        console.print(
+            f"[green]Probed {stats['probed']}, found {stats['found']}, "
+            f"downloaded {stats['downloaded']}[/green]"
+        )
+
+
+@scrape.command(name="cert-probe")
+@click.option("--design", "-d", default="Sunfast 3300", help="Boat design to probe")
+@click.option("--range", "scan_range", type=int, default=5000, help="How far back to scan")
+@click.option("--concurrent", type=int, default=5, help="Max concurrent requests")
+@click.option("--dry-run", is_flag=True, help="Show plan without executing")
+@click.option("--all", "all_boats", is_flag=True, help="Scan ALL boats in database")
+@click.option("--start-cert", type=int, default=None, help="Only boats with cert >= this")
+@click.option("--end-cert", type=int, default=None, help="Only boats with cert <= this")
+@click.pass_context
+def scrape_cert_probe(ctx, design, scan_range, concurrent, dry_run, all_boats, start_cert, end_cert):
+    """Smart backward cert scanning for boats (Strategy 3).
+
+    By default, scans a specific design. Use --all to scan ALL boats.
+    Use --start-cert/--end-cert to process boats in parallel batches.
+    """
+    import asyncio
+
+    from irc_data.scrapers.cert_probe import probe_design_boats
+
+    if all_boats:
+        label = "all boats"
+    else:
+        label = f"{design} boats"
+
+    range_str = ""
+    if start_cert or end_cert:
+        range_str = f" (cert range {start_cert or 1}-{end_cert or 'max'})"
+
+    console.print(f"Cert probe for {label} (scan range: {scan_range}){range_str}...")
+    stats = asyncio.run(
+        probe_design_boats(
+            design=design,
+            scan_range=scan_range,
+            max_concurrent=concurrent,
+            dry_run=dry_run,
+            all_boats=all_boats,
+            start_cert=start_cert,
+            end_cert=end_cert,
+        )
+    )
+    if dry_run:
+        console.print(f"[yellow]Dry run: {stats['boats']} boats to scan[/yellow]")
+    else:
+        console.print(
+            f"[green]{stats['found']} historical certs found, "
+            f"{stats['downloaded']} downloaded[/green]"
+        )
+
+
+@scrape.command(name="orc")
+@click.option("--country", "-c", multiple=True, help="Specific country code(s) (e.g. AUS, GBR)")
+@click.option("--snapshot-date", default=None, help="Override snapshot date (YYYY-MM-DD)")
+@click.option("--no-archive", is_flag=True, help="Don't save raw XML files")
+@click.pass_context
+def scrape_orc(ctx, country, snapshot_date, no_archive):
+    """Download all ORC certificates from data.orc.org."""
+    import asyncio
+    from datetime import date as date_type
+
+    from irc_data.scrapers.orc import scrape_all_countries
+
+    snap = date_type.fromisoformat(snapshot_date) if snapshot_date else None
+    countries = [c for c in country] if country else None
+
+    if countries:
+        console.print(f"Scraping ORC certificates for: {', '.join(countries)}")
+    else:
+        console.print("Scraping ORC certificates for ALL countries...")
+
+    stats = asyncio.run(scrape_all_countries(
+        snapshot_date=snap,
+        archive_raw=not no_archive,
+        countries=countries,
+    ))
+
+    console.print(f"\n[green]ORC scrape complete:[/green]")
+    console.print(f"  Countries: {stats['countries']}")
+    console.print(f"  Certificates found: {stats['total_found']}")
+    console.print(f"  New records: {stats['total_new']}")
+    console.print(f"  Snapshot date: {stats['snapshot_date']}")
+    if stats['errors']:
+        console.print(f"  [yellow]Errors: {len(stats['errors'])}[/yellow]")
+        for err in stats['errors']:
+            console.print(f"    {err}")
+
+
+@scrape.command(name="orc-detail")
+@click.option("--limit", "-l", type=int, default=None, help="Max certs to fetch (for testing)")
+@click.pass_context
+def scrape_orc_detail(ctx, limit):
+    """Backfill ORC certificate detail data (GPH, CDL, polars) from DownBoatRMS API."""
+    import asyncio
+
+    from irc_data.scrapers.orc import backfill_orc_details
+
+    console.print("Backfilling ORC certificate details (GPH, CDL, dimensions, polars)...")
+    stats = asyncio.run(backfill_orc_details(limit=limit))
+
+    console.print(f"\n[green]ORC detail backfill complete:[/green]")
+    console.print(f"  Certs missing data: {stats['total_missing']}")
+    console.print(f"  Successfully fetched: {stats['fetched']}")
+    console.print(f"  Errors: {stats['errors']}")
+
+
+@scrape.command(name="snapshot")
+@click.pass_context
+def scrape_snapshot(ctx):
+    """Weekly snapshot: download TCC CSV, enumerate certs, detect changes (Strategy 5)."""
+    import asyncio
+    import shutil
+    from datetime import date
+
+    from irc_data.config import CERTIFICATES_DIR, TCC_LISTINGS_DIR
+    from irc_data.scrapers.certificate_bulk import (
+        download_certificates,
+        enumerate_all_certificates,
+    )
+    from irc_data.scrapers.historical_certs import build_cert_url, download_cert
+    from irc_data.scrapers.base import get_http_client
+
+    today = date.today().isoformat()
+
+    # Step 1: Download fresh TCC listing
+    console.print("[bold]Step 1:[/bold] Downloading TCC listing...")
+    try:
+        from irc_data.scrapers.tcc_listing import download_tcc_listing
+
+        path = asyncio.run(download_tcc_listing())
+        if path:
+            console.print(f"  Saved: {path}")
+    except Exception as e:
+        console.print(f"  [yellow]TCC download failed: {e}[/yellow]")
+
+    # Step 2: Enumerate all current certs
+    console.print("[bold]Step 2:[/bold] Enumerating current certificates...")
+    current_certs = asyncio.run(enumerate_all_certificates())
+    console.print(f"  Found {len(current_certs)} current certificates")
+
+    # Step 3: Compare with what we have on disk
+    existing = set()
+    if CERTIFICATES_DIR.exists():
+        for pdf in CERTIFICATES_DIR.glob("*.pdf"):
+            parts = pdf.stem.split("_", 1)
+            if parts[0].isdigit():
+                existing.add(parts[0])
+
+    current_cert_nos = {c["cert_number"] for c in current_certs if c.get("cert_number")}
+    disappeared = existing - current_cert_nos
+    new_certs = [c for c in current_certs if c.get("cert_number") not in existing]
+
+    if disappeared:
+        console.print(f"  [yellow]{len(disappeared)} certs disappeared from search[/yellow]")
+
+    if new_certs:
+        console.print(f"  [green]{len(new_certs)} new certificates to download[/green]")
+        downloaded = asyncio.run(download_certificates(new_certs))
+        console.print(f"  Downloaded {len(downloaded)} new PDFs")
+    else:
+        console.print("  No new certificates")
+
+    # Step 4: Try to grab disappeared certs by direct URL (may still be on disk)
+    if disappeared:
+        console.print(f"[bold]Step 3:[/bold] Trying to grab {len(disappeared)} disappeared certs...")
+        grabbed = 0
+
+        async def grab_disappeared():
+            nonlocal grabbed
+            async with get_http_client() as client:
+                for cert_no in disappeared:
+                    # Find the cert info from our existing files
+                    for pdf in CERTIFICATES_DIR.glob(f"{cert_no}_*.pdf"):
+                        parts = pdf.stem.split("_", 2)
+                        if len(parts) == 3:
+                            url = build_cert_url(parts[0], parts[1], parts[2])
+                            from irc_data.scrapers.historical_certs import download_limiter
+                            await download_limiter.wait()
+                            result = await download_cert(client, url, CERTIFICATES_DIR)
+                            if result:
+                                grabbed += 1
+                        break
+
+        asyncio.run(grab_disappeared())
+        console.print(f"  Grabbed {grabbed} disappeared certificates")
+
+    console.print(f"[green]Snapshot complete for {today}[/green]")
+
+
+@cli.command(name="parse-certs")
+@click.option("--dir", "cert_dir", type=click.Path(path_type=Path), default=None)
+@click.pass_context
+def parse_certs(ctx, cert_dir):
+    """Parse downloaded certificate PDFs and insert into database."""
+    from irc_data.config import CERTIFICATES_DIR
+    from irc_data.db.operations import (
+        find_boat_by_cert_number,
+        find_boat_by_sail_number,
+        upsert_certificate,
+    )
+    from irc_data.parsers.certificate_pdf import (
+        parse_all_certificates,
+        parse_filename_info,
+    )
+
+    engine = ctx.obj["engine"]
+    cert_dir = cert_dir or CERTIFICATES_DIR
+    console.print(f"Parsing PDFs in {cert_dir}...")
+    results = parse_all_certificates(cert_dir)
+    console.print(f"Parsed {len(results)} certificates")
+
+    inserted = 0
+    matched = 0
+    for cert in results:
+        # Use cert_number from PDF, or fall back to filename
+        fn_info = parse_filename_info(Path(cert.pdf_path).name)
+        cert_number = cert.cert_number or fn_info.get("cert_number")
+
+        if not cert_number:
+            continue
+
+        # Try to match to a boat in the database
+        boat_id = find_boat_by_cert_number(engine, cert_number)
+        if not boat_id:
+            sail_no = fn_info.get("sail_number")
+            if sail_no:
+                boat_id = find_boat_by_sail_number(engine, sail_no)
+
+        if boat_id:
+            matched += 1
+
+        cert_dict = {
+            "cert_number": cert_number,
+            "issue_date": cert.issue_date,
+            "source": cert.source,
+            "pdf_path": cert.pdf_path,
+            "lh": cert.lh,
+            "beam": cert.beam,
+            "draft": cert.draft,
+            "displacement": cert.displacement,
+            "bo": cert.bo,
+            "so": cert.so,
+            "p": cert.p,
+            "e": cert.e,
+            "j": cert.j,
+            "fl": cert.fl,
+            "stl": cert.stl,
+            "spl": cert.spl,
+            "rig_type": cert.rig_type,
+            "mast_material": cert.mast_material,
+            "spreaders": cert.spreaders,
+            "muw": cert.muw,
+            "mtw": cert.mtw,
+            "mhw": cert.mhw,
+            "hlu": cert.hlu,
+            "hlp": cert.hlp,
+            "hhw": cert.hhw,
+            "htw": cert.htw,
+            "huw": cert.huw,
+            "sym_slu": cert.sym_slu,
+            "sym_sle": cert.sym_sle,
+            "sym_sf": cert.sym_sf,
+            "sym_shw": cert.sym_shw,
+            "asym_slu": cert.asym_slu,
+            "asym_sle": cert.asym_sle,
+            "asym_sf": cert.asym_sf,
+            "asym_shw": cert.asym_shw,
+            "water_ballast": cert.water_ballast,
+            "stix": cert.stix,
+            "avs": cert.avs,
+            "design_category": cert.design_category,
+            # Extended measurements
+            "lwp": cert.lwp,
+            "dlr": cert.dlr,
+            "x": cert.x,
+            "y": cert.y,
+            "internal_ballast": cert.internal_ballast,
+            "hsa": cert.hsa,
+            "headsails_max": cert.headsails_max,
+            "flying_headsails_max": cert.flying_headsails_max,
+            "fsa": cert.fsa,
+            "flu": cert.flu,
+            "flp": cert.flp,
+            "fuw": cert.fuw,
+            "ftw": cert.ftw,
+            "fhw": cert.fhw,
+            "fsfl": cert.fsfl,
+            "fshw": cert.fshw,
+            "spa": cert.spa,
+            "spinnakers_max": cert.spinnakers_max,
+            "stl_fh_max": cert.stl_fh_max,
+            "aft_rigging": cert.aft_rigging,
+            "raw_data": cert.raw_data,
+        }
+        upsert_certificate(engine, boat_id, cert_dict)
+        inserted += 1
+
+    console.print(
+        f"[green]Inserted {inserted} certificates ({matched} matched to boats).[/green]"
+    )
+
+
+# --- Analysis commands ---
+
+
+@cli.group()
+def analyze():
+    """Run analysis queries."""
+    pass
+
+
+@analyze.command(name="sunfast")
+@click.pass_context
+def analyze_sunfast(ctx):
+    """Analyze Sunfast 3300 fleet — TCC drivers, sail configs, sensitivities."""
+    from irc_data.analysis.sunfast import (
+        get_sunfast_certificates,
+        sail_config_analysis,
+        sensitivity_analysis,
+    )
+
+    engine = ctx.obj["engine"]
+
+    # Sail config analysis
+    console.print("\n[bold]Sail Configuration vs TCC[/bold]")
+    configs = sail_config_analysis(engine)
+    config_table = Table()
+    config_table.add_column("Headsails", justify="right")
+    config_table.add_column("Spinnakers", justify="right")
+    config_table.add_column("Count", justify="right")
+    config_table.add_column("TCC Range")
+    config_table.add_column("Avg TCC", justify="right")
+    config_table.add_column("Boats")
+    for c in configs:
+        config_table.add_row(
+            str(c["headsails"]),
+            str(c["spinnakers"]),
+            str(c["count"]),
+            f"{c['min_tcc']}-{c['max_tcc']}",
+            f"{c['avg_tcc']:.4f}",
+            ", ".join(c["boats"][:4]),
+        )
+    console.print(config_table)
+
+    # Sensitivity analysis
+    sens = sensitivity_analysis(engine)
+    if sens:
+        console.print(f"\n[bold]Measurement Sensitivity (n={sens['n_boats']} boats)[/bold]")
+        console.print(f"TCC Range: {sens['tcc_range'][0]:.3f} - {sens['tcc_range'][1]:.3f}")
+
+        sens_table = Table()
+        sens_table.add_column("Measurement")
+        sens_table.add_column("Range")
+        sens_table.add_column("Corr w/ TCC", justify="right")
+        sens_table.add_column("Impact", justify="right")
+
+        for field, corr in sorted(
+            sens["correlations"].items(), key=lambda x: abs(x[1]), reverse=True
+        ):
+            rng = sens["ranges"].get(field, (0, 0))
+            direction = "+" if corr > 0 else "-"
+            bar = "#" * int(abs(corr) * 10)
+            sens_table.add_row(
+                field,
+                f"{rng[0]:.2f} - {rng[1]:.2f}",
+                f"{corr:+.3f}",
+                f"{direction} {bar}",
+            )
+        console.print(sens_table)
+
+    # Certificate detail table
+    certs = get_sunfast_certificates(engine)
+    if certs:
+        console.print(f"\n[bold]Sunfast 3300 Certificate Details ({len(certs)} boats)[/bold]")
+        detail_table = Table()
+        detail_table.add_column("Boat", style="bold")
+        detail_table.add_column("Sail No")
+        detail_table.add_column("TCC", justify="right")
+        detail_table.add_column("Weight", justify="right")
+        detail_table.add_column("P", justify="right")
+        detail_table.add_column("E", justify="right")
+        detail_table.add_column("STL", justify="right")
+        detail_table.add_column("MUW", justify="right")
+        detail_table.add_column("MHW", justify="right")
+        detail_table.add_column("HLU", justify="right")
+        detail_table.add_column("SLU", justify="right")
+        detail_table.add_column("WB", justify="right")
+        for c in certs:
+            detail_table.add_row(
+                c["boat_name"],
+                c["sail_number"],
+                str(c["tcc"]),
+                str(c.get("weight") or "-"),
+                str(c.get("p") or "-"),
+                str(c.get("e") or "-"),
+                str(c.get("stl") or "-"),
+                str(c.get("muw") or "-"),
+                str(c.get("mhw") or "-"),
+                str(c.get("hlu") or "-"),
+                str(c.get("sym_slu") or "-"),
+                f"{c['water_ballast']}L" if c.get("water_ballast") else "-",
+            )
+        console.print(detail_table)
+
+
+@analyze.command(name="fleet")
+@click.option("--design", "-d", help="Filter by design")
+@click.option("--country", "-c", help="Filter by country")
+@click.pass_context
+def analyze_fleet(ctx, design, country):
+    """Show fleet statistics."""
+    from irc_data.analysis.compare import fleet_stats
+
+    engine = ctx.obj["engine"]
+    stats = fleet_stats(engine, design=design, country=country)
+    if not stats or stats.get("count") == 0:
+        console.print("[yellow]No boats found.[/yellow]")
+        return
+
+    label = []
+    if design:
+        label.append(design)
+    if country:
+        label.append(country)
+    title = f"Fleet Stats: {' / '.join(label)}" if label else "Full Fleet Stats"
+
+    console.print(f"\n[bold]{title}[/bold]")
+    console.print(f"  Boats:        {stats['count']}")
+    console.print(f"  TCC Range:    {stats['min_tcc']} - {stats['max_tcc']}")
+    console.print(f"  TCC Mean:     {stats['avg_tcc']:.4f}")
+    console.print(f"  TCC Median:   {stats['median_tcc']:.4f}")
+    console.print(f"  Avg DLR:      {stats['avg_dlr']:.0f}")
+    console.print(f"  Avg Headsails: {stats['avg_headsails']:.1f}")
+    console.print(f"  Avg Spinnakers: {stats['avg_spinnakers']:.1f}")
+
+
+@analyze.command(name="diff")
+@click.argument("date1")
+@click.argument("date2")
+@click.pass_context
+def analyze_diff(ctx, date1, date2):
+    """Compare TCC snapshots between two dates to detect changes."""
+    from irc_data.analysis.compare import tcc_snapshot_diff
+
+    engine = ctx.obj["engine"]
+    changes = tcc_snapshot_diff(engine, date1, date2)
+
+    if not changes:
+        console.print("[green]No TCC changes detected between those dates.[/green]")
+        return
+
+    console.print(f"\n[bold]TCC Changes: {date1} → {date2} ({len(changes)} boats)[/bold]")
+    diff_table = Table()
+    diff_table.add_column("Boat", style="bold")
+    diff_table.add_column("Sail No")
+    diff_table.add_column("Design")
+    diff_table.add_column("Old TCC", justify="right")
+    diff_table.add_column("New TCC", justify="right")
+    diff_table.add_column("Delta", justify="right")
+    for c in changes:
+        delta = c["tcc_delta"]
+        style = "red" if delta > 0 else "green"
+        diff_table.add_row(
+            c["boat_name"],
+            c["sail_number"],
+            c.get("design") or "-",
+            str(c["tcc_old"]),
+            str(c["tcc_new"]),
+            f"[{style}]{delta:+.4f}[/{style}]",
+        )
+    console.print(diff_table)
+
+
+@analyze.command(name="regression")
+@click.argument("design", required=False)
+@click.option("--all", "run_all", is_flag=True, help="Run for all eligible design classes")
+@click.option("--min-boats", default=5, help="Minimum boats per design (for --all)")
+@click.pass_context
+def analyze_regression(ctx, design, run_all, min_boats):
+    """Run within-class measurement sensitivity analysis (Engine 1)."""
+    from irc_data.analysis.regression import analyze_all_designs, analyze_design_sensitivity
+
+    engine = ctx.obj["engine"]
+
+    if run_all:
+        console.print("[bold]Running regression for all eligible designs...[/bold]")
+        results = analyze_all_designs(engine, min_boats=min_boats)
+        table = Table(title=f"Regression Results ({len(results)} designs)")
+        table.add_column("Design", style="bold")
+        table.add_column("Tier")
+        table.add_column("N", justify="right")
+        table.add_column("R²", justify="right")
+        table.add_column("CV R²", justify="right")
+        table.add_column("Top Lever")
+        table.add_column("2nd Lever")
+
+        for r in results:
+            coefs = r.get("coefficients", [])
+            top = coefs[0]["field"] if coefs else "-"
+            second = coefs[1]["field"] if len(coefs) > 1 else "-"
+            table.add_row(
+                r.get("design", "?"),
+                r.get("model_tier", "?"),
+                str(r.get("n_boats", 0)),
+                f"{r['r_squared']:.3f}" if r.get("r_squared") else "-",
+                f"{r['r_squared_cv']:.3f}" if r.get("r_squared_cv") else "-",
+                top,
+                second,
+            )
+        console.print(table)
+        return
+
+    if not design:
+        console.print("[yellow]Specify a design name or use --all[/yellow]")
+        return
+
+    result = analyze_design_sensitivity(engine, design)
+    if result is None:
+        console.print(f"[yellow]Not enough data for '{design}' (need ≥2 boats)[/yellow]")
+        return
+
+    d = result.to_dict()
+    console.print(f"\n[bold]{design}[/bold] — Tier {d['model_tier']}, n={d['n_boats']}, R²={d.get('r_squared', 0):.3f}")
+    if d.get("r_squared_cv"):
+        console.print(f"  Cross-validated R²: {d['r_squared_cv']:.3f}, alpha={d.get('alpha', 0):.2f}")
+
+    if d.get("coefficients"):
+        table = Table(title="Measurement Sensitivity (ranked)")
+        table.add_column("Rank", justify="right")
+        table.add_column("Field", style="bold")
+        table.add_column("Std Beta", justify="right")
+        table.add_column("Impact/Unit", justify="right")
+        table.add_column("Unit")
+        for c in d["coefficients"]:
+            style = "green" if c["std_beta"] < 0 else "red"
+            table.add_row(
+                str(c["rank"]),
+                c["field"],
+                f"[{style}]{c['std_beta']:+.4f}[/{style}]",
+                f"{c['beta_per_unit']:+.5f}",
+                c["unit"],
+            )
+        console.print(table)
+
+    if d.get("collinearity_warnings"):
+        console.print("\n[yellow]Collinearity warnings:[/yellow]")
+        for w in d["collinearity_warnings"]:
+            console.print(f"  {w}")
+
+    if d.get("interpretation"):
+        console.print(f"\n{d['interpretation']}")
+
+    if d.get("correlations"):
+        console.print("\n[bold]Pairwise Correlations (too few boats for regression):[/bold]")
+        for field, corr in sorted(d["correlations"].items(), key=lambda x: abs(x[1]), reverse=True):
+            console.print(f"  {field}: {corr:+.3f}")
+
+
+@analyze.command(name="drift")
+@click.option("--design", "-d", default=None, help="Filter to a specific design class")
+@click.pass_context
+def analyze_drift(ctx, design):
+    """Show IRC formula drift analysis (Engine 2)."""
+    from irc_data.analysis.temporal import analyze_fleet_drift
+
+    engine = ctx.obj["engine"]
+    result = analyze_fleet_drift(engine, design=design)
+
+    if result is None:
+        console.print("[yellow]No drift data available (need boats with multiple TCC snapshots).[/yellow]")
+        return
+
+    d = result.to_dict()
+    fw = d["fleet_wide"]
+
+    label = f" ({design})" if design else " (all designs)"
+    console.print(f"\n[bold]IRC Formula Drift{label}[/bold]")
+    console.print(f"  Period: {d['period']}")
+    console.print(f"  Stable boats: {fw['n_stable']} of {fw['n_total']}")
+    console.print(f"  Mean drift: {fw['mean_drift']:+.5f}")
+    console.print(f"  Median drift: {fw['median_drift']:+.5f}")
+    console.print(f"  Decreased: {fw['pct_decreased']:.0f}%")
+
+    if fw.get("p_value_ttest") is not None:
+        console.print(f"  t-test p-value: {fw['p_value_ttest']:.6f}")
+    if fw.get("cohens_d") is not None:
+        console.print(f"  Cohen's d: {fw['cohens_d']:.3f}")
+
+    console.print(f"\n  {fw['interpretation']}")
+
+    if d.get("by_dimension"):
+        console.print("\n[bold]Dimensional Changes:[/bold]")
+        for dim in d["by_dimension"]:
+            console.print(f"  {dim['field']}: {dim['coefficient_change']:+.4f} ({dim['direction']})")
+
+    if d.get("by_country"):
+        console.print("\n[bold]By Country:[/bold]")
+        table = Table()
+        table.add_column("Country")
+        table.add_column("N Stable", justify="right")
+        table.add_column("Mean Drift", justify="right")
+        table.add_column("% Decreased", justify="right")
+        for country, stats in sorted(d["by_country"].items(), key=lambda x: x[1]["mean_drift"]):
+            table.add_row(
+                country,
+                str(stats["n_stable"]),
+                f"{stats['mean_drift']:+.5f}",
+                f"{stats['pct_decreased']:.0f}%",
+            )
+        console.print(table)
+
+
+@analyze.command(name="performance")
+@click.argument("sail_number")
+@click.pass_context
+def analyze_performance(ctx, sail_number):
+    """Show RAI + head-to-head for a boat (Engine 3)."""
+    from irc_data.analysis.performance import compute_head_to_head, compute_rai
+    from irc_data.db.operations import find_boat_by_sail_number
+
+    engine = ctx.obj["engine"]
+    boat_id = find_boat_by_sail_number(engine, sail_number)
+    if not boat_id:
+        console.print(f"[red]No boat found with sail number '{sail_number}'[/red]")
+        return
+
+    # RAI
+    rai = compute_rai(engine, boat_id)
+    if rai:
+        style = "green" if rai.rai > 0 else "red"
+        console.print(f"\n[bold]{rai.boat_name} ({rai.sail_number})[/bold]")
+        console.print(f"  Design: {rai.design or 'Unknown'}")
+        console.print(f"  RAI: [{style}]{rai.rai:+.1f}[/{style}] (95% CI: [{rai.ci_lower:+.1f}, {rai.ci_upper:+.1f}])")
+        console.print(f"  Races: {rai.n_races} | Wins: {rai.wins} | Podiums: {rai.podiums}")
+        console.print(f"  Avg finish %: {rai.avg_finish_pct:.1%} | Expected: {rai.avg_expected_pct:.1%}")
+        console.print(f"\n  {rai.interpretation}")
+    else:
+        console.print(f"[yellow]No race results found for sail number '{sail_number}'[/yellow]")
+        return
+
+    # Head-to-head
+    rivals = compute_head_to_head(engine, boat_id)
+    if rivals:
+        console.print(f"\n[bold]Head-to-Head Records ({len(rivals)} rivals):[/bold]")
+        table = Table()
+        table.add_column("Rival", style="bold")
+        table.add_column("Sail No")
+        table.add_column("W", justify="right")
+        table.add_column("L", justify="right")
+        table.add_column("Win%", justify="right")
+        table.add_column("Meetings", justify="right")
+        for r in rivals[:20]:
+            total = r.wins + r.losses
+            pct = r.wins / total * 100 if total > 0 else 0
+            style = "green" if pct > 50 else "red" if pct < 50 else ""
+            table.add_row(
+                r.rival_name,
+                r.rival_sail_number,
+                str(r.wins),
+                str(r.losses),
+                f"[{style}]{pct:.0f}%[/{style}]" if style else f"{pct:.0f}%",
+                str(r.events_together),
+            )
+        console.print(table)
+    else:
+        console.print("  [dim]No head-to-head records (no shared events with other boats)[/dim]")
+
+
+@analyze.command(name="optimize")
+@click.argument("sail_number")
+@click.pass_context
+def analyze_optimize(ctx, sail_number):
+    """Full optimisation report for a boat (Engine 4)."""
+    from irc_data.analysis.optimizer import generate_optimisation_report
+    from irc_data.db.operations import find_boat_by_sail_number
+
+    engine = ctx.obj["engine"]
+    boat_id = find_boat_by_sail_number(engine, sail_number)
+    if not boat_id:
+        console.print(f"[red]No boat found with sail number '{sail_number}'[/red]")
+        return
+
+    report = generate_optimisation_report(engine, boat_id)
+    if not report:
+        console.print("[yellow]Could not generate report.[/yellow]")
+        return
+
+    console.print(f"\n[bold]Optimisation Report: {report.boat_name} ({report.sail_number})[/bold]")
+    console.print(f"  Design: {report.design or 'Unknown'}")
+    console.print(f"  Current TCC: {report.current_tcc:.4f}" if report.current_tcc else "  Current TCC: —")
+    if report.model_tier:
+        console.print(f"  Model: Tier {report.model_tier} (R²={report.r_squared:.3f})" if report.r_squared else f"  Model: Tier {report.model_tier}")
+    if report.rai is not None:
+        console.print(f"  RAI: {report.rai:+.1f}")
+    if report.drift_context:
+        console.print(f"  Drift: {report.drift_context}")
+
+    if report.recommendations:
+        console.print(f"\n[bold]Recommendations ({len(report.recommendations)}):[/bold]")
+        table = Table()
+        table.add_column("#", justify="right")
+        table.add_column("Field", style="bold")
+        table.add_column("Category")
+        table.add_column("Current", justify="right")
+        table.add_column("Target", justify="right")
+        table.add_column("Est. TCC", justify="right")
+        table.add_column("Feasibility")
+        table.add_column("Evidence")
+
+        for rec in report.recommendations:
+            target = rec.smart_boat_avg if rec.smart_boat_avg is not None else rec.class_mean
+            style = "green" if rec.estimated_tcc_delta < 0 else "red"
+            table.add_row(
+                str(rec.rank),
+                rec.field,
+                rec.category,
+                f"{rec.current_value:.2f}" if rec.current_value is not None else "—",
+                f"{target:.2f}" if target is not None else "—",
+                f"[{style}]{rec.estimated_tcc_delta:+.4f}[/{style}]",
+                rec.feasibility_label,
+                rec.evidence_strength,
+            )
+        console.print(table)
+
+        console.print("\n[bold]Details:[/bold]")
+        for rec in report.recommendations[:5]:
+            console.print(f"  {rec.rank}. {rec.explanation}")
+    else:
+        console.print("  [dim]No recommendations available (insufficient fleet data)[/dim]")
+
+    if report.orc_context:
+        console.print(f"\n[bold]ORC Cross-Reference:[/bold]")
+        orc = report.orc_context
+        if orc.get("gph"):
+            console.print(f"  GPH: {orc['gph']:.2f} sec/mile")
+        if orc.get("triple_low"):
+            console.print(f"  Triple: {orc.get('triple_low', 0):.1f}/{orc.get('triple_med', 0):.1f}/{orc.get('triple_high', 0):.1f}")
+
+
+@analyze.command(name="compare")
+@click.argument("design1")
+@click.argument("design2")
+@click.pass_context
+def analyze_compare(ctx, design1, design2):
+    """Cross-design comparison (Engine 5)."""
+    from irc_data.analysis.design_compare import compare_designs
+
+    engine = ctx.obj["engine"]
+    result = compare_designs(engine, [design1, design2])
+
+    if result.get("error"):
+        console.print(f"[red]{result['error']}[/red]")
+        return
+
+    for profile in result.get("profiles", []):
+        tcc = profile.get("tcc", {})
+        perf = profile.get("performance", {})
+        activity = profile.get("activity", {})
+
+        console.print(f"\n[bold]{profile['design']}[/bold] ({profile['n_boats']} boats)")
+        console.print(f"  TCC: {tcc.get('mean', '—')} (range {tcc.get('min', '—')}–{tcc.get('max', '—')}, spread {tcc.get('spread', '—')})")
+        console.print(f"  LOA: {profile.get('rating_efficiency', {}).get('avg_loa', '—')}m")
+        console.print(f"  Modification potential: {profile.get('modification_potential', '—')}")
+        console.print(f"  Countries: {profile.get('n_countries', 0)}")
+        console.print(f"  Race results: {activity.get('total_race_results', 0)} ({activity.get('avg_races_per_boat', 0):.1f}/boat)")
+
+        if perf.get("mean_rai") is not None:
+            console.print(f"  Mean RAI: {perf['mean_rai']:+.1f} ({perf.get('n_with_races', 0)} boats with races)")
+
+    if result.get("highlights"):
+        console.print("\n[bold]Comparison Highlights:[/bold]")
+        for h in result["highlights"]:
+            console.print(f"  • {h}")
+
+
+# --- Database management commands ---
+
+
+def _get_alembic_cfg(engine_url: str | None = None):
+    """Build an Alembic Config using the project's alembic.ini."""
+    from alembic.config import Config
+
+    from irc_data.config import DATABASE_URL, PROJECT_ROOT
+
+    alembic_cfg = Config(str(PROJECT_ROOT / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(PROJECT_ROOT / "alembic"))
+    if engine_url:
+        alembic_cfg.set_main_option("sqlalchemy.url", engine_url)
+    return alembic_cfg
+
+
+@cli.command(name="db-upgrade")
+@click.option("--revision", default="head", help="Target revision (default: head)")
+@click.pass_context
+def db_upgrade(ctx, revision):
+    """Run Alembic migrations to upgrade the database schema."""
+    from alembic import command
+
+    alembic_cfg = _get_alembic_cfg()
+    console.print(f"Upgrading database to revision: {revision}")
+    command.upgrade(alembic_cfg, revision)
+    console.print("[green]Database upgrade complete.[/green]")
+
+
+@cli.command(name="db-stamp")
+@click.option("--revision", default="head", help="Revision to stamp (default: head)")
+@click.pass_context
+def db_stamp(ctx, revision):
+    """Stamp the database with a specific Alembic revision (no migration run)."""
+    from alembic import command
+
+    alembic_cfg = _get_alembic_cfg()
+    console.print(f"Stamping database at revision: {revision}")
+    command.stamp(alembic_cfg, revision)
+    console.print("[green]Database stamped.[/green]")
+
+
+@cli.command(name="import-results")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option("--format", "fmt", type=click.Choice(["sailsys-json"]), default="sailsys-json", help="JSON format")
+@click.pass_context
+def import_results(ctx, path: Path, fmt: str):
+    """Import race results from a JSON file into the database."""
+    engine = ctx.obj["engine"]
+
+    if fmt == "sailsys-json":
+        from irc_data.scrapers.result_import import import_sailsys_json
+
+        console.print(f"Importing SailSys results from {path}...")
+        stats = import_sailsys_json(engine, path)
+        console.print(f"  Total records: {stats['total']}")
+        console.print(f"  Imported: {stats['imported']}")
+        console.print(f"  Matched to boats: {stats['matched']}")
+        console.print(f"  Skipped (no name): {stats['skipped_no_name']}")
+        if stats['errors']:
+            console.print(f"  [yellow]Errors: {stats['errors']}[/yellow]")
+
+
+@cli.command(name="dedup-orc-snapshots")
+@click.option("--batch-size", default=500, show_default=True, help="Rows per delete batch")
+@click.pass_context
+def dedup_orc_snapshots(ctx, batch_size):
+    """Collapse byte-identical ORC certificate snapshots into a single row per run.
+
+    For each (ref_no, country_id), keeps the earliest row of each
+    content-identical run and deletes the rest. Idempotent and safe to re-run.
+    """
+    from irc_data.db.operations import dedup_orc_certificates
+
+    engine = ctx.obj["engine"]
+    console.print("Scanning orc_certificates for duplicate snapshots...")
+
+    def _progress(groups_done: int, groups_total: int, deleted: int):
+        console.print(
+            f"  {groups_done}/{groups_total} groups scanned — {deleted} duplicates deleted so far"
+        )
+
+    stats = dedup_orc_certificates(engine, batch_size=batch_size, progress_callback=_progress)
+
+    console.print(f"\n[green]ORC snapshot dedup complete:[/green]")
+    console.print(f"  Groups scanned: {stats['groups_scanned']}")
+    console.print(f"  Rows before:    {stats['rows_before']}")
+    console.print(f"  Rows after:     {stats['rows_after']}")
+    console.print(f"  Rows deleted:   {stats['rows_deleted']}")
+
+
+@cli.command(name="refresh-views")
+@click.pass_context
+def refresh_views(ctx):
+    """Refresh all materialized views."""
+    from irc_data.db.operations import refresh_materialized_views
+
+    engine = ctx.obj["engine"]
+    console.print("Refreshing materialized views...")
+    refreshed = refresh_materialized_views(engine)
+    for view in refreshed:
+        console.print(f"  [green]Refreshed: {view}[/green]")
+    if not refreshed:
+        console.print("  [yellow]No views refreshed (do they exist?)[/yellow]")
+
+
+@cli.command(name="match-boats")
+@click.option("--dry-run", is_flag=True, help="Show matches without writing to DB")
+@click.pass_context
+def match_boats(ctx, dry_run):
+    """Match ORC certificates to IRC boats by sail number and name."""
+    from irc_data.matching.identity import (
+        backfill_boat_details_from_orc,
+        backfill_design_from_irc_certs,
+        backfill_design_from_sailsys,
+        match_orc_to_irc,
+        record_identities_from_irc,
+        record_identities_from_orc,
+    )
+
+    engine = ctx.obj["engine"]
+
+    console.print("[bold]Step 1:[/bold] Matching ORC certificates to IRC boats...")
+    stats = match_orc_to_irc(engine, dry_run=dry_run)
+    console.print(f"  Total ORC certs (unmatched): {stats['total_orc']}")
+    console.print(f"  Already matched: {stats['already_matched']}")
+    console.print(f"  Matched by sail number: {stats['matched_sail_exact']}")
+    console.print(f"  Matched by sail + name: {stats['matched_sail_name']}")
+    console.print(f"  Matched by name + country: {stats['matched_name_country']}")
+    console.print(f"  Ambiguous skipped: {stats['ambiguous_skipped']}")
+    console.print(f"  [green]Total matched: {stats['matched_total']}[/green]")
+    console.print(f"  Unmatched: {stats['unmatched']}")
+
+    if dry_run:
+        console.print("[yellow]Dry run — no changes written.[/yellow]")
+        return
+
+    console.print("\n[bold]Step 2:[/bold] Recording identity observations...")
+    irc_ids = record_identities_from_irc(engine)
+    console.print(f"  IRC identities recorded: {irc_ids}")
+    orc_ids = record_identities_from_orc(engine)
+    console.print(f"  ORC identities recorded: {orc_ids}")
+
+    console.print("\n[bold]Step 3:[/bold] Backfilling boat details from ORC...")
+    backfilled = backfill_boat_details_from_orc(engine)
+    console.print(f"  Boats updated with ORC data: {backfilled}")
+
+    console.print("\n[bold]Step 4:[/bold] Backfilling design from IRC certificates...")
+    irc_design_count = backfill_design_from_irc_certs(engine)
+    console.print(f"  Boats updated with IRC cert design: {irc_design_count}")
+
+    console.print("\n[bold]Step 5:[/bold] Backfilling design from SailSys race data...")
+    sailsys_design_count = backfill_design_from_sailsys(engine)
+    console.print(f"  Boats updated with SailSys design: {sailsys_design_count}")
+
+
+@cli.command(name="seed-designs")
+@click.pass_context
+def seed_designs(ctx):
+    """Seed design_classes from IRC + ORC data and backfill design_canonical."""
+    from irc_data.matching.designs import backfill_design_canonical, seed_design_classes
+
+    engine = ctx.obj["engine"]
+
+    console.print("[bold]Step 1:[/bold] Seeding design classes...")
+    stats = seed_design_classes(engine)
+    console.print(f"  From IRC: {stats['from_irc']} designs")
+    console.print(f"  From ORC: {stats['from_orc']} designs")
+    console.print(f"  Total design classes: {stats['total']}")
+
+    console.print("\n[bold]Step 2:[/bold] Backfilling design_canonical on boats...")
+    updated = backfill_design_canonical(engine)
+    console.print(f"  Boats updated: {updated}")
+
+
+@cli.command(name="seed-design-designers")
+@click.pass_context
+def seed_design_designers(ctx):
+    """Apply the curated design -> designer/builder mapping to design_classes.
+
+    Idempotent: only fills NULL/empty values in design_classes; existing
+    non-empty designer/builder values are left untouched.
+    """
+    from irc_data.matching.design_designers import DESIGN_DESIGNERS
+
+    engine = ctx.obj["engine"]
+    total = len(DESIGN_DESIGNERS)
+    designer_updates = 0
+    builder_updates = 0
+    designer_skipped = 0
+    builder_skipped = 0
+    missing_classes = 0
+
+    with engine.begin() as conn:
+        for name_canonical, (designer, builder) in DESIGN_DESIGNERS.items():
+            row = conn.execute(
+                text(
+                    "SELECT id, designer, builder FROM design_classes "
+                    "WHERE name_canonical = :n"
+                ),
+                {"n": name_canonical},
+            ).fetchone()
+            if not row:
+                missing_classes += 1
+                continue
+
+            if designer:
+                if row.designer is None or row.designer.strip() == "":
+                    conn.execute(
+                        text("UPDATE design_classes SET designer = :d WHERE id = :id"),
+                        {"d": designer, "id": row.id},
+                    )
+                    designer_updates += 1
+                else:
+                    designer_skipped += 1
+            if builder:
+                if row.builder is None or row.builder.strip() == "":
+                    conn.execute(
+                        text("UPDATE design_classes SET builder = :b WHERE id = :id"),
+                        {"b": builder, "id": row.id},
+                    )
+                    builder_updates += 1
+                else:
+                    builder_skipped += 1
+
+    console.print("[bold]Seed design_classes designer/builder:[/bold]")
+    console.print(f"  Curated entries:        {total}")
+    console.print(f"  Designer rows updated:  {designer_updates}")
+    console.print(f"  Designer rows skipped:  {designer_skipped} (already set)")
+    console.print(f"  Builder rows updated:   {builder_updates}")
+    console.print(f"  Builder rows skipped:   {builder_skipped} (already set)")
+    console.print(
+        f"  Missing from design_classes: {missing_classes} "
+        "(no matching name_canonical; rerun `seed-designs` first if many)"
+    )
+
+
+@cli.command(name="backfill-boat-identity")
+@click.option(
+    "--source",
+    type=click.Choice(["all", "orc", "design_classes"]),
+    default="all",
+    help="Limit backfill to a single source.",
+)
+@click.pass_context
+def backfill_boat_identity(ctx, source):
+    """Backfill boats.designer / builder / year_built from authoritative sources.
+
+    Priority order (each source only fills currently-NULL columns):
+      1. orc_certificates (per-boat owner-declared values; latest snapshot wins)
+      2. design_classes (curated mapping, via boats.design_canonical)
+
+    Idempotent — re-running on a clean DB updates 0 rows.
+    """
+    engine = ctx.obj["engine"]
+
+    def coverage():
+        with engine.begin() as conn:
+            row = conn.execute(text(
+                "SELECT COUNT(*) AS total, "
+                "       COUNT(designer) AS d, "
+                "       COUNT(builder) AS b, "
+                "       COUNT(year_built) AS y "
+                "FROM boats"
+            )).fetchone()
+        return dict(total=row.total, designer=row.d, builder=row.b, year=row.y)
+
+    before = coverage()
+    console.print(
+        f"[bold]Before:[/bold] boats={before['total']} "
+        f"designer={before['designer']} ({before['designer']*100/before['total']:.1f}%) "
+        f"builder={before['builder']} ({before['builder']*100/before['total']:.1f}%) "
+        f"year_built={before['year']} ({before['year']*100/before['total']:.1f}%)"
+    )
+
+    results: dict[str, dict[str, int]] = {}
+
+    # --- Source 1: ORC certificates ---
+    # Per-field "latest non-empty" wins. ORC snapshots are inconsistent —
+    # often the most recent row has blank designer/builder but an older
+    # snapshot has the real data — so we don't just pick max(snapshot_date).
+    if source in ("all", "orc"):
+        with engine.begin() as conn:
+            r = conn.execute(text("""
+                WITH src AS (
+                    SELECT
+                        boat_id,
+                        (ARRAY_REMOVE(ARRAY_AGG(
+                            NULLIF(designer, '')
+                            ORDER BY snapshot_date DESC, id DESC
+                        ), NULL))[1] AS designer,
+                        (ARRAY_REMOVE(ARRAY_AGG(
+                            NULLIF(builder, '')
+                            ORDER BY snapshot_date DESC, id DESC
+                        ), NULL))[1] AS builder,
+                        (ARRAY_REMOVE(ARRAY_AGG(
+                            year_built
+                            ORDER BY snapshot_date DESC, id DESC
+                        ), NULL))[1] AS year_built
+                    FROM orc_certificates
+                    WHERE boat_id IS NOT NULL
+                    GROUP BY boat_id
+                )
+                UPDATE boats b
+                SET designer   = COALESCE(NULLIF(b.designer, ''), src.designer),
+                    builder    = COALESCE(NULLIF(b.builder, ''),  src.builder),
+                    year_built = COALESCE(b.year_built,            src.year_built)
+                FROM src
+                WHERE b.id = src.boat_id
+                  AND (
+                    (NULLIF(b.designer, '') IS NULL AND src.designer IS NOT NULL)
+                    OR (NULLIF(b.builder, '') IS NULL AND src.builder IS NOT NULL)
+                    OR (b.year_built IS NULL AND src.year_built IS NOT NULL)
+                  )
+                RETURNING b.id,
+                          (src.designer IS NOT NULL) AS got_d,
+                          (src.builder  IS NOT NULL) AS got_b,
+                          (src.year_built IS NOT NULL) AS got_y
+            """)).fetchall()
+        results["orc"] = {
+            "rows_touched": len(r),
+            "designer_filled": sum(1 for x in r if x.got_d),
+            "builder_filled":  sum(1 for x in r if x.got_b),
+            "year_filled":     sum(1 for x in r if x.got_y),
+        }
+        after_orc = coverage()
+        console.print(
+            f"  [green]ORC:[/green] rows touched={results['orc']['rows_touched']} "
+            f"(+designer {after_orc['designer']-before['designer']}, "
+            f"+builder {after_orc['builder']-before['builder']}, "
+            f"+year {after_orc['year']-before['year']})"
+        )
+    else:
+        after_orc = before
+
+    # --- Source 2: design_classes (curated via design_canonical) ---
+    if source in ("all", "design_classes"):
+        with engine.begin() as conn:
+            r = conn.execute(text("""
+                UPDATE boats b
+                SET designer = COALESCE(NULLIF(b.designer, ''), dc.designer),
+                    builder  = COALESCE(NULLIF(b.builder, ''),  dc.builder)
+                FROM design_classes dc
+                WHERE b.design_canonical = dc.name_canonical
+                  AND (
+                    (NULLIF(b.designer, '') IS NULL AND dc.designer IS NOT NULL AND dc.designer <> '')
+                    OR (NULLIF(b.builder, '') IS NULL AND dc.builder IS NOT NULL AND dc.builder <> '')
+                  )
+                RETURNING b.id,
+                          (dc.designer IS NOT NULL AND dc.designer <> '') AS got_d,
+                          (dc.builder  IS NOT NULL AND dc.builder  <> '') AS got_b
+            """)).fetchall()
+        results["design_classes"] = {
+            "rows_touched": len(r),
+            "designer_filled": sum(1 for x in r if x.got_d),
+            "builder_filled":  sum(1 for x in r if x.got_b),
+        }
+        after_dc = coverage()
+        console.print(
+            f"  [green]design_classes:[/green] rows touched={results['design_classes']['rows_touched']} "
+            f"(+designer {after_dc['designer']-after_orc['designer']}, "
+            f"+builder {after_dc['builder']-after_orc['builder']})"
+        )
+
+    after = coverage()
+    console.print(
+        f"[bold]After:[/bold]  boats={after['total']} "
+        f"designer={after['designer']} ({after['designer']*100/after['total']:.1f}%) "
+        f"builder={after['builder']} ({after['builder']*100/after['total']:.1f}%) "
+        f"year_built={after['year']} ({after['year']*100/after['total']:.1f}%)"
+    )
+    console.print(
+        f"[bold]Delta:[/bold]  designer +{after['designer']-before['designer']}, "
+        f"builder +{after['builder']-before['builder']}, "
+        f"year_built +{after['year']-before['year']}"
+    )
+
+
+@cli.command(name="health-check")
+@click.option("--notify", is_flag=True, help="Send alerts to webhook (WEBHOOK_URL env var)")
+@click.option("--webhook-url", envvar="WEBHOOK_URL", default=None, help="Discord/Slack webhook URL")
+@click.pass_context
+def health_check(ctx, notify, webhook_url):
+    """Run health checks and optionally send alerts to Discord/Slack."""
+    from irc_data.monitoring import check_health, send_webhook
+
+    engine = ctx.obj["engine"]
+    report = check_health(engine)
+
+    # Display
+    status_color = "green" if report["status"] == "ok" else "red"
+    console.print(f"\n[{status_color}]Status: {report['status'].upper()}[/{status_color}]")
+
+    checks = report.get("checks", {})
+    if "counts" in checks:
+        for k, v in checks["counts"].items():
+            console.print(f"  {k}: {v}")
+
+    if checks.get("orc_latest"):
+        console.print(f"  ORC latest: {checks['orc_latest']} ({checks.get('hours_since_orc', '?')}h ago)")
+    if checks.get("irc_latest"):
+        console.print(f"  IRC latest: {checks['irc_latest']} ({checks.get('days_since_irc', '?')}d ago)")
+    if checks.get("disk_usage_pct"):
+        console.print(f"  Disk usage: {checks['disk_usage_pct']}%")
+
+    alerts = report.get("alerts", [])
+    if alerts:
+        console.print(f"\n[yellow]Alerts ({len(alerts)}):[/yellow]")
+        for a in alerts:
+            console.print(f"  [yellow]! {a}[/yellow]")
+    else:
+        console.print("\n  No alerts")
+
+    # Notify via webhook
+    if notify and webhook_url:
+        console.print(f"\nSending to webhook...")
+        ok = send_webhook(webhook_url, report)
+        if ok:
+            console.print("[green]  Webhook notification sent.[/green]")
+        else:
+            console.print("[red]  Webhook notification failed.[/red]")
+    elif notify:
+        console.print("[yellow]  --notify set but no WEBHOOK_URL configured[/yellow]")
+
+
+@cli.command(name="rematch-results")
+@click.option("--dry-run", is_flag=True, help="Show matches without writing to DB")
+@click.pass_context
+def rematch_results(ctx, dry_run):
+    """Re-match unmatched race results to boats using multiple strategies."""
+    from irc_data.matching.results import run_rematch
+
+    engine = ctx.obj["engine"]
+    console.print("[bold]Re-matching unmatched race results...[/bold]")
+    stats = run_rematch(engine, dry_run=dry_run)
+
+    console.print(f"\n[bold]Results:[/bold]")
+    console.print(f"  Total unmatched before: {stats['total_unmatched']}")
+    console.print(f"  Matches found:         {stats['matched']}")
+    console.print(f"  Updates applied:       {stats['updated']}")
+    console.print(f"  Boats created:         {stats.get('boats_created', 0)}")
+    console.print(f"  Remaining unmatched:   {stats['remaining']}")
+    console.print(f"\n[bold]By strategy:[/bold]")
+    for key in sorted(stats):
+        if key.startswith(("sailsys_", "rorc_", "generic_")):
+            console.print(f"  {key}: {stats[key]}")
+
+    if stats.get("boats_created", 0):
+        console.print(f"\n  New boats from results: {stats['boats_created']}")
+        console.print(f"  Results linked to new:  {stats.get('results_linked_to_new_boats', 0)}")
+    if stats.get("phase3_rematched", 0):
+        console.print(f"  Phase 3 re-matches:    {stats['phase3_rematched']}")
+
+    if stats['total_unmatched'] > 0:
+        pct = stats['matched'] / stats['total_unmatched'] * 100
+        console.print(f"\n  Match rate: [green]{pct:.1f}%[/green]")
+
+
+@cli.command(name="scrape-daemon")
+@click.option("--interval", default=1800, help="Seconds between scrape cycles (default: 1800 = 30min)")
+@click.pass_context
+def scrape_daemon(ctx, interval):
+    """Run continuous scrape cycles: all SailSys clubs + rematch every N seconds."""
+    import asyncio
+    import time
+
+    from irc_data.db.operations import log_ingestion_end, log_ingestion_start
+    from irc_data.matching.results import run_rematch
+    from irc_data.scrapers.result_import import import_scraper_results
+    from irc_data.scrapers.sailsys import CLUBS, scrape_club_irc_results
+
+    engine = ctx.obj["engine"]
+    console.print(f"[bold]Starting scrape daemon (cycle every {interval}s)[/bold]")
+    console.print(f"  Clubs: {', '.join(CLUBS.keys())}")
+
+    cycle = 0
+    while True:
+        cycle += 1
+        cycle_start = time.time()
+        console.print(f"\n{'='*50}")
+        console.print(f"[bold]Cycle {cycle}[/bold] — {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # Determine incremental cutoff
+        since = None
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("""
+                    SELECT max(created_at)::date - interval '1 day'
+                    FROM race_results WHERE source = 'sailsys'
+                """)
+            ).first()
+            if row and row[0]:
+                since = row[0].date() if hasattr(row[0], 'date') else row[0]
+
+        total_results = 0
+        total_matched = 0
+        errors = []
+
+        for club_name, club_id in CLUBS.items():
+            try:
+                club_results = asyncio.run(scrape_club_irc_results(
+                    club_id, since=since,
+                ))
+                if club_results:
+                    stats = import_scraper_results(
+                        engine, club_results, source="sailsys",
+                        organizing_club=club_name,
+                    )
+                    total_results += stats["imported"]
+                    total_matched += stats["matched"]
+                    console.print(f"  {club_name}: {stats['imported']} results ({stats['matched']} matched)")
+                else:
+                    console.print(f"  {club_name}: no new results")
+            except Exception as e:
+                errors.append(f"{club_name}: {e}")
+                console.print(f"  [red]{club_name}: {e}[/red]")
+
+        # Run rematch after scrape cycle
+        console.print("\n  Running rematch...")
+        try:
+            rematch_stats = run_rematch(engine)
+            console.print(f"  Rematch: {rematch_stats['matched']} new matches")
+        except Exception as e:
+            console.print(f"  [red]Rematch error: {e}[/red]")
+
+        elapsed = time.time() - cycle_start
+        console.print(f"\n  Cycle {cycle} complete in {elapsed:.0f}s — {total_results} results, {total_matched} matched")
+        if errors:
+            console.print(f"  [yellow]{len(errors)} errors[/yellow]")
+
+        # Sleep until next cycle
+        sleep_time = max(0, interval - elapsed)
+        if sleep_time > 0:
+            console.print(f"  Sleeping {sleep_time:.0f}s until next cycle...")
+            time.sleep(sleep_time)
+
+
+@cli.command(name="serve")
+@click.option("--host", default="0.0.0.0", help="Bind address")
+@click.option("--port", default=4100, help="Port")
+@click.option("--workers", default=2, help="Worker processes")
+@click.option("--reload", "do_reload", is_flag=True, help="Auto-reload on code changes")
+def serve(host, port, workers, do_reload):
+    """Start the FastAPI API server."""
+    import uvicorn
+
+    console.print(f"Starting API server on {host}:{port} (workers={workers})...")
+    uvicorn.run(
+        "irc_data.api.app:app",
+        host=host,
+        port=port,
+        workers=1 if do_reload else workers,
+        reload=do_reload,
+    )

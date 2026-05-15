@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your IRC Rating Report</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9; padding: 40px 0;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #1e3a5f 0%, #2b5a8f 100%); padding: 32px 40px; color: white;">
+                            <h1 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.5px;">SailRatings</h1>
+                            <p style="margin: 4px 0 0 0; font-size: 11px; opacity: 0.8; text-transform: uppercase; letter-spacing: 1px;">IRC &amp; ORC Rating Intelligence</p>
+                        </td>
+                    </tr>
+
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <h2 style="margin: 0 0 4px 0; font-size: 20px; color: #1e293b;">Your IRC Rating Report</h2>
+                            <p style="margin: 0 0 24px 0; font-size: 16px; color: #64748b;">{{ boat_name }} ({{ sail_number }})</p>
+
+                            <p style="color: #475569; font-size: 14px; line-height: 1.6; margin-bottom: 16px;">
+                                Your full IRC rating analysis is ready. It includes measurement sensitivity analysis,
+                                optimisation recommendations, racing performance data, and fleet comparison.
+                            </p>
+
+                            <p style="color: #475569; font-size: 14px; line-height: 1.6; margin-bottom: 32px;">
+                                The PDF report is attached to this email. You can also view the interactive version online:
+                            </p>
+
+                            <!-- CTA Button -->
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td align="center" style="padding-bottom: 32px;">
+                                        <a href="{{ report_url }}"
+                                           style="display: inline-block; background: #1e3a5f; color: white; padding: 14px 36px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                                            View Report Online
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 0 0 24px 0;">
+
+                            <p style="color: #94a3b8; font-size: 12px; line-height: 1.5;">
+                                This report is generated from publicly available IRC and ORC rating data.
+                                Measurement sensitivity coefficients are statistical fleet observations, not IRC formula disclosures.
+                                Always confirm changes with a trial certificate.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background: #f8fafc; padding: 20px 40px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="margin: 0; color: #94a3b8; font-size: 11px;">
+                                &copy; SailRatings.com &nbsp;|&nbsp;
+                                <a href="https://sailratings.com" style="color: #64748b; text-decoration: none;">sailratings.com</a>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
