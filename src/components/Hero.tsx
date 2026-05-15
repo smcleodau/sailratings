@@ -135,17 +135,7 @@ export default function Hero({ onBoatSelected }: HeroProps) {
         />
       </div>
 
-      <MainNav
-        theme="on-image"
-        cta={
-          <button
-            className="hidden sm:block text-white text-[13px] font-body font-semibold px-5 py-2.5 rounded hover:opacity-90 transition-opacity"
-            style={{ background: "#F2542D" }}
-          >
-            Start Reviewing &rarr;
-          </button>
-        }
-      />
+      <MainNav theme="on-image" />
 
       {/* Content — positioned in upper area, below nav */}
       <div className="relative z-20 flex flex-col items-center pt-[140px] px-6 text-center">
