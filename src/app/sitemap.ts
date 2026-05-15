@@ -16,11 +16,10 @@ type Route = {
 };
 
 const PUBLIC_ROUTES: Route[] = [
-  { path: "/", changeFrequency: "weekly", priority: 1.0 },
-  // Add future public routes here, e.g.:
-  // { path: "/how-it-works", changeFrequency: "monthly", priority: 0.7 },
-  // { path: "/pricing",      changeFrequency: "monthly", priority: 0.7 },
-  // { path: "/about",        changeFrequency: "yearly",  priority: 0.5 },
+  { path: "/",        changeFrequency: "weekly",  priority: 1.0 },
+  { path: "/ratings", changeFrequency: "monthly", priority: 0.8 },
+  { path: "/fleet",   changeFrequency: "monthly", priority: 0.8 },
+  { path: "/results", changeFrequency: "weekly",  priority: 0.8 },
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
