@@ -136,11 +136,8 @@ export default function RatingsPage() {
 
         {/* §1 The split */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§1</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              The split, in one paragraph
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            The split, in one paragraph
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
@@ -171,11 +168,8 @@ export default function RatingsPage() {
 
         {/* §2 Side by side table */}
         <section className="max-w-4xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-6">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§2</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              Side by side
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-6">
+            Side by side
           </h2>
 
           <div className="overflow-x-auto">
@@ -232,11 +226,8 @@ export default function RatingsPage() {
 
         {/* §3 What each rule rewards */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§3</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              What each rule rewards in practice
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            What each rule rewards in practice
           </h2>
           <p className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] mb-8">
             Three boats most owners can picture without prompting. Each one shows
@@ -366,11 +357,8 @@ export default function RatingsPage() {
 
         {/* §4 Where each rule lives */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§4</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              Where each rule lives
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            Where each rule lives
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
@@ -414,11 +402,8 @@ export default function RatingsPage() {
 
         {/* §5 The cost */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§5</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              The cost of holding both
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            The cost of holding both
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
@@ -479,11 +464,8 @@ export default function RatingsPage() {
 
         {/* §6 Reading your boat */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§6</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              Reading your boat under the other rule
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            Reading your boat under the other rule
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>

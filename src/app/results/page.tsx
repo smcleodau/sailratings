@@ -211,11 +211,8 @@ export default function ResultsPage() {
 
         {/* §1 */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§1</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              What an aggregator of race results is actually for
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            What an aggregator of race results is actually for
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
@@ -257,11 +254,8 @@ export default function ResultsPage() {
 
         {/* §2 What we hold */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§2</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              What we hold
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            What we hold
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
@@ -309,11 +303,8 @@ export default function ResultsPage() {
 
         {/* §3 Corrected time */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§3</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              Corrected time, properly read
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            Corrected time, properly read
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
@@ -344,19 +335,17 @@ export default function ResultsPage() {
 
         {/* §4 RAI */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§4</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              The Racing Advantage Index — what your results actually say
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            The Racing Advantage Index — what your results actually say
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
               The Racing Advantage Index, <strong>RAI</strong>, is the metric
               SailRatings produces when we ask one question of every boat in
               the register: <em>what does her rating predict, and what does she
-              actually sail?</em> It is the §4 sealed section in the free Bench
-              teaser, and it is the part of the report most owners read first.
+              actually sail?</em> It is one of the sealed sections in the free
+              Bench teaser, and it is the part of the report most owners read
+              first.
             </p>
             <p>
               RAI is not a scratch number. It is not a power-ranking. It is the
@@ -392,11 +381,8 @@ export default function ResultsPage() {
 
         {/* §5 Events table */}
         <section className="max-w-4xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-6">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§5</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              Events we cover
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-6">
+            Events we cover
           </h2>
           <p className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] mb-6">
             The list grows. Some highlights of what currently sits in the
@@ -460,11 +446,8 @@ export default function ResultsPage() {
 
         {/* §6 Why both */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§6</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              Why it matters that both rules sit side by side
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            Why it matters that both rules sit side by side
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>

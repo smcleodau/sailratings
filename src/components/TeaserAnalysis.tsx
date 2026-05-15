@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Loader2, Check, X } from "lucide-react";
+import { ArrowRight, Loader2, Check, X, Pencil } from "lucide-react";
 import {
   streamInsights,
   createCheckoutSession,
@@ -207,27 +207,27 @@ function MastheadField({
   }
 
   return (
-    <span className="inline-flex items-baseline gap-1 group">
-      <span className="data-mono text-[10px] uppercase tracking-[0.14em] text-charcoal/40 mr-1">
+    <span className="inline-flex items-baseline gap-1.5 group">
+      <span className="data-mono text-[10px] uppercase tracking-[0.16em] text-charcoal/55 mr-0.5 font-semibold">
         {label}
       </span>
-      <span className="body-text text-charcoal text-[13px]">
+      <span className="body-text text-charcoal text-[14px]">
         {value != null && String(value).trim() !== "" ? value : (
-          <span className="text-charcoal/30 italic">unknown</span>
+          <span className="text-charcoal/40 italic">unknown</span>
         )}
       </span>
       {submitted ? (
-        <span className="data-mono text-[9px] uppercase tracking-wider text-signal-light ml-0.5">
+        <span className="data-mono text-[9px] uppercase tracking-wider text-signal-light ml-1">
           pending review
         </span>
       ) : (
         <button
           onClick={() => setEditing(true)}
-          className="text-brass/40 hover:text-brass text-[10px] opacity-0 group-hover:opacity-100 transition-opacity ml-0.5"
+          className="text-brass/60 hover:text-brass transition-colors ml-1 inline-flex items-center"
           aria-label={`Correct ${label.toLowerCase()}`}
           title={`Correct ${label.toLowerCase()}`}
         >
-          ?
+          <Pencil size={11} strokeWidth={1.75} />
         </button>
       )}
     </span>
@@ -425,11 +425,11 @@ export default function TeaserAnalysis({
       }}
     >
       {/* Dateline */}
-      <div className="flex items-baseline justify-between px-8 sm:px-12 pt-6 pb-3 border-b border-charcoal/10">
-        <span className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/50">
+      <div className="flex items-baseline justify-between px-8 sm:px-12 pt-6 pb-3 border-b border-charcoal/15">
+        <span className="data-mono text-[10px] uppercase tracking-[0.18em] text-brass font-semibold">
           Sail Ratings · The Bench
         </span>
-        <span className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/40">
+        <span className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/65">
           {dateline}
         </span>
       </div>
@@ -452,8 +452,8 @@ export default function TeaserAnalysis({
               <div className="data-mono text-charcoal font-semibold" style={{ fontSize: "clamp(1.6rem, 3vw, 2.4rem)" }}>
                 {ratingValue}
               </div>
-              <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/50 mt-1">
-                <span className="text-brass font-semibold">{ratingLabel}</span>
+              <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/70 mt-1 font-semibold">
+                <span className="text-brass">{ratingLabel}</span>
                 {" "}{ratingUnit}
               </div>
             </div>
@@ -461,9 +461,9 @@ export default function TeaserAnalysis({
         </div>
 
         {/* Metadata strip — inline editable */}
-        <div className="mt-4 flex flex-wrap items-baseline gap-x-5 gap-y-2 text-charcoal/80">
+        <div className="mt-5 flex flex-wrap items-baseline gap-x-6 gap-y-2.5">
           {boat.sail_number && (
-            <span className="data-mono text-[12px] text-charcoal/70">{boat.sail_number}</span>
+            <span className="data-mono text-[13px] text-charcoal/85 font-semibold">{boat.sail_number}</span>
           )}
           {boat.design && (
             <MastheadField
@@ -475,7 +475,9 @@ export default function TeaserAnalysis({
             />
           )}
           {boat.country && (
-            <span className="body-text text-[13px] text-charcoal">{boat.country}</span>
+            <span className="data-mono text-[12px] uppercase tracking-[0.08em] text-charcoal/85 font-semibold border border-charcoal/15 px-1.5 py-0.5 rounded-sm">
+              {boat.country}
+            </span>
           )}
           <MastheadField
             boatId={boat.id}
@@ -502,9 +504,9 @@ export default function TeaserAnalysis({
 
         {/* Compile stamp / live working steps */}
         {!isDone ? (
-          <div className="mt-5 space-y-1">
+          <div className="mt-6 space-y-1.5">
             {steps.length === 0 ? (
-              <div className="flex items-center gap-2 data-mono text-[11px] uppercase tracking-[0.14em] text-charcoal/40">
+              <div className="flex items-center gap-2 data-mono text-[11px] uppercase tracking-[0.14em] text-charcoal/65">
                 <Loader2 size={11} className="animate-spin text-brass" />
                 Opening the certificate registry…
               </div>
@@ -512,7 +514,7 @@ export default function TeaserAnalysis({
               steps.map((s, i) => (
                 <div
                   key={i}
-                  className="flex items-baseline gap-2 data-mono text-[11px] uppercase tracking-[0.12em] text-charcoal/60"
+                  className="flex items-baseline gap-2 data-mono text-[11px] uppercase tracking-[0.12em] text-charcoal/75"
                 >
                   <span className="flex-shrink-0 w-3">
                     {s.state === "done" ? (
@@ -524,7 +526,7 @@ export default function TeaserAnalysis({
                   <span className="truncate">
                     {s.label}
                     {s.detail && (
-                      <span className="text-charcoal/40 ml-2 normal-case tracking-normal">
+                      <span className="text-charcoal/55 ml-2 normal-case tracking-normal">
                         {s.detail}
                       </span>
                     )}
@@ -535,7 +537,7 @@ export default function TeaserAnalysis({
           </div>
         ) : (
           compileLine && (
-            <div className="mt-5 data-mono text-[10px] uppercase tracking-[0.16em] text-charcoal/45">
+            <div className="mt-6 data-mono text-[10px] uppercase tracking-[0.16em] text-charcoal/65 font-semibold">
               {compileLine}
             </div>
           )
@@ -547,8 +549,10 @@ export default function TeaserAnalysis({
 
       {/* §1 — Where she sits */}
       <section ref={proseRef} className="px-8 sm:px-12 py-8 sm:py-10">
-        <h2 className="flex items-baseline gap-3 mb-5">
-          <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§1</span>
+        <h2 className="flex items-baseline gap-4 mb-5">
+          <span className="data-mono text-brass text-[12px] font-semibold tracking-[0.08em] flex-shrink-0">
+            01
+          </span>
           <span className="heading-display text-charcoal text-xl sm:text-2xl">
             {SECTIONS[0].title}
           </span>
@@ -578,10 +582,10 @@ export default function TeaserAnalysis({
       {isDone && (
         <section className="px-8 sm:px-12 py-8" aria-label="Sealed sections">
           <div className="flex items-baseline justify-between mb-6">
-            <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/50">
+            <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/70 font-semibold">
               Drafted · Seven sections sealed
             </div>
-            <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/35 hidden sm:block">
+            <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/50 hidden sm:block">
               Hover to see what&rsquo;s in each
             </div>
           </div>
@@ -594,8 +598,8 @@ export default function TeaserAnalysis({
                   className="group flex items-baseline gap-5 border-l border-transparent hover:border-brass/40 pl-2 -ml-2 transition-colors"
                   title={sec.description}
                 >
-                  <span className="data-mono text-brass text-[12px] uppercase tracking-[0.18em] flex-shrink-0 w-8 pt-0.5">
-                    §{num}
+                  <span className="data-mono text-brass text-[12px] font-semibold tracking-[0.08em] flex-shrink-0 w-8 pt-0.5">
+                    {String(num).padStart(2, "0")}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="heading-display text-charcoal text-[15px] sm:text-[17px] font-semibold uppercase tracking-[0.02em] mb-1.5">

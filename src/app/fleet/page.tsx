@@ -144,11 +144,8 @@ export default function FleetPage() {
 
         {/* §1 What "fleet" means */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§1</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              What &ldquo;fleet&rdquo; means here
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            What &ldquo;fleet&rdquo; means here
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>Two readings of the word, and we run both.</p>
@@ -192,11 +189,8 @@ export default function FleetPage() {
 
         {/* §2 Owner's question */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§2</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              The owner&rsquo;s question, answered with data
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            The owner&rsquo;s question, answered with data
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
@@ -247,11 +241,8 @@ export default function FleetPage() {
 
         {/* §3 Cross-design */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§3</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              The cross-design view: who&rsquo;s in your band
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            The cross-design view: who&rsquo;s in your band
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
@@ -289,11 +280,8 @@ export default function FleetPage() {
 
         {/* §4 What the report shows */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§4</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              What the report actually shows
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            What the report actually shows
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
@@ -337,11 +325,8 @@ export default function FleetPage() {
 
         {/* §5 Comparison table */}
         <section className="max-w-4xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-6">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§5</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              Two designs, side by side
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-6">
+            Two designs, side by side
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-[14px] border-collapse">
@@ -396,11 +381,8 @@ export default function FleetPage() {
 
         {/* §6 Who uses this */}
         <section className="max-w-3xl mx-auto px-8 sm:px-12 py-10">
-          <h2 className="flex items-baseline gap-3 mb-5">
-            <span className="data-mono text-brass text-[11px] uppercase tracking-[0.18em]">§6</span>
-            <span className="heading-display text-navy text-2xl sm:text-3xl">
-              Who actually uses this
-            </span>
+          <h2 className="heading-display text-navy text-2xl sm:text-3xl mb-5">
+            Who actually uses this
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>Three readers, three different uses.</p>
