@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Download, Trophy, Target, Swords } from "lucide-react";
 import { getReportPdfUrl, type ReportData } from "@/lib/api";
 
@@ -8,8 +9,67 @@ interface ReportViewProps {
   token: string;
 }
 
+/**
+ * Progressively reveal the report markdown paragraph by paragraph so the
+ * report reads like it's being written, rather than dumping ~3,000 characters
+ * on the page in one beat. Each tick appends the next paragraph and we
+ * re-convert the cumulative markdown to HTML so multi-paragraph blocks
+ * (lists, blockquotes) render correctly.
+ */
+function useStreamedMarkdown(fullText: string | undefined, msPerParagraph = 280) {
+  const [revealed, setRevealed] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+
+  useEffect(() => {
+    if (!fullText) {
+      setRevealed("");
+      setIsStreaming(false);
+      setIsComplete(false);
+      return;
+    }
+
+    const paragraphs = fullText.split(/\n\n+/).filter((p) => p.trim());
+    if (paragraphs.length === 0) {
+      setRevealed(fullText);
+      setIsComplete(true);
+      return;
+    }
+
+    let cancelled = false;
+    let i = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    setRevealed("");
+    setIsStreaming(true);
+    setIsComplete(false);
+
+    const tick = () => {
+      if (cancelled) return;
+      i += 1;
+      setRevealed(paragraphs.slice(0, i).join("\n\n"));
+      if (i >= paragraphs.length) {
+        setIsStreaming(false);
+        setIsComplete(true);
+        return;
+      }
+      timer = setTimeout(tick, msPerParagraph);
+    };
+
+    timer = setTimeout(tick, 200);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [fullText, msPerParagraph]);
+
+  return { revealed, isStreaming, isComplete };
+}
+
 export default function ReportView({ report, token }: ReportViewProps) {
   const { boat, report_markdown, recommendations, rai, rivals } = report;
+  const { revealed, isStreaming, isComplete: proseDone } =
+    useStreamedMarkdown(report_markdown);
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-12 space-y-12">
@@ -73,19 +133,25 @@ export default function ReportView({ report, token }: ReportViewProps) {
         </header>
       )}
 
-      {/* Analysis prose */}
+      {/* Analysis prose — progressively revealed paragraph by paragraph */}
       {report_markdown && (
         <section className="border border-border bg-white px-8 py-8 sm:px-12 sm:py-10">
           <div
             className="prose-report"
-            dangerouslySetInnerHTML={{ __html: markdownToHtml(report_markdown) }}
+            dangerouslySetInnerHTML={{ __html: markdownToHtml(revealed) }}
           />
+          {isStreaming && (
+            <span
+              className="inline-block w-0.5 h-5 bg-brass align-text-bottom streaming-pulse ml-0.5"
+              aria-hidden="true"
+            />
+          )}
         </section>
       )}
 
       {/* Recommendations table */}
-      {recommendations && recommendations.length > 0 && (
-        <section className="border border-border bg-white">
+      {proseDone && recommendations && recommendations.length > 0 && (
+        <section className="border border-border bg-white animate-in">
           <div className="border-b border-border-light px-8 py-5 flex items-center gap-3">
             <Target size={18} strokeWidth={1.5} className="text-brass" />
             <h2 className="heading-display text-xl text-ink">
@@ -187,8 +253,8 @@ export default function ReportView({ report, token }: ReportViewProps) {
       )}
 
       {/* RAI card */}
-      {rai && (
-        <section className="border border-border bg-white">
+      {proseDone && rai && (
+        <section className="border border-border bg-white animate-in">
           <div className="border-b border-border-light px-8 py-5 flex items-center gap-3">
             <Trophy size={18} strokeWidth={1.5} className="text-brass" />
             <h2 className="heading-display text-xl text-ink">
@@ -218,8 +284,8 @@ export default function ReportView({ report, token }: ReportViewProps) {
       )}
 
       {/* Rivals table */}
-      {rivals && rivals.length > 0 && (
-        <section className="border border-border bg-white">
+      {proseDone && rivals && rivals.length > 0 && (
+        <section className="border border-border bg-white animate-in">
           <div className="border-b border-border-light px-8 py-5 flex items-center gap-3">
             <Swords size={18} strokeWidth={1.5} className="text-brass" />
             <h2 className="heading-display text-xl text-ink">
