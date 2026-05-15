@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { Search, X } from "lucide-react";
 import { searchBoatsFull, type SearchResult, type SearchSuggestion } from "@/lib/api";
+import MainNav from "@/components/MainNav";
 
 const SYSTEMS = ["IRC", "ORC"];
 const CYCLE_MS = 3500;
@@ -24,16 +25,6 @@ function Cycling() {
       opacity: show ? 1 : 0, transform: show ? "translateY(0)" : "translateY(4px)",
       transition: "opacity 0.35s ease, transform 0.35s ease",
     }}>{SYSTEMS[i]}</span>
-  );
-}
-
-function SailLogo({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 28 28" fill="none" className={className} aria-hidden="true">
-      <path d="M14 2 L14 26" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M14 4 L24 20 L14 20 Z" fill="currentColor" opacity="0.5" />
-      <path d="M14 8 L6 20 L14 20 Z" fill="currentColor" opacity="0.3" />
-    </svg>
   );
 }
 
@@ -144,22 +135,17 @@ export default function Hero({ onBoatSelected }: HeroProps) {
         />
       </div>
 
-      {/* Nav — sits ON TOP of the image, transparent background */}
-      <nav className="absolute top-0 left-0 w-full z-50 px-8 sm:px-12 py-6 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <SailLogo className="w-6 h-6 text-white" />
-          <span className="brand-wordmark text-white">Sail Ratings</span>
-        </div>
-        <div className="hidden md:flex items-center gap-10 text-[14px] text-white/70 font-body font-medium">
-          <span className="hover:text-white transition-colors cursor-default">Ratings</span>
-          <span className="hover:text-white transition-colors cursor-default">Fleet Analysis</span>
-          <span className="hover:text-white transition-colors cursor-default">Results</span>
-          <span className="hover:text-white transition-colors cursor-default">About</span>
-        </div>
-        <button className="hidden sm:block text-white text-[13px] font-body font-semibold px-5 py-2.5 rounded hover:opacity-90 transition-opacity" style={{ background: "#F2542D" }}>
-          Start Reviewing &rarr;
-        </button>
-      </nav>
+      <MainNav
+        theme="on-image"
+        cta={
+          <button
+            className="hidden sm:block text-white text-[13px] font-body font-semibold px-5 py-2.5 rounded hover:opacity-90 transition-opacity"
+            style={{ background: "#F2542D" }}
+          >
+            Start Reviewing &rarr;
+          </button>
+        }
+      />
 
       {/* Content — positioned in upper area, below nav */}
       <div className="relative z-20 flex flex-col items-center pt-[140px] px-6 text-center">
