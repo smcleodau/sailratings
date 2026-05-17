@@ -48,9 +48,9 @@ class Boat(Base):
     builder: Mapped[str | None] = mapped_column(Text)
     designer: Mapped[str | None] = mapped_column(Text)
     design_canonical: Mapped[str | None] = mapped_column(Text)
-    current_name: Mapped[str | None] = mapped_column(Text)
-    current_sail_number: Mapped[str | None] = mapped_column(Text)
-    current_flag: Mapped[str | None] = mapped_column(Text)
+    # current_name / current_sail_number / current_flag dropped in migration
+    # 0014 — never written, 100% NULL across all rows. boat_identities is
+    # the source of truth for historical name/sail/owner observations.
     loa: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     lwl: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     beam_max: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
@@ -129,7 +129,10 @@ class Certificate(Base):
     lh: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     beam: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     draft: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
-    displacement: Mapped[Decimal | None] = mapped_column(Numeric(8, 1))
+    # Renamed + widened in migration 0014. The bare `displacement` name was
+    # ambiguous next to `orc_certificates.displacement`; the `_kg` suffix
+    # matches `boats.displacement_kg` and the other displacement columns.
+    displacement_kg: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
     bo: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     so: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     p: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))

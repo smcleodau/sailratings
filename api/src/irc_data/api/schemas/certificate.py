@@ -18,7 +18,7 @@ class IRCCertificate(BaseModel):
     lh: float | None = Field(None, description="Rated hull length")
     beam: float | None = None
     draft: float | None = None
-    displacement: float | None = Field(None, description="Displacement in kg")
+    displacement_kg: float | None = Field(None, description="Displacement in kg")
     bo: float | None = Field(None, description="Bow overhang")
     so: float | None = Field(None, description="Stern overhang")
 

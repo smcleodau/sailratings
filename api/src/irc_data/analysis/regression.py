@@ -175,7 +175,7 @@ def _fetch_tier_a_data(engine: Engine, design: str) -> list[dict]:
         SELECT
             b.id, b.boat_name, b.sail_number,
             t.tcc,
-            c.displacement, c.draft, c.lh, c.p, c.e, c.j,
+            c.displacement_kg AS displacement, c.draft, c.lh, c.p, c.e, c.j,
             c.hlu, c.hlp, c.muw, c.mhw, c.stl,
             c.sym_slu, c.sym_sf,
             t.headsails, t.spinnakers
@@ -531,7 +531,7 @@ def get_boat_sensitivity_context(
     query = text("""
         SELECT
             t.tcc, t.lh, t.beam, t.draft, t.headsails, t.spinnakers, t.crew, t.dlr,
-            c.displacement, c.p, c.e, c.j, c.hlu, c.hlp, c.muw, c.mhw, c.stl,
+            c.displacement_kg AS displacement, c.p, c.e, c.j, c.hlu, c.hlp, c.muw, c.mhw, c.stl,
             c.sym_slu, c.sym_sf
         FROM boats b
         LEFT JOIN LATERAL (

@@ -199,7 +199,7 @@ def get_boat_certificates(
                 c.issue_date,
                 c.source,
                 c.source_url,
-                c.lh, c.beam, c.draft, c.displacement,
+                c.lh, c.beam, c.draft, c.displacement_kg,
                 c.rig_type,
                 c.stix, c.avs,
                 c.design_category,

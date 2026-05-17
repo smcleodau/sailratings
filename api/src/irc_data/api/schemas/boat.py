@@ -72,9 +72,9 @@ class BoatDetail(BaseModel):
     designer: str | None = None
     hull_id: str | None = None
 
-    current_name: str | None = Field(None, description="Latest known boat name")
-    current_sail_number: str | None = Field(None, description="Latest known sail number")
-    current_flag: str | None = Field(None, description="Latest known flag state")
+    # current_name / current_sail_number / current_flag fields removed in
+    # migration 0014 — backed by columns that were never populated. Use
+    # `identities` for historical name/sail/owner observations instead.
 
     dimensions: Dimensions | None = None
     latest_rating: RatingSnapshot | None = None

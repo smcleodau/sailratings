@@ -365,8 +365,8 @@ def build_boat_context(engine: Engine, boat_id: int, detail_level: str = "free")
             lines.append("## Measurements (latest certificate)")
             if latest.lh:
                 lines.append(f"- LH: {latest.lh}m | Beam: {_fmt(latest.beam)}m | Draft: {_fmt(latest.draft)}m")
-            if latest.displacement:
-                lines.append(f"- Displacement: {latest.displacement}kg")
+            if latest.displacement_kg:
+                lines.append(f"- Displacement: {latest.displacement_kg}kg")
             if latest.p:
                 lines.append(f"- Rig: P={latest.p}m E={_fmt(latest.e)}m J={_fmt(latest.j)}m")
             if latest.rig_type:

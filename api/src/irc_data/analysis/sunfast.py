@@ -35,7 +35,7 @@ def get_sunfast_certificates(engine: Engine) -> list[dict]:
         SELECT b.boat_name, b.sail_number, b.country,
                t.tcc, t.non_spi_tcc, t.dlr,
                t.headsails, t.spinnakers,
-               c.displacement as weight, c.p, c.e, c.j, c.stl, c.hlp,
+               c.displacement_kg as weight, c.p, c.e, c.j, c.stl, c.hlp,
                c.muw, c.mtw, c.mhw,
                c.hlu, c.huw, c.htw, c.hhw,
                c.sym_slu, c.sym_sle, c.sym_sf, c.sym_shw,
