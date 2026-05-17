@@ -28,7 +28,7 @@ export default function StickyCheckoutRail({
   const [error, setError] = useState<string | null>(null);
   const currency = useMemo(() => detectCurrency(), []);
 
-  const handle = async () => {
+  const handleCheckout = async () => {
     setIsCheckingOut(true);
     setError(null);
     try {
@@ -56,41 +56,41 @@ export default function StickyCheckoutRail({
             {reassurance}
           </span>
         </div>
-        <div className="flex items-center gap-3 flex-shrink-0">
-          {samplePdfUrl && (
-            <a
-              href={samplePdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center text-cream/75 hover:text-cream text-[12px] uppercase tracking-[0.1em] font-body font-semibold border-b border-cream/30 hover:border-cream pb-px transition-colors"
-            >
-              Sample report
-            </a>
-          )}
-          <button
-            onClick={() => void handle()}
-            disabled={isCheckingOut}
-            className="group inline-flex items-center gap-3 bg-brass text-navy px-5 sm:px-6 py-3 text-[13px] font-body font-semibold uppercase tracking-[0.08em] hover:bg-cream active:translate-y-px transition-all disabled:opacity-60"
-          >
-            {isCheckingOut ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                Opening checkout…
-              </>
-            ) : (
-              <>
-                Send me the file — {currency.display}
-                <ArrowRight size={14} strokeWidth={2.5} className="transition-transform group-hover:translate-x-1" />
-              </>
+        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            {samplePdfUrl && (
+              <a
+                href={samplePdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center text-cream/75 hover:text-cream text-[12px] uppercase tracking-[0.1em] font-body font-semibold border-b border-cream/30 hover:border-cream pb-px transition-colors"
+              >
+                Sample report
+              </a>
             )}
-          </button>
+            <button
+              onClick={() => void handleCheckout()}
+              disabled={isCheckingOut}
+              className="group inline-flex items-center gap-3 bg-brass text-navy px-5 sm:px-6 py-3 text-[13px] font-body font-semibold uppercase tracking-[0.08em] hover:bg-cream active:translate-y-px transition-all disabled:opacity-60"
+            >
+              {isCheckingOut ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Opening checkout…
+                </>
+              ) : (
+                <>
+                  Send me the file — {currency.display}
+                  <ArrowRight size={14} strokeWidth={2.5} className="transition-transform group-hover:translate-x-1" />
+                </>
+              )}
+            </button>
+          </div>
+          {error && (
+            <span className="body-text text-[12px] text-brass">{error}</span>
+          )}
         </div>
       </div>
-      {error && (
-        <div className="max-w-6xl mx-auto px-6 sm:px-10 pb-3 text-right">
-          <span className="body-text text-[12px] text-brass">{error}</span>
-        </div>
-      )}
     </div>
   );
 }
