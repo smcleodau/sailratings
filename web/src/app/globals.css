@@ -136,14 +136,76 @@ body {
 .delay-5 { animation-delay: 700ms; }
 .streaming-pulse { animation: subtlePulse 1.5s ease-in-out infinite; }
 
-/* Sealed-card materialisation: fade up + scale on first paint.
-   Each card mounts at a different time (parent reveals progressively),
-   so the animation runs once per card on its own mount. */
-@keyframes sealedCardIn {
-  from { opacity: 0; transform: translateY(10px) scale(0.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+/* ── Sealed-card materialisation: paper landing on a surveyor's desk ──────
+   Three-stage choreography that runs per card on mount (cards mount one at
+   a time, so this fires naturally in sequence as the parent reveals).
+   1. paperLand: card lifts in from below, momentarily floats with a soft
+      drop shadow, then settles flat. Reads as a sheet being placed.
+   2. waxFill (clip-path on the SEALED band): brass + icon + text reveal
+      left-to-right, like ink or wax running across the band.
+   3. lockPress: the Lock icon takes a small punch at the end of the fill,
+      reading as a stamp being pressed.
+*/
+@keyframes paperLand {
+  0%   { opacity: 0; transform: translateY(14px) scale(0.988);
+         box-shadow: 0 0 0 rgba(0,0,0,0); }
+  55%  { opacity: 1; transform: translateY(-2px) scale(1.004);
+         box-shadow: 0 12px 24px -10px rgba(20, 16, 8, 0.22); }
+  100% { opacity: 1; transform: translateY(0) scale(1);
+         box-shadow: 0 1px 0 rgba(20, 16, 8, 0.05); }
 }
-.sealed-card-in { animation: sealedCardIn 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.paper-land { animation: paperLand 0.85s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes waxFill {
+  0%   { clip-path: inset(0 100% 0 0); }
+  100% { clip-path: inset(0 0 0 0); }
+}
+.wax-band-in {
+  clip-path: inset(0 100% 0 0);
+  animation: waxFill 0.95s cubic-bezier(0.65, 0, 0.35, 1) 0.55s forwards;
+}
+
+@keyframes lockPress {
+  0%   { transform: scale(1) rotate(0deg); }
+  40%  { transform: scale(0.78) rotate(-4deg); }
+  70%  { transform: scale(1.06) rotate(1deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+.lock-press {
+  transform-origin: center;
+  animation: lockPress 0.45s cubic-bezier(0.22, 1, 0.36, 1) 1.35s both;
+}
+
+/* ── Drafting needle: a thin brass line that sweeps left→right under the
+   indicator text, then loops. Sets a slow rhythm the way a metronome would,
+   without enumerating progress (per feedback-streaming-pacing). */
+@keyframes needleSweep {
+  0%   { transform: translateX(-30%) scaleX(0.2); opacity: 0; }
+  15%  { opacity: 0.9; }
+  50%  { transform: translateX(60%) scaleX(1); opacity: 1; }
+  85%  { opacity: 0.9; }
+  100% { transform: translateX(140%) scaleX(0.2); opacity: 0; }
+}
+.drafting-needle {
+  display: block;
+  height: 1px;
+  width: 56px;
+  background: linear-gradient(90deg,
+    rgba(194,155,97,0) 0%,
+    rgba(194,155,97,0.85) 50%,
+    rgba(194,155,97,0) 100%);
+  transform-origin: left;
+  animation: needleSweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* Cycling narration fade — used for the drafting-line copy that rotates
+   through verbs ("Drafting…", "Sealing…", "Stamping…"). 350 ms fade in/out
+   on text swap, kept short so the indicator never feels like a slideshow. */
+@keyframes draftCopyIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.draft-copy-in { animation: draftCopyIn 0.35s ease-out both; }
 
 /* ── Teaser Fade ─────────────────────────────────────────────────────── */
 .teaser-fade { position: relative; }

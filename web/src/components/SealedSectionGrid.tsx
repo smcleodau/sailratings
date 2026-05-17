@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Lock } from "lucide-react";
 
 export type SealedSection = {
@@ -51,6 +54,18 @@ export const SEALED_SECTIONS: SealedSection[] = [
   },
 ];
 
+/** Phrases that rotate under the drafting needle while cards are still
+ *  arriving. Reads like a slow voice-over from the surveyor's desk:
+ *  what they're doing right now, not how many things are left to do. */
+const DRAFT_PHRASES = [
+  "Drafting the next section",
+  "Cross-referencing the registry",
+  "Sealing the field",
+  "Stamping the serial",
+  "Filing the page",
+] as const;
+const PHRASE_INTERVAL_MS = 2400;
+
 interface SealedSectionGridProps {
   /** How many cards to reveal (0..7). Cards beyond this count are not rendered.
    *  When undefined, all cards render immediately. */
@@ -62,18 +77,33 @@ export default function SealedSectionGrid({ revealedCount }: SealedSectionGridPr
   const visible = SEALED_SECTIONS.slice(0, count);
   const allOut = count >= SEALED_SECTIONS.length;
 
+  // Rotating draft-phrase. Only cycles while cards are still arriving — once
+  // all seven are out the header switches to the static "sealed" copy.
+  const [phraseIdx, setPhraseIdx] = useState(0);
+  useEffect(() => {
+    if (allOut) return;
+    const id = setInterval(() => {
+      setPhraseIdx((i) => (i + 1) % DRAFT_PHRASES.length);
+    }, PHRASE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [allOut]);
+
   if (count <= 0) return null;
 
   return (
     <section className="px-6 sm:px-12 py-10 sm:py-12" aria-label="Sealed sections">
       <div className="flex items-baseline justify-between mb-6 border-b border-charcoal/15 pb-4">
-        <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/70 font-semibold flex items-center gap-2">
+        <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/70 font-semibold flex flex-col gap-1.5">
           {allOut ? (
-            <>Seven sections drafted · sealed pending order</>
+            <span>Seven sections drafted · sealed pending order</span>
           ) : (
             <>
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-brass animate-pulse" />
-              Drafting the rest of the file…
+              <span key={phraseIdx} className="draft-copy-in inline-flex items-center gap-2">
+                <span className="text-brass">·</span>
+                {DRAFT_PHRASES[phraseIdx]}
+                <span className="text-brass">…</span>
+              </span>
+              <span className="drafting-needle" aria-hidden="true" />
             </>
           )}
         </div>
@@ -87,13 +117,13 @@ export default function SealedSectionGrid({ revealedCount }: SealedSectionGridPr
         {visible.map((sec) => (
           <li
             key={sec.num}
-            className={`bg-cream border border-brass/30 hover:border-brass/60 transition-colors flex flex-col sealed-card-in ${
+            className={`paper-land bg-cream border border-brass/30 hover:border-brass/60 transition-colors flex flex-col ${
               sec.num === 8 ? "md:col-span-2 md:bg-brass/[0.06]" : ""
             }`}
           >
             <div className="px-5 pt-5 pb-4 flex-1">
               <div className="flex items-baseline gap-3 mb-2">
-                <span className="data-mono text-brass text-[11px] font-semibold tracking-[0.1em]">
+                <span className="data-mono text-brass text-[11px] font-semibold tracking-[0.1em] tabular-nums">
                   §{String(sec.num).padStart(2, "0")}
                 </span>
                 <span className="heading-display text-charcoal text-[15px] sm:text-[16px] font-semibold uppercase tracking-[0.02em]">
@@ -104,8 +134,8 @@ export default function SealedSectionGrid({ revealedCount }: SealedSectionGridPr
                 {sec.description}
               </p>
             </div>
-            <div className="bg-brass/15 border-t border-brass/30 px-5 py-2 flex items-center gap-2">
-              <Lock size={11} strokeWidth={2} className="text-brass" />
+            <div className="wax-band-in bg-brass/15 border-t border-brass/30 px-5 py-2 flex items-center gap-2">
+              <Lock size={11} strokeWidth={2} className="text-brass lock-press" />
               <span className="data-mono text-[10px] uppercase tracking-[0.16em] text-brass font-semibold">
                 Sealed · §{sec.num} of 8
               </span>
