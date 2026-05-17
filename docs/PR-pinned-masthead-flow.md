@@ -18,12 +18,17 @@ filtering commits.
   actually rates the boat. New fabrication ban (no inventing races,
   fleet positions, or sister-boat counts not in the context). UX
   references updated to match the new "Thinking" section.
-- **Schema cleanup.** Migration 0012 renames `certificates` →
-  `irc_certificates` for symmetry with `orc_certificates`. Migration
-  0013 promotes ten high-value fields from `orc_certificates.raw_data`
-  to typed columns including the full VPP polar table (allowances) as
-  JSONB. Both applied + verified on dev: 3,809 IRC certs migrated
-  cleanly, 9,886 ORC rows backfilled with polars.
+- **Schema cleanup (three migrations).** Migration 0012 renames
+  `certificates` → `irc_certificates` for symmetry with `orc_certificates`.
+  Migration 0013 promotes ten high-value fields from
+  `orc_certificates.raw_data` to typed columns including the full VPP
+  polar table (allowances) as JSONB. Migration 0014 drops the
+  never-written `boats.current_*` columns (verified 100% NULL) and
+  renames `irc_certificates.displacement` → `displacement_kg` (matching
+  the convention used by `boats.displacement_kg` etc). All three
+  applied + verified on dev: 3,809 IRC certs migrated cleanly, 9,886
+  ORC rows backfilled with polars, 337 design-class rows in the
+  refreshed materialised view.
 - **Crawler ops.** Scheduled three dormant scrapers (sailracehq, isora,
   rhkyc) at weekly slots; removed the commented `rorc` line whose
   archive only covered 2007–2022; documented cowesweek, sydneyhobart,
@@ -112,13 +117,14 @@ both rewritten in `api/src/irc_data/api/services/insights_service.py`:
   (GPH 2dp, CDL 3dp) alongside the existing IRC 4dp rule.
 - Teaser word cap raised 220 → 240 to accommodate dual-rated cases.
 
-### Schema cleanup (4 commits, 2 migrations)
+### Schema cleanup (5 commits, 3 migrations)
 
 ```
 8d72c56 schema(api): draft migrations 0012 (rename) + 0013 (promote ORC VPP)
 5d9f8b8 refactor(api): point all SQL + admin policy at `irc_certificates`
 eff9e85 schema(api): wire ORCCertificate model + orc scraper to migration 0013 columns
 1bd6748 ops(api): schedule sailracehq/isora/rhkyc; remove commented rorc
+6fac766 schema(api): migration 0014 — drop dead boats.current_*, standardise IRC displacement
 ```
 
 **Migration 0012 — rename `certificates` → `irc_certificates`** (applied
@@ -151,6 +157,24 @@ single defensive UPDATE; the scraper now populates these columns on
 future ingest via `backfill_orc_details()`. Unblocks ORC-native speed
 prediction, design-compare, and IRC↔ORC cross-rating without changing
 any scraping behaviour.
+
+**Migration 0014 — schema dedup** (applied to dev). Two wins from the
+audit:
+- Drop `boats.current_name`, `boats.current_sail_number`,
+  `boats.current_flag`. Verified 100% NULL across all 9,384 rows. Never
+  written. `boat_identities` is the real source of truth for historical
+  name/sail/owner observations.
+- Rename `irc_certificates.displacement` → `displacement_kg` (Numeric
+  8,1 → 10,1) so the column name matches the convention used by
+  `boats.displacement_kg`, `design_classes.nominal_displacement`, etc.
+  The bare `displacement` name was ambiguous next to
+  `orc_certificates.displacement`.
+
+The materialised view `mv_within_class_stats` depends on the column;
+the migration drops + recreates the view around the column changes
+(view body captured verbatim from the running DB and parameterised on
+the displacement column name for symmetric upgrade/downgrade). Refresh
+runs daily via cron; manual refresh recommended after deploy.
 
 **Crawler ops.** Three previously-dormant scrapers added to cron at
 distinct slots:
