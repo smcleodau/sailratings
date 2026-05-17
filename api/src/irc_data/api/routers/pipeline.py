@@ -171,7 +171,7 @@ def pipeline_status(engine: Engine = Depends(get_db)):
         # --- Counts summary ---
         boat_count = conn.execute(text("SELECT count(*) FROM boats")).scalar()
         orc_count = conn.execute(text("SELECT count(*) FROM orc_certificates")).scalar()
-        cert_count = conn.execute(text("SELECT count(*) FROM certificates")).scalar()
+        cert_count = conn.execute(text("SELECT count(*) FROM irc_certificates")).scalar()
 
     return {
         "generated_at": now.isoformat(),
@@ -179,7 +179,7 @@ def pipeline_status(engine: Engine = Depends(get_db)):
             "boats": boat_count,
             "race_results": total_results,
             "orc_certificates": orc_count,
-            "certificates": cert_count,
+            "irc_certificates": cert_count,
         },
         "sources": sources,
         "clubs": clubs,

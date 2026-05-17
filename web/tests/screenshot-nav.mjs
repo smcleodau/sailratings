@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const url = process.argv[2] || 'https://dev.sailratings.com/';
+const out = process.argv[3] || '/tmp/nav.png';
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 200 } });
+const page = await ctx.newPage();
+await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+await page.waitForTimeout(500);
+await page.screenshot({ path: out, fullPage: false, clip: { x: 0, y: 0, width: 1440, height: 100 } });
+console.log('OK', out);
+await browser.close();

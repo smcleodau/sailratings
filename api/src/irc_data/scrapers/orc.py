@@ -157,14 +157,24 @@ async def fetch_certificate_rms(
         return None
 
 
+# Fields whose values are nested JSON structures (dicts), not scalars.
+# The UPDATE builder must wrap them in `CAST(:k AS jsonb)` and JSON-encode
+# the value rather than binding it as a normal parameter.
+_JSON_FIELDS: frozenset[str] = frozenset({"allowances"})
+
+
 def _extract_performance_fields(rms: dict) -> dict:
     """Extract key performance fields from an RMS JSON response.
 
-    Only returns fields that exist as columns in orc_certificates.
+    Returns one entry per column in `orc_certificates` that we know how to
+    populate from the RMS payload. The dynamic UPDATE in `backfill_orc_details`
+    skips entries whose value is None; values in `_JSON_FIELDS` are emitted as
+    Python dicts and serialised + cast at UPDATE time.
     """
     main = _safe_decimal(str(rms.get("Area_Main", "")))
     jib = _safe_decimal(str(rms.get("Area_Jib", "")))
     return {
+        # Existing scalar columns.
         "gph": _safe_decimal(str(rms.get("GPH", ""))),
         "cdl": _safe_decimal(str(rms.get("CDL", ""))),
         "osn": _safe_decimal(str(rms.get("OSN", ""))),
@@ -180,6 +190,18 @@ def _extract_performance_fields(rms: dict) -> dict:
         "builder": rms.get("Builder"),
         "designer": rms.get("Designer"),
         "year_built": _safe_int(str(rms.get("Age_Year", ""))),
+        # VPP + dimension columns added in migration 0013.
+        # `allowances` is the full polar table — dict, goes to JSONB column.
+        "allowances": rms.get("Allowances"),
+        "dynamic_allowance": _safe_decimal(str(rms.get("Dynamic_Allowance", ""))),
+        "dspl_sailing": _safe_decimal(str(rms.get("Dspl_Sailing", ""))),
+        "imsl": _safe_decimal(str(rms.get("IMSL", ""))),
+        "mb": _safe_decimal(str(rms.get("MB", ""))),
+        "aphd": _safe_decimal(str(rms.get("APHD", ""))),
+        "apht": rms.get("APHT"),
+        "wss": _safe_decimal(str(rms.get("WSS", ""))),
+        "tmf_offshore": _safe_decimal(str(rms.get("TMF_Offshore", ""))),
+        "tmf_inshore": _safe_decimal(str(rms.get("TMF_Inshore", ""))),
     }
 
 
@@ -221,11 +243,18 @@ async def backfill_orc_details(
                     import json as _json
                     fields = _extract_performance_fields(rms)
                     with engine.begin() as conn:
-                        # Update the cert with performance data + full raw RMS
+                        # Update the cert with performance data + full raw RMS.
+                        # JSONB columns (see _JSON_FIELDS) need a CAST and
+                        # serialised value; scalar columns bind directly.
                         set_clauses = []
-                        params = {"cert_id": cert_id, "raw_data": _json.dumps(rms)}
+                        params: dict = {"cert_id": cert_id, "raw_data": _json.dumps(rms)}
                         for k, v in fields.items():
-                            if v is not None:
+                            if v is None:
+                                continue
+                            if k in _JSON_FIELDS:
+                                set_clauses.append(f"{k} = CAST(:{k} AS jsonb)")
+                                params[k] = _json.dumps(v)
+                            else:
                                 set_clauses.append(f"{k} = :{k}")
                                 params[k] = v
                         set_clauses.append("raw_data = CAST(:raw_data AS jsonb)")

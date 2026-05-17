@@ -60,25 +60,26 @@ YOU HAVE:
 DATABASE SCHEMA
 ────────────────────────────────────────────────────────────────
 
-boats (8,270 rows)
+boats (~9,400 rows)
   id, boat_name, sail_number, cert_number, design, design_canonical,
   country (3-letter: AUS/GBR/IRL/NZL/USA/etc), year_built,
-  hull_id, builder, designer, current_name, current_sail_number,
-  current_flag, loa, lwl, beam_max, displacement_kg
+  hull_id, builder, designer, loa, lwl, beam_max, displacement_kg
 
 boat_identities — historical name/sail/owner observations
   id, boat_id, boat_name, sail_number, owner, flag, source, observed_date
 
-tcc_snapshots (12,724 rows) — IRC rating snapshots over time
+tcc_snapshots (~24,700 rows) — IRC rating snapshots over time
   boat_id, snapshot_date, tcc, non_spi_tcc, lh, beam, draft,
   headsails, spinnakers, crew, dlr, ...
 
-certificates (2,996 rows) — parsed IRC certificate PDFs
-  boat_id, cert_number, lh, beam, draft, displacement,
+irc_certificates (~3,800 rows) — parsed IRC certificate PDFs
+  boat_id, cert_number, lh, beam, draft, displacement_kg,
   p, e, j, hlu, hlp, ...  (rig measurements)
 
-orc_certificates (70,759 rows) — ORC certificate data
-  boat_id, class_name, gph, country_id, ...
+orc_certificates (~14,000 rows) — ORC certificate data
+  boat_id, class_name, gph, cdl, triple_low/med/high,
+  allowances (VPP polars, jsonb), tmf_offshore, tmf_inshore,
+  mb, dspl_sailing, wss, dynamic_allowance, ...
 
 race_results (267,269 rows) — scraped race results
   boat_id (NULL if unmatched), event_name, event_date, race_name,

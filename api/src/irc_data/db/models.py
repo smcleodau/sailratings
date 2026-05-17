@@ -18,6 +18,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -47,9 +48,9 @@ class Boat(Base):
     builder: Mapped[str | None] = mapped_column(Text)
     designer: Mapped[str | None] = mapped_column(Text)
     design_canonical: Mapped[str | None] = mapped_column(Text)
-    current_name: Mapped[str | None] = mapped_column(Text)
-    current_sail_number: Mapped[str | None] = mapped_column(Text)
-    current_flag: Mapped[str | None] = mapped_column(Text)
+    # current_name / current_sail_number / current_flag dropped in migration
+    # 0014 — never written, 100% NULL across all rows. boat_identities is
+    # the source of truth for historical name/sail/owner observations.
     loa: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     lwl: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     beam_max: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
@@ -112,7 +113,10 @@ class TCCSnapshotModel(Base):
 
 
 class Certificate(Base):
-    __tablename__ = "certificates"
+    # Renamed in migration 0012 — IRC-specific certs sit in `irc_certificates`
+    # alongside `orc_certificates`. The Python class name stays `Certificate` to
+    # minimise import churn; the table is what's renamed.
+    __tablename__ = "irc_certificates"
     __table_args__ = (UniqueConstraint("cert_number"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -125,7 +129,10 @@ class Certificate(Base):
     lh: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     beam: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     draft: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
-    displacement: Mapped[Decimal | None] = mapped_column(Numeric(8, 1))
+    # Renamed + widened in migration 0014. The bare `displacement` name was
+    # ambiguous next to `orc_certificates.displacement`; the `_kg` suffix
+    # matches `boats.displacement_kg` and the other displacement columns.
+    displacement_kg: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
     bo: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     so: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     p: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
@@ -285,6 +292,21 @@ class ORCCertificate(Base):
     sail_area_upwind: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
     sail_area_downwind: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
     stability_index: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+
+    # VPP polars + key dimensions promoted from raw_data in migration 0013.
+    # `allowances` is the full polar table (beat/reach/run at multiple wind
+    # speeds, CR + WL courses); the rest are scalar performance fields needed
+    # for design-compare, no-spin scoring, and IRC<->ORC cross-rating.
+    allowances: Mapped[dict | None] = mapped_column(JSONB)
+    dynamic_allowance: Mapped[Decimal | None] = mapped_column(Numeric(5, 3))
+    dspl_sailing: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
+    imsl: Mapped[Decimal | None] = mapped_column(Numeric(6, 3))
+    mb: Mapped[Decimal | None] = mapped_column(Numeric(6, 3))
+    aphd: Mapped[Decimal | None] = mapped_column(Numeric(6, 3))
+    apht: Mapped[str | None] = mapped_column(Text)
+    wss: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+    tmf_offshore: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
+    tmf_inshore: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
 
     # Full JSON blob for everything we don't extract
     raw_data: Mapped[dict | None] = mapped_column(JSON)

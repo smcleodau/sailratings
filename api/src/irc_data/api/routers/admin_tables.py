@@ -2,7 +2,7 @@
 
 Provides paginated read access to every user table in the dev DB plus
 in-place UPDATE for a curated set of tables (`policy.editable`). Big
-scraper-owned tables (race_results, orc_certificates, certificates,
+scraper-owned tables (race_results, orc_certificates, irc_certificates,
 tcc_snapshots, orc_snapshots) are read-only by policy to prevent
 accidents — the moderation queue in /admin/corrections is the right
 surface for fixing those values.
@@ -47,7 +47,7 @@ TABLE_POLICY: dict[str, dict] = {
     "race_results":        {"editable": False, "pk": "id"},
     "orc_certificates":    {"editable": False, "pk": "id"},
     "orc_snapshots":       {"editable": False, "pk": "id"},
-    "certificates":        {"editable": False, "pk": "id"},
+    "irc_certificates":    {"editable": False, "pk": "id"},
     "tcc_snapshots":       {"editable": False, "pk": "id"},
 }
 

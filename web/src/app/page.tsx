@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import Hero from "@/components/Hero";
 import TeaserAnalysis from "@/components/TeaserAnalysis";
@@ -12,7 +12,6 @@ export default function Home() {
   const [boatError, setBoatError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [, setTeaserText] = useState("");
-  const resultsRef = useRef<HTMLDivElement>(null);
 
   const handleBoatSelected = (boat: SearchResult) => {
     setSelectedBoat(boat);
@@ -26,10 +25,10 @@ export default function Home() {
     setTeaserText(text);
   }, []);
 
-  // Fetch boat detail in page.tsx (was BoatCard's job)
   useEffect(() => {
     if (!selectedBoat) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBoatDetail(null);
     setBoatError(null);
     (async () => {
@@ -45,12 +44,17 @@ export default function Home() {
     };
   }, [selectedBoat]);
 
+  // Smooth scroll the bench into view once a boat is picked.
+  // Scrolls to a fixed Y (just past the hero) — no moving target, so no jolt.
   useEffect(() => {
-    if (selectedBoat && resultsRef.current) {
-      setTimeout(() => {
-        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 100);
-    }
+    if (!selectedBoat) return;
+    const t = setTimeout(() => {
+      window.scrollTo({
+        top: Math.max(0, window.innerHeight - 96),
+        behavior: "smooth",
+      });
+    }, 350);
+    return () => clearTimeout(t);
   }, [selectedBoat]);
 
   return (
@@ -58,9 +62,9 @@ export default function Home() {
       <Hero onBoatSelected={handleBoatSelected} />
 
       {selectedBoat && (
-        <section ref={resultsRef} className="px-6 py-14 sm:py-20">
+        <>
           {!boatDetail && !boatError && (
-            <div className="max-w-3xl mx-auto flex items-center gap-3 py-12">
+            <div className="max-w-3xl mx-auto px-6 py-20 flex items-center gap-3">
               <Loader2 size={16} className="animate-spin text-brass" />
               <span className="body-text text-charcoal/60 text-sm">
                 Pulling {selectedBoat.boat_name}&rsquo;s file…
@@ -68,7 +72,7 @@ export default function Home() {
             </div>
           )}
           {boatError && (
-            <div className="max-w-3xl mx-auto py-12">
+            <div className="max-w-3xl mx-auto px-6 py-20">
               <p className="body-text text-brass text-sm">{boatError}</p>
             </div>
           )}
@@ -80,17 +84,19 @@ export default function Home() {
               onComplete={handleTeaserComplete}
             />
           )}
-        </section>
+        </>
       )}
 
-      <footer className="border-t border-border px-6 py-8 bg-cream">
-        <div className="max-w-2xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-muted">
-          <span className="brand-wordmark text-muted/40">Sail Ratings</span>
-          <span className="body-text text-center">
-            Rating data sourced from public certificates. Not affiliated with the RORC Rating Office or ORC.
-          </span>
-        </div>
-      </footer>
+      {!selectedBoat && (
+        <footer className="border-t border-border px-6 py-8 bg-cream">
+          <div className="max-w-2xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-muted">
+            <span className="brand-wordmark text-muted/40">Sail Ratings</span>
+            <span className="body-text text-center">
+              Rating data sourced from public certificates. Not affiliated with the RORC Rating Office or ORC.
+            </span>
+          </div>
+        </footer>
+      )}
     </main>
   );
 }

@@ -1104,7 +1104,7 @@ def parse_certs(ctx, cert_dir):
             "lh": cert.lh,
             "beam": cert.beam,
             "draft": cert.draft,
-            "displacement": cert.displacement,
+            "displacement": cert.displacement_kg,
             "bo": cert.bo,
             "so": cert.so,
             "p": cert.p,

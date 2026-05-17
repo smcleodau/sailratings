@@ -199,12 +199,12 @@ def get_boat_certificates(
                 c.issue_date,
                 c.source,
                 c.source_url,
-                c.lh, c.beam, c.draft, c.displacement,
+                c.lh, c.beam, c.draft, c.displacement_kg,
                 c.rig_type,
                 c.stix, c.avs,
                 c.design_category,
                 c.scraped_at
-            FROM certificates c
+            FROM irc_certificates c
             WHERE c.boat_id = :boat_id
             ORDER BY c.issue_date DESC NULLS LAST
         """)

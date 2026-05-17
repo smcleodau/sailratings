@@ -181,22 +181,23 @@ export default function Hero({ onBoatSelected }: HeroProps) {
               onKeyDown={handleKeyDown}
               onFocus={() => { if (results.length > 0 || suggestions.length > 0) setIsOpen(true); }}
               placeholder="Boat name, sail number, or design"
-              className="w-full h-14 pl-12 pr-24 bg-transparent text-charcoal text-[15px] font-body placeholder:text-charcoal/40 focus:outline-none rounded-md"
+              className="w-full h-14 pl-12 pr-36 bg-transparent text-charcoal text-[15px] font-body placeholder:text-charcoal/40 focus:outline-none rounded-md"
               autoComplete="off"
               role="combobox"
               aria-expanded={isOpen}
             />
 
-            {/* Right-hand status cluster: spinner / clear / ↵ hint, always anchored to the same spot */}
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
+            {/* Right cluster: spinner / clear / Search button */}
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
               {isLoading && (
                 <div
-                  className="w-4 h-4 border-2 border-charcoal/15 border-t-brass animate-spin rounded-full"
+                  className="w-4 h-4 mr-1 border-2 border-charcoal/15 border-t-brass animate-spin rounded-full"
                   aria-label="searching"
                 />
               )}
               {!isLoading && query && (
                 <button
+                  type="button"
                   onClick={() => {
                     setQuery("");
                     setResults([]);
@@ -207,17 +208,21 @@ export default function Hero({ onBoatSelected }: HeroProps) {
                     setSearchedQuery("");
                     inputRef.current?.focus();
                   }}
-                  className="pointer-events-auto text-charcoal/30 hover:text-charcoal transition-colors"
+                  className="w-7 h-7 inline-flex items-center justify-center text-charcoal/35 hover:text-charcoal hover:bg-charcoal/5 rounded-full transition-colors"
                   aria-label="Clear search"
                 >
-                  <X size={16} strokeWidth={1.5} />
+                  <X size={14} strokeWidth={1.5} />
                 </button>
               )}
-              {!isLoading && query.trim().length >= 2 && (results.length > 0 || suggestions.length > 0) && (
-                <span className="data-mono text-[10px] uppercase tracking-wider text-charcoal/40 pl-1 border-l border-charcoal/10 pl-2">
-                  ↵
-                </span>
-              )}
+              <button
+                type="button"
+                onClick={() => handleSubmit()}
+                disabled={query.trim().length < 2}
+                className="h-11 px-5 inline-flex items-center justify-center bg-brass text-white text-[13px] font-body font-semibold tracking-[0.04em] rounded-md transition-all hover:bg-brass-dark active:translate-y-px disabled:bg-charcoal/10 disabled:text-charcoal/35 disabled:cursor-not-allowed shadow-[0_2px_10px_-3px_rgba(166,131,77,0.55)] disabled:shadow-none"
+                aria-label="Search boats"
+              >
+                Search
+              </button>
             </div>
           </div>
 
