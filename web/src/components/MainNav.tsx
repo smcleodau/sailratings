@@ -34,14 +34,16 @@ export default function MainNav({ theme, cta }: MainNavProps) {
     : "relative w-full z-30 border-b border-border-light bg-cream";
 
   return (
-    <nav className={`${containerClass} px-8 sm:px-12 py-6 flex items-center justify-between`}>
-      <Link href="/" className="flex items-center gap-2.5 group">
+    <nav
+      className={`${containerClass} px-8 sm:px-12 py-6 grid grid-cols-[1fr_auto_1fr] items-center gap-6`}
+    >
+      <Link href="/" className="flex items-center gap-2.5 group justify-self-start">
         <SailLogo className={`w-6 h-6 ${wordmarkClass} transition-opacity group-hover:opacity-80`} />
         <span className={`brand-wordmark ${wordmarkClass} transition-opacity group-hover:opacity-80`}>
           Sail Ratings
         </span>
       </Link>
-      <div className="hidden md:flex items-center gap-10 text-[14px] font-body font-medium">
+      <div className="hidden md:flex items-center justify-center gap-10 text-[14px] font-body font-medium">
         {NAV_ITEMS.map((item) => (
           <Link
             key={item.href}
@@ -52,7 +54,7 @@ export default function MainNav({ theme, cta }: MainNavProps) {
           </Link>
         ))}
       </div>
-      {cta ?? <span className="hidden sm:block w-[1px]" aria-hidden="true" />}
+      <div className="justify-self-end">{cta}</div>
     </nav>
   );
 }
