@@ -24,7 +24,7 @@ await page.waitForTimeout(400);
 await page.screenshot({ path: '/tmp/search-dropdown.png', clip: { x: 360, y: 350, width: 720, height: 480 } });
 
 // Jump-free transition: capture the viewport in the 250ms after click to confirm no scroll jolt.
-const firstResult = page.locator('[role="option"], [data-result], li button').first();
+const firstResult = page.locator('#search-results li').first();
 const scrollBefore = await page.evaluate(() => window.scrollY);
 await firstResult.click();
 await page.waitForTimeout(250);

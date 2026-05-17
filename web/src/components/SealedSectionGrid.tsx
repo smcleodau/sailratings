@@ -66,7 +66,9 @@ export default function SealedSectionGrid() {
         {SEALED_SECTIONS.map((sec) => (
           <li
             key={sec.num}
-            className="bg-cream border border-brass/30 hover:border-brass/60 transition-colors flex flex-col"
+            className={`bg-cream border border-brass/30 hover:border-brass/60 transition-colors flex flex-col ${
+              sec.num === 8 ? "md:col-span-2 md:bg-brass/[0.06]" : ""
+            }`}
           >
             <div className="px-5 pt-5 pb-4 flex-1">
               <div className="flex items-baseline gap-3 mb-2">

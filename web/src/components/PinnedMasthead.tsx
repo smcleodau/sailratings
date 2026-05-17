@@ -138,62 +138,67 @@ export default function PinnedMasthead({ boat, subline }: PinnedMastheadProps) {
         </span>
       </div>
 
-      {/* Cream masthead row — boat name, TCC, metadata */}
-      <div className="bg-cream border-b border-charcoal/15 px-6 sm:px-12 py-3.5 sm:py-4">
-        <div className="flex items-baseline justify-between gap-4 flex-wrap">
-          <div className="flex items-baseline gap-4 flex-wrap min-w-0">
+      {/* Cream masthead — newspaper-style: dominant name + metadata strip on the left, rating marquee on the right */}
+      <div className="bg-cream border-b border-charcoal/15 px-6 sm:px-12 py-3 sm:py-3.5">
+        <div className="flex items-end justify-between gap-6">
+          <div className="flex-1 min-w-0">
             <h1
-              className="heading-display text-charcoal uppercase tracking-[-0.015em] leading-none truncate"
-              style={{ fontSize: "clamp(1.3rem, 2.4vw, 1.9rem)" }}
+              className="heading-display text-charcoal uppercase tracking-[-0.02em] leading-[0.9] truncate"
+              style={{ fontSize: "clamp(1.75rem, 3.4vw, 2.8rem)" }}
             >
               {boat.boat_name}
             </h1>
-            {boat.sail_number && (
-              <span className="data-mono text-[13px] text-charcoal/85 font-semibold">
-                {boat.sail_number}
-              </span>
-            )}
-            {ratingValue && (
-              <span className="data-mono text-charcoal font-semibold text-[15px] sm:text-[17px]">
-                <span className="text-brass mr-1.5">{ratingLabel}</span>
-                {ratingValue}
-                <span className="text-charcoal/60 ml-1 text-[11px] uppercase tracking-[0.12em] font-semibold">
-                  {ratingUnit}
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[11.5px]">
+              {boat.sail_number && (
+                <span className="data-mono text-charcoal font-semibold tracking-[0.08em]">
+                  {boat.sail_number}
                 </span>
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1.5 text-[12px]">
-            {boat.design && (
+              )}
+              {boat.design && (
+                <EditableField
+                  boatId={boat.id}
+                  label="Design"
+                  value={boat.design}
+                  fieldName="design_canonical"
+                />
+              )}
               <EditableField
                 boatId={boat.id}
-                label="Design"
-                value={boat.design}
-                fieldName="design_canonical"
+                label="Year"
+                value={boat.year_built}
+                fieldName="year_built"
               />
-            )}
-            <EditableField
-              boatId={boat.id}
-              label="Year"
-              value={boat.year_built}
-              fieldName="year_built"
-            />
-            <EditableField
-              boatId={boat.id}
-              label="Designer"
-              value={boat.designer}
-              fieldName="designer"
-            />
-            <EditableField
-              boatId={boat.id}
-              label="Builder"
-              value={boat.builder}
-              fieldName="builder"
-            />
+              <EditableField
+                boatId={boat.id}
+                label="Designer"
+                value={boat.designer}
+                fieldName="designer"
+              />
+              <EditableField
+                boatId={boat.id}
+                label="Builder"
+                value={boat.builder}
+                fieldName="builder"
+              />
+            </div>
           </div>
+          {ratingValue && (
+            <div className="text-right flex-shrink-0 pl-6 sm:pl-8 border-l border-charcoal/20">
+              <div
+                className="data-mono text-charcoal font-semibold leading-none tracking-[-0.02em] tabular-nums"
+                style={{ fontSize: "clamp(1.5rem, 2.8vw, 2.25rem)" }}
+              >
+                {ratingValue}
+              </div>
+              <div className="mt-1.5 data-mono text-[10px] uppercase tracking-[0.18em] font-semibold">
+                <span className="text-brass">{ratingLabel}</span>
+                <span className="text-charcoal/55 ml-1">{ratingUnit}</span>
+              </div>
+            </div>
+          )}
         </div>
         {subline && (
-          <div className="mt-2 data-mono text-[10px] uppercase tracking-[0.16em] text-charcoal/65 font-semibold">
+          <div className="mt-2.5 data-mono text-[10px] uppercase tracking-[0.16em] text-charcoal/65 font-semibold">
             {subline}
           </div>
         )}

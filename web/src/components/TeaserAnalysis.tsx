@@ -161,8 +161,9 @@ export default function TeaserAnalysis({
       <PinnedMasthead boat={boat} />
 
       <article id="bench" className="w-full max-w-5xl mx-auto bg-cream/90 text-charcoal pb-24">
-        {/* Two-column bench: working log (left) + §1 prose (right). On mobile, stacks. */}
-        <section className="grid grid-cols-1 md:grid-cols-[minmax(220px,1fr)_2.5fr] gap-0 border-b border-charcoal/15">
+        {/* Two-column bench: working log (left) + §1 prose (right). On mobile, stacks.
+            min-height keeps the bench filling the viewport during streaming so the chrome doesn't sit on a sea of empty cream. */}
+        <section className="grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_2.5fr] gap-0 border-b border-charcoal/15 md:min-h-[calc(100vh-72px-100px)]">
           {/* Working log */}
           <aside className="bg-charcoal/[0.03] px-6 sm:px-8 py-6 md:py-10 border-b md:border-b-0 md:border-r border-charcoal/15">
             <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-brass font-semibold mb-4">
@@ -188,14 +189,14 @@ export default function TeaserAnalysis({
                       )}
                     </span>
                     <span className="flex-1 min-w-0">
-                      <span className="block truncate">{s.label}</span>
+                      <span className="block leading-snug">{s.label}</span>
                       {s.detail && (
-                        <span className="block text-charcoal/55 normal-case tracking-normal text-[11px] mt-0.5">
+                        <span className="block text-charcoal/55 normal-case tracking-normal text-[11px] mt-0.5 leading-snug">
                           {s.detail}
                         </span>
                       )}
                     </span>
-                    <span className="data-mono text-[9px] text-charcoal/40 ml-1 flex-shrink-0">
+                    <span className="data-mono text-[9px] text-charcoal/40 ml-1 flex-shrink-0 tabular-nums">
                       {s.stamp}
                     </span>
                   </li>

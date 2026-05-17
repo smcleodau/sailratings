@@ -18,15 +18,23 @@ await page.waitForTimeout(600);
 // Search and pick the first result
 await page.fill('#main-search', 'sun fish');
 await page.waitForTimeout(900);
-// First dropdown result. Hero.tsx uses role="combobox" + a result list — click the first option.
-const firstResult = page.locator('[role="option"], [data-result], li button').first();
+// First dropdown result — <ul id="search-results"><li onClick=…> in Hero.tsx.
+const firstResult = page.locator('#search-results li').first();
 await firstResult.click();
 
 // Wait for the bench panel to mount (PinnedMasthead is sticky top-0)
 await page.waitForSelector('#bench', { timeout: 15000 });
-await page.waitForTimeout(2200); // give SSE working steps + prose start a chance
+// Wait until the prose column has at least 100 chars of streamed text before screenshotting.
+await page.waitForFunction(
+  () => {
+    const proseEl = document.querySelector('#bench .body-text');
+    return proseEl && (proseEl.textContent || '').trim().length > 100;
+  },
+  { timeout: 60000 },
+);
+await page.waitForTimeout(400); // settle one more chunk
 
-// Beat 1: streaming in progress
+// Beat 1: streaming in progress, prose visible
 await page.screenshot({ path: '/tmp/bench-streaming.png', fullPage: false });
 
 // Wait for streaming to finish + sealed sections to appear

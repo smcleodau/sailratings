@@ -47,12 +47,12 @@ export default function StickyCheckoutRail({
       role="region"
       aria-label="Checkout"
     >
-      <div className="max-w-6xl mx-auto px-6 sm:px-10 py-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-6">
-        <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-5">
-          <p className="body-text text-cream text-[14px] sm:text-[15px] leading-snug truncate">
+      <div className="max-w-6xl mx-auto px-6 sm:px-10 py-3.5 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-8">
+        <div className="flex-1 min-w-0">
+          <p className="body-text text-cream text-[14px] sm:text-[15px] leading-snug">
             Full file for <span className="font-semibold">{boatName}</span> — eight sections, ranked recommendations.
           </p>
-          <span className="data-mono text-cream/55 text-[11px] uppercase tracking-[0.14em] hidden sm:inline">
+          <span className="data-mono text-cream/55 text-[10.5px] uppercase tracking-[0.14em] mt-1 hidden sm:block">
             {reassurance}
           </span>
         </div>
