@@ -112,7 +112,10 @@ class TCCSnapshotModel(Base):
 
 
 class Certificate(Base):
-    __tablename__ = "certificates"
+    # Renamed in migration 0012 — IRC-specific certs sit in `irc_certificates`
+    # alongside `orc_certificates`. The Python class name stays `Certificate` to
+    # minimise import churn; the table is what's renamed.
+    __tablename__ = "irc_certificates"
     __table_args__ = (UniqueConstraint("cert_number"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)

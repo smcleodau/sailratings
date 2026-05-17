@@ -18,7 +18,7 @@ def health_check(
         SELECT
             (SELECT count(*) FROM boats)             AS boats,
             (SELECT count(*) FROM tcc_snapshots)     AS tcc_snapshots,
-            (SELECT count(*) FROM certificates)      AS certificates,
+            (SELECT count(*) FROM irc_certificates)  AS irc_certificates,
             (SELECT count(*) FROM orc_certificates)  AS orc_certificates,
             (SELECT count(*) FROM race_results)      AS race_results,
             (SELECT count(*) FROM design_classes)     AS design_classes,
@@ -30,7 +30,7 @@ def health_check(
             (SELECT max(snapshot_date) FROM tcc_snapshots)    AS latest_irc_snapshot,
             (SELECT max(snapshot_date) FROM orc_certificates) AS latest_orc_snapshot,
             (SELECT max(event_date) FROM race_results)        AS latest_race_result,
-            (SELECT max(scraped_at) FROM certificates)        AS latest_certificate
+            (SELECT max(scraped_at) FROM irc_certificates)    AS latest_irc_certificate
     """)
 
     ingestion_sql = text("""

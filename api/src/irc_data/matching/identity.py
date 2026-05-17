@@ -352,7 +352,7 @@ def backfill_design_from_irc_certs(engine: Engine) -> int:
                 SELECT DISTINCT ON (boat_id)
                     boat_id,
                     raw_data->>'design_raw' AS design_raw
-                FROM certificates
+                FROM irc_certificates
                 WHERE boat_id IS NOT NULL
                   AND raw_data->>'design_raw' IS NOT NULL
                   AND TRIM(raw_data->>'design_raw') != ''

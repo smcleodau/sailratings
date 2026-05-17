@@ -356,7 +356,7 @@ def build_boat_context(engine: Engine, boat_id: int, detail_level: str = "free")
 
         # --- Measurements from certificates ---
         certs = conn.execute(text("""
-            SELECT * FROM certificates WHERE boat_id = :id ORDER BY issue_date DESC NULLS LAST
+            SELECT * FROM irc_certificates WHERE boat_id = :id ORDER BY issue_date DESC NULLS LAST
         """), {"id": boat_id}).fetchall()
 
         if certs:
@@ -690,7 +690,7 @@ def _compute_thinking_steps(engine: Engine, boat_id: int) -> list[dict]:
                 {"id": boat_id},
             ).scalar() or 0
             cert_count = conn.execute(
-                text("SELECT COUNT(*) FROM certificates WHERE boat_id = :id"),
+                text("SELECT COUNT(*) FROM irc_certificates WHERE boat_id = :id"),
                 {"id": boat_id},
             ).scalar() or 0
             latest_tcc = conn.execute(

@@ -48,7 +48,7 @@ def get_sunfast_certificates(engine: Engine) -> list[dict]:
             ORDER BY snapshot_date DESC
             LIMIT 1
         ) t ON true
-        JOIN certificates c ON c.boat_id = b.id
+        JOIN irc_certificates c ON c.boat_id = b.id
         WHERE b.design = 'Sunfast 3300'
         ORDER BY t.tcc ASC
     """

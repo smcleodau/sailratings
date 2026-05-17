@@ -186,7 +186,7 @@ def _fetch_tier_a_data(engine: Engine, design: str) -> list[dict]:
             ORDER BY snapshot_date DESC LIMIT 1
         ) t ON true
         JOIN LATERAL (
-            SELECT * FROM certificates
+            SELECT * FROM irc_certificates
             WHERE boat_id = b.id
             ORDER BY issue_date DESC NULLS LAST LIMIT 1
         ) c ON true
@@ -538,7 +538,7 @@ def get_boat_sensitivity_context(
             SELECT * FROM tcc_snapshots WHERE boat_id = b.id ORDER BY snapshot_date DESC LIMIT 1
         ) t ON true
         LEFT JOIN LATERAL (
-            SELECT * FROM certificates WHERE boat_id = b.id ORDER BY issue_date DESC NULLS LAST LIMIT 1
+            SELECT * FROM irc_certificates WHERE boat_id = b.id ORDER BY issue_date DESC NULLS LAST LIMIT 1
         ) c ON true
         WHERE b.id = :boat_id
     """)

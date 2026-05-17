@@ -633,7 +633,7 @@ def get_stats(engine: Engine) -> dict:
     with engine.connect() as conn:
         boats = conn.execute(text("SELECT COUNT(*) FROM boats")).scalar()
         snapshots = conn.execute(text("SELECT COUNT(*) FROM tcc_snapshots")).scalar()
-        certs = conn.execute(text("SELECT COUNT(*) FROM certificates")).scalar()
+        certs = conn.execute(text("SELECT COUNT(*) FROM irc_certificates")).scalar()
         races = conn.execute(text("SELECT COUNT(*) FROM race_results")).scalar()
         countries = conn.execute(
             text("SELECT COUNT(DISTINCT country) FROM boats WHERE country IS NOT NULL")
@@ -651,7 +651,7 @@ def get_stats(engine: Engine) -> dict:
     return {
         "boats": boats,
         "snapshots": snapshots,
-        "certificates": certs,
+        "irc_certificates": certs,
         "race_results": races,
         "countries": countries,
         "designs": designs,
