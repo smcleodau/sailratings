@@ -23,9 +23,7 @@ export default function ReportPage({
       try {
         const data = await getReport(token);
         if (cancelled) return;
-
         setReport(data);
-
         if (data.status === "generated" || data.status === "ready" || data.status === "error") {
           if (pollRef.current) clearInterval(pollRef.current);
         }
@@ -46,14 +44,11 @@ export default function ReportPage({
     };
   }, [token]);
 
-  // Loading / pending / paid states
   if (error) {
     return (
       <main className="min-h-screen bg-cream flex items-center justify-center px-6">
         <div className="max-w-md text-center">
-          <h1 className="heading-display text-3xl text-ink mb-4">
-            Something went wrong
-          </h1>
+          <h1 className="heading-display text-3xl text-charcoal mb-4">Something went wrong</h1>
           <p className="body-text text-muted mb-8">{error}</p>
           <Link
             href="/"
@@ -72,9 +67,7 @@ export default function ReportPage({
       <main className="min-h-screen bg-cream flex items-center justify-center px-6">
         <div className="max-w-md text-center">
           <div className="mb-8">
-            <span className="brand-wordmark text-sm text-navy/40">
-              Sail Ratings
-            </span>
+            <span className="brand-wordmark text-sm text-navy/40">Sail Ratings</span>
           </div>
           <div className="flex justify-center mb-6">
             <div
@@ -82,13 +75,11 @@ export default function ReportPage({
               style={{ borderRadius: "50%" }}
             />
           </div>
-          <h1 className="heading-display text-2xl text-ink mb-3">
-            Preparing Your Report
-          </h1>
+          <h1 className="heading-display text-2xl text-charcoal mb-3">Preparing Your Report</h1>
           <p className="body-text text-muted text-base">
             {report?.status === "paid"
-              ? "Payment confirmed. Generating your analysis..."
-              : "Processing your payment..."}
+              ? "Payment confirmed. Generating your analysis…"
+              : "Processing your payment…"}
           </p>
         </div>
       </main>
@@ -99,12 +90,9 @@ export default function ReportPage({
     return (
       <main className="min-h-screen bg-cream flex items-center justify-center px-6">
         <div className="max-w-md text-center">
-          <h1 className="heading-display text-3xl text-ink mb-4">
-            Report Error
-          </h1>
+          <h1 className="heading-display text-3xl text-charcoal mb-4">Report Error</h1>
           <p className="body-text text-muted mb-8">
-            There was a problem generating your report. Please contact us for
-            assistance.
+            There was a problem generating your report. Please contact us for assistance.
           </p>
           <Link
             href="/"
@@ -120,28 +108,13 @@ export default function ReportPage({
 
   return (
     <main className="min-h-screen bg-cream">
-      {/* Nav */}
-      <nav className="border-b border-border-light px-8 py-5 flex items-center justify-between">
-        <Link href="/">
-          <span className="brand-wordmark text-sm text-navy">
-            Sail Ratings
-          </span>
-        </Link>
-      </nav>
-
       <ReportView report={report} token={token} />
-
       <ReportSurvey orderToken={token} />
-
-      {/* Footer */}
       <footer className="border-t border-border-light px-6 py-10">
         <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted">
-          <span className="brand-wordmark text-xs text-muted/60">
-            Sail Ratings
-          </span>
+          <span className="brand-wordmark text-xs text-muted/60">Sail Ratings</span>
           <span className="body-text text-center">
-            IRC rating data sourced from public certificates. Not affiliated
-            with the RORC Rating Office.
+            IRC rating data sourced from public certificates. Not affiliated with the RORC Rating Office.
           </span>
         </div>
       </footer>
