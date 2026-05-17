@@ -136,6 +136,15 @@ body {
 .delay-5 { animation-delay: 700ms; }
 .streaming-pulse { animation: subtlePulse 1.5s ease-in-out infinite; }
 
+/* Sealed-card materialisation: fade up + scale on first paint.
+   Each card mounts at a different time (parent reveals progressively),
+   so the animation runs once per card on its own mount. */
+@keyframes sealedCardIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.sealed-card-in { animation: sealedCardIn 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
 /* ── Teaser Fade ─────────────────────────────────────────────────────── */
 .teaser-fade { position: relative; }
 .teaser-fade::after {

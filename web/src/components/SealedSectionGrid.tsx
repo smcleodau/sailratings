@@ -51,22 +51,43 @@ export const SEALED_SECTIONS: SealedSection[] = [
   },
 ];
 
-export default function SealedSectionGrid() {
+interface SealedSectionGridProps {
+  /** How many cards to reveal (0..7). Cards beyond this count are not rendered.
+   *  When undefined, all cards render immediately. */
+  revealedCount?: number;
+}
+
+export default function SealedSectionGrid({ revealedCount }: SealedSectionGridProps = {}) {
+  const count = revealedCount == null ? SEALED_SECTIONS.length : Math.min(revealedCount, SEALED_SECTIONS.length);
+  const visible = SEALED_SECTIONS.slice(0, count);
+  const allOut = count >= SEALED_SECTIONS.length;
+
+  if (count <= 0) return null;
+
   return (
     <section className="px-6 sm:px-12 py-10 sm:py-12" aria-label="Sealed sections">
       <div className="flex items-baseline justify-between mb-6 border-b border-charcoal/15 pb-4">
-        <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/70 font-semibold">
-          Seven sections drafted · sealed pending order
+        <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/70 font-semibold flex items-center gap-2">
+          {allOut ? (
+            <>Seven sections drafted · sealed pending order</>
+          ) : (
+            <>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-brass animate-pulse" />
+              Drafting the rest of the file…
+            </>
+          )}
         </div>
-        <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-brass hidden sm:inline">
-          §2 — §8
-        </div>
+        {allOut && (
+          <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-brass hidden sm:inline">
+            §2 — §8
+          </div>
+        )}
       </div>
       <ol className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-        {SEALED_SECTIONS.map((sec) => (
+        {visible.map((sec) => (
           <li
             key={sec.num}
-            className={`bg-cream border border-brass/30 hover:border-brass/60 transition-colors flex flex-col ${
+            className={`bg-cream border border-brass/30 hover:border-brass/60 transition-colors flex flex-col sealed-card-in ${
               sec.num === 8 ? "md:col-span-2 md:bg-brass/[0.06]" : ""
             }`}
           >

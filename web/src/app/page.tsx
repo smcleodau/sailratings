@@ -44,9 +44,22 @@ export default function Home() {
     };
   }, [selectedBoat]);
 
+  // Smooth scroll the bench into view once a boat is picked.
+  // Scrolls to a fixed Y (just past the hero) — no moving target, so no jolt.
+  useEffect(() => {
+    if (!selectedBoat) return;
+    const t = setTimeout(() => {
+      window.scrollTo({
+        top: Math.max(0, window.innerHeight - 96),
+        behavior: "smooth",
+      });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [selectedBoat]);
+
   return (
     <main className="min-h-screen bg-cream">
-      {!selectedBoat && <Hero onBoatSelected={handleBoatSelected} />}
+      <Hero onBoatSelected={handleBoatSelected} />
 
       {selectedBoat && (
         <>

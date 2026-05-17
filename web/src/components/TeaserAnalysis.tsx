@@ -47,10 +47,14 @@ export default function TeaserAnalysis({
   const [isDone, setIsDone] = useState(false);
   const [streamStarted, setStreamStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Number of sealed §-cards revealed so far. Drives a slow, continuous reveal
+   *  rather than dumping all seven at the same moment. */
+  const [sealedRevealedCount, setSealedRevealedCount] = useState(0);
   const startedRef = useRef(false);
   const textRef = useRef("");
   const startTimeRef = useRef<number>(0);
   const currency = useMemo(() => detectCurrency(), []);
+  const allSealedOut = sealedRevealedCount >= 7;
 
   useEffect(() => {
     if (startedRef.current) return;
@@ -124,6 +128,26 @@ export default function TeaserAnalysis({
     run();
     return () => {
       cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boat.id]);
+
+  // Slow, continuous reveal of the seven sealed §-cards. First card materialises
+  // 5 s after mount (while §1 prose is still streaming), each subsequent card
+  // ~1.6 s after. By card 7 we're around 14-15 s in. The CTA waits for both
+  // streaming to finish AND all cards to be out before it slides into view —
+  // so nothing ever "clumps" at the end.
+  useEffect(() => {
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+    const FIRST_AT_MS = 5000;
+    const GAP_MS = 1600;
+    for (let i = 1; i <= 7; i++) {
+      timeouts.push(
+        setTimeout(() => setSealedRevealedCount((c) => Math.max(c, i)), FIRST_AT_MS + (i - 1) * GAP_MS),
+      );
+    }
+    return () => {
+      timeouts.forEach(clearTimeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boat.id]);
@@ -233,16 +257,18 @@ export default function TeaserAnalysis({
           </div>
         </section>
 
-        {/* Brass hairline rule */}
-        {isDone && <div className="mx-6 sm:mx-12 h-px bg-brass/40" />}
+        {/* Brass hairline rule appears as soon as the first sealed card materialises. */}
+        {sealedRevealedCount > 0 && <div className="mx-6 sm:mx-12 h-px bg-brass/40" />}
 
-        {/* Sealed sections grid (§2 — §8) */}
-        {isDone && <SealedSectionGrid />}
+        {/* Sealed sections grid — sections reveal continuously, one at a time,
+            beginning while §1 prose is still streaming. */}
+        <SealedSectionGrid revealedCount={sealedRevealedCount} />
       </article>
 
-      {/* Persistent CTA rail — appears only once §1 has finished streaming */}
+      {/* Persistent CTA rail — only once §1 has finished AND all seven cards are out.
+          Prevents any "clump" at the end of the experience. */}
       <StickyCheckoutRail
-        visible={isDone}
+        visible={isDone && allSealedOut}
         boatName={boat.boat_name}
         onCheckout={handleCheckout}
         samplePdfUrl={samplePdfUrl}
