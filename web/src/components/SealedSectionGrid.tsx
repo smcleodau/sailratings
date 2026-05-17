@@ -91,7 +91,7 @@ export default function SealedSectionGrid({ revealedCount }: SealedSectionGridPr
   if (count <= 0) return null;
 
   return (
-    <section className="px-6 sm:px-12 py-10 sm:py-12" aria-label="Sealed sections">
+    <section className="py-10 sm:py-12" aria-label="Sealed sections">
       <div className="flex items-baseline justify-between mb-6 border-b border-charcoal/15 pb-4">
         <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-charcoal/70 font-semibold flex flex-col gap-1.5">
           {allOut ? (

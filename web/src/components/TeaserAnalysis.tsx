@@ -184,81 +184,80 @@ export default function TeaserAnalysis({
     <>
       <PinnedMasthead boat={boat} />
 
-      <article id="bench" className="w-full max-w-5xl mx-auto bg-cream/90 text-charcoal pb-24">
-        {/* Two-column bench: working log (left) + §1 prose (right). On mobile, stacks.
-            min-height keeps the bench filling the viewport during streaming so the chrome doesn't sit on a sea of empty cream. */}
-        <section className="grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_2.5fr] gap-0 border-b border-charcoal/15 md:min-h-[calc(100vh-72px-100px)]">
-          {/* Working log */}
-          <aside className="bg-charcoal/[0.03] px-6 sm:px-8 py-6 md:py-10 border-b md:border-b-0 md:border-r border-charcoal/15">
-            <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-brass font-semibold mb-4">
-              Working
-            </div>
-            {steps.length === 0 ? (
-              <div className="flex items-center gap-2 data-mono text-[11px] uppercase tracking-[0.14em] text-charcoal/65">
-                <Loader2 size={11} className="animate-spin text-brass" />
-                Opening the registry…
-              </div>
-            ) : (
-              <ol className="space-y-2">
-                {steps.map((s, i) => (
-                  <li
-                    key={i}
-                    className="flex items-baseline gap-2 data-mono text-[11px] uppercase tracking-[0.12em] text-charcoal/80"
-                  >
-                    <span className="flex-shrink-0 w-3">
-                      {s.state === "done" ? (
-                        <Check size={11} strokeWidth={2.5} className="text-brass" />
-                      ) : (
-                        <Loader2 size={10} className="animate-spin text-brass" />
-                      )}
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block leading-snug">{s.label}</span>
-                      {s.detail && (
-                        <span className="block text-charcoal/55 normal-case tracking-normal text-[11px] mt-0.5 leading-snug">
-                          {s.detail}
-                        </span>
-                      )}
-                    </span>
-                    <span className="data-mono text-[9px] text-charcoal/40 ml-1 flex-shrink-0 tabular-nums">
-                      {s.stamp}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </aside>
-
-          {/* §1 prose */}
-          <div className="px-6 sm:px-10 py-8 sm:py-10">
-            <h2 className="flex items-baseline gap-4 mb-5">
-              <span className="data-mono text-brass text-[12px] font-semibold tracking-[0.1em] flex-shrink-0">
-                §01
-              </span>
-              <span className="heading-display text-charcoal text-xl sm:text-2xl">
-                Where she sits
-              </span>
-            </h2>
-            {text ? (
-              <div
-                className="body-text text-charcoal text-[16px] sm:text-[17px] leading-[1.62] whitespace-pre-wrap"
-                style={{ maxWidth: "62ch" }}
-              >
-                {text}
-                {isStreaming && streamStarted && (
-                  <span className="inline-block w-0.5 h-5 bg-brass ml-0.5 align-text-bottom streaming-pulse" />
-                )}
-              </div>
-            ) : (
-              !streamStarted && (
-                <div className="body-text text-charcoal/40 italic text-[15px]">Drafting…</div>
-              )
-            )}
+      <article id="bench" className="w-full max-w-3xl mx-auto bg-cream/90 text-charcoal pb-24 px-6 sm:px-10">
+        {/* Thinking steps — pinned at the top of the report, full width, one
+            per row. Reads as a surveyor's notes: 'I went and checked X, then
+            Y, then Z' — credibility before conclusion. Once the prose starts
+            streaming below, the steps stay visible as a record. */}
+        <section className="pt-8 sm:pt-10 pb-6 border-b border-charcoal/15" aria-label="Thinking">
+          <div className="data-mono text-[10px] uppercase tracking-[0.18em] text-brass font-semibold mb-5">
+            Thinking
           </div>
+          {steps.length === 0 ? (
+            <div className="flex items-center gap-2.5 data-mono text-[12px] uppercase tracking-[0.12em] text-charcoal/65">
+              <Loader2 size={13} className="animate-spin text-brass" />
+              Opening the registry…
+            </div>
+          ) : (
+            <ol className="space-y-3">
+              {steps.map((s, i) => (
+                <li
+                  key={i}
+                  className="thinking-step flex items-baseline gap-3 data-mono text-[12.5px] uppercase tracking-[0.08em] text-charcoal"
+                >
+                  <span className="flex-shrink-0 w-4 self-baseline translate-y-px">
+                    {s.state === "done" ? (
+                      <Check size={13} strokeWidth={2.5} className="text-brass" />
+                    ) : (
+                      <Loader2 size={12} className="animate-spin text-brass" />
+                    )}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block leading-snug">{s.label}</span>
+                    {s.detail && (
+                      <span className="block text-charcoal/55 normal-case tracking-normal text-[12px] mt-1 leading-snug">
+                        {s.detail}
+                      </span>
+                    )}
+                  </span>
+                  <span className="data-mono text-[10px] text-charcoal/40 flex-shrink-0 tabular-nums self-baseline">
+                    {s.stamp}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        {/* §1 prose — streams in below the thinking section, full width. */}
+        <section className="py-8 sm:py-10">
+          <h2 className="flex items-baseline gap-4 mb-5">
+            <span className="data-mono text-brass text-[12px] font-semibold tracking-[0.1em] flex-shrink-0 tabular-nums">
+              §01
+            </span>
+            <span className="heading-display text-charcoal text-xl sm:text-2xl">
+              Where she sits
+            </span>
+          </h2>
+          {text ? (
+            <div
+              className="body-text text-charcoal text-[16px] sm:text-[17px] leading-[1.62] whitespace-pre-wrap"
+              style={{ maxWidth: "62ch" }}
+            >
+              {text}
+              {isStreaming && streamStarted && (
+                <span className="inline-block w-0.5 h-5 bg-brass ml-0.5 align-text-bottom streaming-pulse" />
+              )}
+            </div>
+          ) : (
+            !streamStarted && (
+              <div className="body-text text-charcoal/40 italic text-[15px]">Drafting…</div>
+            )
+          )}
         </section>
 
         {/* Brass hairline rule appears as soon as the first sealed card materialises. */}
-        {sealedRevealedCount > 0 && <div className="mx-6 sm:mx-12 h-px bg-brass/40" />}
+        {sealedRevealedCount > 0 && <div className="h-px bg-brass/40" />}
 
         {/* Sealed sections grid — sections reveal continuously, one at a time,
             beginning while §1 prose is still streaming. */}
