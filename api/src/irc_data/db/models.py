@@ -18,6 +18,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -288,6 +289,21 @@ class ORCCertificate(Base):
     sail_area_upwind: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
     sail_area_downwind: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
     stability_index: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+
+    # VPP polars + key dimensions promoted from raw_data in migration 0013.
+    # `allowances` is the full polar table (beat/reach/run at multiple wind
+    # speeds, CR + WL courses); the rest are scalar performance fields needed
+    # for design-compare, no-spin scoring, and IRC<->ORC cross-rating.
+    allowances: Mapped[dict | None] = mapped_column(JSONB)
+    dynamic_allowance: Mapped[Decimal | None] = mapped_column(Numeric(5, 3))
+    dspl_sailing: Mapped[Decimal | None] = mapped_column(Numeric(10, 1))
+    imsl: Mapped[Decimal | None] = mapped_column(Numeric(6, 3))
+    mb: Mapped[Decimal | None] = mapped_column(Numeric(6, 3))
+    aphd: Mapped[Decimal | None] = mapped_column(Numeric(6, 3))
+    apht: Mapped[str | None] = mapped_column(Text)
+    wss: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+    tmf_offshore: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
+    tmf_inshore: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
 
     # Full JSON blob for everything we don't extract
     raw_data: Mapped[dict | None] = mapped_column(JSON)
