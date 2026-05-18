@@ -68,7 +68,7 @@ export interface SSEStep {
 }
 
 export interface SSEEvent {
-  type: "text" | "done" | "error" | "step";
+  type: "text" | "done" | "error" | "step" | "thought_chunk" | "phase";
   data: string | SSEStep | Record<string, unknown>;
 }
 
@@ -194,7 +194,8 @@ export async function submitCorrection(
 
 export async function* streamInsights(
   boatId: number,
-  detailLevel: "free" | "premium" = "free"
+  detailLevel: "free" | "premium" = "free",
+  thinkingStyle: "steps" | "prose" = "steps"
 ): AsyncGenerator<SSEEvent, void, unknown> {
   const res = await fetch(`${API_BASE}/insights/ask`, {
     method: "POST",
@@ -209,6 +210,7 @@ export async function* streamInsights(
           ? "Analyse this boat"
           : "Full optimisation report. Where am I giving away rating and what should I change first?",
       detail_level: detailLevel,
+      thinking_style: thinkingStyle,
     }),
   });
 
