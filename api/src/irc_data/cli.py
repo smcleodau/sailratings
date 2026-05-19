@@ -327,6 +327,18 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
     engine = ctx.obj["engine"]
     results = []
 
+    # Helper used by every source-specific upsert below — inject the matching
+    # signals into raw_data so rematch passes can find a boat later.
+    def _enrich_raw_data(r):
+        rd = dict(r.raw_data) if getattr(r, "raw_data", None) else {}
+        bname = getattr(r, "boat_name", None)
+        sn = getattr(r, "sail_number", None)
+        if bname and "boat_name" not in rd:
+            rd["boat_name"] = bname
+        if sn and "sail_number" not in rd:
+            rd["sail_number"] = sn
+        return rd
+
     if source == "sailsys":
         from irc_data.scrapers.sailsys import CLUBS as _CLUB_MAP
         from irc_data.scrapers.sailsys import scrape_club_irc_results
@@ -425,15 +437,6 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
             from irc_data.scrapers.result_import import _find_boat_by_name
             from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
             from irc_data.matching.identity import normalize_sail
-
-            def _enrich_raw_data(r):
-                """Inject boat_name/sail_number into raw_data for rematching."""
-                rd = dict(r.raw_data) if r.raw_data else {}
-                if r.boat_name and "boat_name" not in rd:
-                    rd["boat_name"] = r.boat_name
-                if r.sail_number and "sail_number" not in rd:
-                    rd["sail_number"] = r.sail_number
-                return rd
 
             log_id = log_ingestion_start(engine, "rorc")
             imported = matched = 0
