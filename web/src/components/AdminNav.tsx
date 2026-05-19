@@ -18,12 +18,18 @@ const SECTIONS = [
       (p.startsWith("/justin") &&
         !p.startsWith("/justin/tables") &&
         !p.startsWith("/justin/corrections") &&
-        !p.startsWith("/justin/scrapers")),
+        !p.startsWith("/justin/scrapers") &&
+        !p.startsWith("/justin/discovery")),
   },
   {
     href: "/justin/scrapers",
     label: "Scrapers",
     match: (p: string) => p.startsWith("/justin/scrapers"),
+  },
+  {
+    href: "/justin/discovery",
+    label: "Discovery",
+    match: (p: string) => p.startsWith("/justin/discovery"),
   },
   {
     href: "/justin/tables",

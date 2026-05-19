@@ -680,6 +680,129 @@ async def scraper_runs(
     }
 
 
+@router.get("/discovery")
+async def list_discovery(
+    status: str | None = None,
+    platform: str | None = None,
+    limit: int = 100,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """List event_discovery rows, most recent first.
+
+    Query params:
+    - status:   pending | confirmed | rejected | ingested | failed
+    - platform: sailsys | topyacht | sailwave | yachtscoring | pdf | unknown
+    """
+    _verify_admin(authorization)
+    limit = max(1, min(limit, 500))
+
+    clauses = []
+    params: dict = {"limit": limit}
+    if status:
+        clauses.append("status = :status")
+        params["status"] = status
+    if platform:
+        clauses.append("scoring_platform = :platform")
+        params["platform"] = platform
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, discovered_at, source_url, source_type, seed_url,
+                   scoring_platform, platform_ids, title, event_date,
+                   event_location, confidence, status, error_message,
+                   confirmed_at, ingested_at, notes
+            FROM event_discovery
+            {where}
+            ORDER BY discovered_at DESC
+            LIMIT :limit
+        """), params).fetchall()
+
+    out = []
+    for r in rows:
+        d = dict(r._mapping)
+        for k, v in list(d.items()):
+            d[k] = _jsonable(v)
+        out.append(d)
+    return {"discoveries": out}
+
+
+@router.post("/discovery/seed")
+async def queue_discovery_seed(
+    body: dict,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Kick off a discovery crawl from a seed URL. Returns the new rows.
+
+    Body: {url: str, limit?: int (default 20)}
+
+    Synchronous for now (small batches feel snappy enough). If we start
+    seeding 100+ URLs at once, push this to a background task.
+    """
+    _verify_admin(authorization)
+    from irc_data.discovery.service import discover_seed, discover_url
+
+    url = (body or {}).get("url")
+    if not url:
+        raise HTTPException(status_code=400, detail="missing 'url'")
+    limit = int((body or {}).get("limit") or 20)
+    single = bool((body or {}).get("single"))
+
+    try:
+        if single:
+            rows = [discover_url(engine, url)]
+        else:
+            rows = discover_seed(engine, url, limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"discovery failed: {e}")
+
+    return {"processed": len(rows), "rows": [_jsonable(r) for r in rows]}
+
+
+@router.post("/discovery/{discovery_id}/confirm")
+async def confirm_discovery(
+    discovery_id: int,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Confirm + ingest. Returns the ingestion result."""
+    _verify_admin(authorization)
+    from irc_data.discovery.service import ingest_confirmed
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE event_discovery
+            SET status = 'confirmed',
+                confirmed_at = now(),
+                confirmed_by = 'admin'
+            WHERE id = :id AND status IN ('pending','failed')
+        """), {"id": discovery_id})
+
+    try:
+        result = ingest_confirmed(engine, discovery_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return result
+
+
+@router.post("/discovery/{discovery_id}/reject")
+async def reject_discovery(
+    discovery_id: int,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Mark a discovery as rejected — won't show in the pending list."""
+    _verify_admin(authorization)
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE event_discovery SET status='rejected' WHERE id=:id"),
+            {"id": discovery_id},
+        )
+    return {"status": "rejected"}
+
+
 @router.get("/conversations")
 async def list_conversations(
     engine: Engine = Depends(get_db),

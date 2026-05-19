@@ -39,6 +39,7 @@ CLUBS = {
     "RANSA": 4,    # Royal Australian Naval Sailing Association
     "MHYC": 5,     # Middle Harbour Yacht Club
     "SASC": 6,     # Sydney Amateur Sailing Club
+    "ASC": 17,     # Avalon Sailing Club
     "RMYCBB": 12,  # Royal Motor Yacht Club Broken Bay
     "RPAYC": 13,   # Royal Prince Alfred Yacht Club
     "GFS": 14,     # Greenwich Flying Squadron
@@ -49,17 +50,45 @@ CLUBS = {
     "RQYS": 25,    # Royal Queensland Yacht Squadron
     "SHCC": 27,    # Sydney Harbour Combined Clubs (IRC Div 1&2)
     "LMYC": 28,    # Lake Macquarie Yacht Club
+    "QCYC": 37,    # Queensland Cruising Yacht Club (Brisbane→Gladstone)
     "TYC": 41,     # Townsville Yacht Club
     "VYC": 50,     # Vaucluse Yacht Club
+    "MH16FT": 54,  # Middle Harbour 16ft Skiff Club
     "GSC": 59,     # Gosford Sailing Club
+    "RSAYS": 60,   # Royal South Australian Yacht Squadron
+    "KYC": 71,     # Kettering Yacht Club
+    "WMSC": 79,    # Wynnum Manly Sailing Club
     "ABRW": 104,   # Airlie Beach Race Week (IRC)
+    "CCYC": 109,   # Capricornia Cruising Yacht Club
+    "ICC": 111,    # InterClub Challenge
+    "MC38": 121,   # MC38 Class Association (one-design, no IRC — kept for completeness)
+    "JBSC": 142,   # Jervis Bay Sailing Club
+    "TP52": 147,   # TP52 Association (one-design)
+    "SSORC": 167,  # Nautilus Marine Sydney Short Ocean Racing Championship
+    "MHYCCR": 173, # MHYC — Championships & Regattas
     "SPS": 179,    # Sail Port Stephens (NSW IRC Championship)
+    "HHYC": 201,   # Hebe Haven Yacht Club (HK)
+    "SHSS": 208,   # Sydney Harbour Sprint Series
 }
 
 # Handicap definition IDs we care about (IRC-related)
 IRC_HANDICAP_IDS = {1, 33}  # IRC legacy and IRC Fleet (Manual)
 PHS_HANDICAP_ID = 5
 ORCGP_HANDICAP_ID = 4
+
+# SailSys race statuses that indicate a race has been sailed and is
+# publishing results. 4 = ratified/finalised; 3 = scored but not yet
+# fully closed (e.g. Brisbane→Gladstone 2026). Both have entrants and
+# elapsed times in the API response.
+COMPLETED_RACE_STATUSES = {3, 4}
+
+# Some clubs (like QCYC) don't expose their series through the public
+# grouping/list endpoint, but individual series + race endpoints work
+# fine when the IDs are known. Maintain known series here so we still
+# scrape them. Discovered by inspecting the official event websites.
+EXTRA_SERIES_BY_CLUB: dict[int, list[int]] = {
+    37: [5204],  # QCYC — 2026 Brisbane to Gladstone Yacht Race
+}
 
 
 def _safe_decimal(val) -> Decimal | None:
@@ -81,7 +110,12 @@ def _safe_int(val) -> int | None:
 
 
 async def get_club_series(client: httpx.AsyncClient, club_id: int) -> list[dict]:
-    """Get list of racing series for a club using the SailSys REST API."""
+    """Get list of racing series for a club using the SailSys REST API.
+
+    Walks the grouping endpoint for season/group-organised clubs, then
+    appends any series declared in EXTRA_SERIES_BY_CLUB — used for clubs
+    whose grouping list is empty even though they have public races.
+    """
     url = f"{SAILSYS_API}/series/club/{club_id}/grouping/list"
     await rate_limiter.wait()
     resp = await client.get(url)
@@ -89,14 +123,34 @@ async def get_club_series(client: httpx.AsyncClient, club_id: int) -> list[dict]
     data = resp.json()
 
     series_list = []
+    seen: set[int] = set()
     for group in data.get("data", []):
         for series in group.get("series", []):
             sid = series["id"]
+            if sid in seen:
+                continue
+            seen.add(sid)
             series_list.append({
                 "series_id": sid,
                 "name": series.get("name", f"Series {sid}"),
                 "club_id": series.get("clubId", club_id),
             })
+
+    # Append explicitly-known extra series for clubs with empty grouping lists.
+    for sid in EXTRA_SERIES_BY_CLUB.get(club_id, []):
+        if sid in seen:
+            continue
+        # Fetch the series name from the races endpoint.
+        try:
+            await rate_limiter.wait()
+            r = await client.get(f"{SAILSYS_API}/series/{sid}/display/races")
+            r.raise_for_status()
+            d = r.json().get("data", {})
+            name = d.get("name") or f"Series {sid}"
+        except Exception:
+            name = f"Series {sid}"
+        series_list.append({"series_id": sid, "name": name, "club_id": club_id})
+        seen.add(sid)
 
     return series_list
 
@@ -326,8 +380,9 @@ async def scrape_club_irc_results(
                 print(f"    Error getting races: {e}")
                 continue
 
-            # Only process races that have been completed (status=4)
-            completed_races = [r for r in races if r.get("status") == 4]
+            # Only process races that have been sailed and scored.
+            # See COMPLETED_RACE_STATUSES at top of module.
+            completed_races = [r for r in races if r.get("status") in COMPLETED_RACE_STATUSES]
 
             # Incremental mode: skip races before the cutoff date
             if since:

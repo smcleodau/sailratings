@@ -2243,6 +2243,53 @@ def serve(host, port, workers, do_reload):
     )
 
 
+@cli.command(name="discover-events")
+@click.option("--url", help="Single URL to crawl + extract (mutually exclusive with --seed-url)")
+@click.option("--seed-url", help="Seed URL — Firecrawl maps it then crawls each sub-URL")
+@click.option("--limit", type=int, default=30, help="Max sub-URLs per seed (default 30)")
+@click.option("--auto-ingest/--no-auto-ingest", default=False,
+              help="When confidence ≥ 0.85 and platform is sailsys, ingest immediately")
+@click.pass_context
+def discover_events(ctx, url, seed_url, limit, auto_ingest):
+    """Discover sailing-event scoring URLs via Firecrawl + Claude.
+
+    Either --url (one page) or --seed-url (one page + everything mapped
+    from it). Results land in `event_discovery` with status='pending'
+    for Justin to review at /justin/discovery.
+    """
+    from irc_data.discovery.service import discover_url, discover_seed, ingest_confirmed
+
+    engine = ctx.obj["engine"]
+    if (url is None) == (seed_url is None):
+        console.print("[red]Specify exactly one of --url or --seed-url.[/red]")
+        return
+
+    if url:
+        rows = [discover_url(engine, url)]
+        console.print(f"[green]1 URL processed.[/green]")
+    else:
+        rows = discover_seed(engine, seed_url, limit=limit)
+        console.print(f"[green]{len(rows)} URLs processed from seed.[/green]")
+
+    pending = [r for r in rows if r.get("status") == "pending"]
+    failed = [r for r in rows if r.get("status") == "failed"]
+    console.print(f"  pending={len(pending)}  failed={len(failed)}")
+
+    if auto_ingest:
+        confident = [
+            r for r in pending
+            if r.get("scoring_platform") == "sailsys"
+            and (r.get("confidence") or 0) >= 0.85
+            and r.get("platform_ids", {}).get("series_id")
+        ]
+        for r in confident:
+            try:
+                out = ingest_confirmed(engine, r["id"])
+                console.print(f"  → ingested #{r['id']}: {out}")
+            except Exception as e:
+                console.print(f"  [red]ingest #{r['id']} failed: {e}[/red]")
+
+
 @cli.command(name="scrape-watchdog")
 @click.option("--cooldown-hours", type=int, default=4,
               help="Minimum hours between repeat alerts for the same source.")
