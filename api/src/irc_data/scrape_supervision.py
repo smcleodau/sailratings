@@ -45,7 +45,9 @@ SOURCES: list[SourceConfig] = [
         label="ORC certificates",
         cadence_human="daily 03:00 UTC",
         run_within=timedelta(hours=30),
-        data_within=timedelta(days=5),
+        # No data_within: orc_api writes to orc_certificates, not race_results,
+        # so the current per-source data-tap query doesn't apply. Run-health
+        # alone is sufficient signal here.
     ),
     SourceConfig(
         source="topyacht",
