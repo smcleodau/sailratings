@@ -330,12 +330,21 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
     if source == "sailsys":
         from irc_data.scrapers.sailsys import CLUBS as _CLUB_MAP
         from irc_data.scrapers.sailsys import scrape_club_irc_results
+        from irc_data.db.operations import log_ingestion_start, log_ingestion_end
 
         # Determine which clubs to scrape
         if all_clubs:
             clubs_to_scrape = [pair for pair in _CLUB_MAP.items()]
         else:
             clubs_to_scrape = [(club.upper(), _CLUB_MAP.get(club.upper(), 3))]
+
+        # Heartbeat row for the whole run — so "ran, found nothing" is
+        # observable (otherwise import_scraper_results only logs when there
+        # were results to import).
+        run_log_id = log_ingestion_start(
+            engine, "sailsys",
+            metadata={"all_clubs": bool(all_clubs), "n_clubs": len(clubs_to_scrape), "incremental": bool(incremental)},
+        )
 
         # Determine incremental cutoff
         since = None
@@ -352,28 +361,41 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
                     console.print(f"[dim]Incremental mode: only races after {since}[/dim]")
 
         all_results = []
-        for club_name, club_id in clubs_to_scrape:
-            console.print(f"\nScraping SailSys results for [bold]{club_name}[/bold] (club {club_id})...")
-            try:
-                club_results = asyncio.run(scrape_club_irc_results(
-                    club_id, max_series=max_series, since=since,
-                ))
-                all_results.extend(club_results)
-                console.print(f"  [green]{len(club_results)} results[/green]")
+        total_imported = 0
+        run_error: str | None = None
+        try:
+            for club_name, club_id in clubs_to_scrape:
+                console.print(f"\nScraping SailSys results for [bold]{club_name}[/bold] (club {club_id})...")
+                try:
+                    club_results = asyncio.run(scrape_club_irc_results(
+                        club_id, max_series=max_series, since=since,
+                    ))
+                    all_results.extend(club_results)
+                    console.print(f"  [green]{len(club_results)} results[/green]")
 
-                # Store incrementally per club (avoids memory buildup)
-                if store and club_results:
-                    from irc_data.scrapers.result_import import import_scraper_results
+                    # Store incrementally per club (avoids memory buildup)
+                    if store and club_results:
+                        from irc_data.scrapers.result_import import import_scraper_results
 
-                    stats = import_scraper_results(
-                        engine, club_results, source="sailsys",
-                        organizing_club=club_name,
-                    )
-                    console.print(f"  Imported: {stats['imported']}, Matched: {stats['matched']}")
-            except Exception as e:
-                console.print(f"  [red]Error scraping {club_name}: {e}[/red]")
+                        stats = import_scraper_results(
+                            engine, club_results, source="sailsys",
+                            organizing_club=club_name,
+                        )
+                        total_imported += stats.get("imported", 0)
+                        console.print(f"  Imported: {stats['imported']}, Matched: {stats['matched']}")
+                except Exception as e:
+                    console.print(f"  [red]Error scraping {club_name}: {e}[/red]")
+                    run_error = (run_error + " | " if run_error else "") + f"{club_name}: {e}"
 
-        console.print(f"\n[green]Total: {len(all_results)} results across {len(clubs_to_scrape)} clubs[/green]")
+            console.print(f"\n[green]Total: {len(all_results)} results across {len(clubs_to_scrape)} clubs[/green]")
+        finally:
+            log_ingestion_end(
+                engine, run_log_id,
+                status="failed" if run_error else "completed",
+                records_found=len(all_results),
+                records_new=total_imported,
+                error_message=(run_error[:1000] if run_error else None),
+            )
         return
 
     elif source == "cyca":
@@ -749,44 +771,66 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
         return
     elif source == "topyacht":
         from irc_data.scrapers.topyacht import TOPYACHT_CLUBS, scrape_all_clubs, scrape_club
+        from irc_data.db.operations import log_ingestion_start, log_ingestion_end
 
-        # Determine incremental cutoff
-        since = None
-        if incremental:
-            with engine.connect() as conn:
-                row = conn.execute(
-                    text("""
-                        SELECT max(created_at)::date - interval '1 day'
-                        FROM race_results WHERE source = 'topyacht'
-                    """)
-                ).first()
-                if row and row[0]:
-                    since = row[0].date() if hasattr(row[0], 'date') else row[0]
-                    console.print(f"[dim]Incremental mode: only races after {since}[/dim]")
+        run_log_id = log_ingestion_start(
+            engine, "topyacht",
+            metadata={"all_clubs": bool(all_clubs or club.upper() not in TOPYACHT_CLUBS), "incremental": bool(incremental)},
+        )
 
-        # Determine which clubs to scrape
-        if all_clubs or club.upper() not in TOPYACHT_CLUBS:
-            console.print(f"Scraping TopYacht IRC results for all {len(TOPYACHT_CLUBS)} clubs...")
-            all_results = asyncio.run(scrape_all_clubs(since=since, max_series=max_series))
-        else:
-            club_key = club.upper()
-            club_name = TOPYACHT_CLUBS[club_key]["club_name"]
-            console.print(f"Scraping TopYacht IRC results for [bold]{club_name}[/bold]...")
-            all_results = asyncio.run(scrape_club(club_key, since=since, max_series=max_series))
+        run_error: str | None = None
+        all_results = []
+        imported = 0
+        try:
+            # Determine incremental cutoff
+            since = None
+            if incremental:
+                with engine.connect() as conn:
+                    row = conn.execute(
+                        text("""
+                            SELECT max(created_at)::date - interval '1 day'
+                            FROM race_results WHERE source = 'topyacht'
+                        """)
+                    ).first()
+                    if row and row[0]:
+                        since = row[0].date() if hasattr(row[0], 'date') else row[0]
+                        console.print(f"[dim]Incremental mode: only races after {since}[/dim]")
 
-        if store and all_results:
-            from irc_data.scrapers.result_import import import_scraper_results
+            # Determine which clubs to scrape
+            if all_clubs or club.upper() not in TOPYACHT_CLUBS:
+                console.print(f"Scraping TopYacht IRC results for all {len(TOPYACHT_CLUBS)} clubs...")
+                all_results = asyncio.run(scrape_all_clubs(since=since, max_series=max_series))
+            else:
+                club_key = club.upper()
+                club_name = TOPYACHT_CLUBS[club_key]["club_name"]
+                console.print(f"Scraping TopYacht IRC results for [bold]{club_name}[/bold]...")
+                all_results = asyncio.run(scrape_club(club_key, since=since, max_series=max_series))
 
-            stats = import_scraper_results(
-                engine, all_results, source="topyacht",
-                organizing_club=TOPYACHT_CLUBS.get(club.upper(), {}).get("club_name"),
+            if store and all_results:
+                from irc_data.scrapers.result_import import import_scraper_results
+
+                stats = import_scraper_results(
+                    engine, all_results, source="topyacht",
+                    organizing_club=TOPYACHT_CLUBS.get(club.upper(), {}).get("club_name"),
+                )
+                imported = stats.get("imported", 0)
+                console.print(f"\n[green]TopYacht: {imported} results stored ({stats['matched']} matched to boats)[/green]")
+            elif all_results:
+                irc_count = sum(1 for r in all_results if r.tcc_at_race)
+                console.print(f"\n[green]Found {len(all_results)} TopYacht results ({irc_count} with IRC TCC)[/green]")
+            else:
+                console.print("[yellow]No TopYacht results found.[/yellow]")
+        except Exception as e:
+            run_error = str(e)[:1000]
+            console.print(f"[red]TopYacht run failed: {e}[/red]")
+        finally:
+            log_ingestion_end(
+                engine, run_log_id,
+                status="failed" if run_error else "completed",
+                records_found=len(all_results),
+                records_new=imported,
+                error_message=run_error,
             )
-            console.print(f"\n[green]TopYacht: {stats['imported']} results stored ({stats['matched']} matched to boats)[/green]")
-        elif all_results:
-            irc_count = sum(1 for r in all_results if r.tcc_at_race)
-            console.print(f"\n[green]Found {len(all_results)} TopYacht results ({irc_count} with IRC TCC)[/green]")
-        else:
-            console.print("[yellow]No TopYacht results found.[/yellow]")
         return
     elif source == "sailwave":
         from irc_data.scrapers.race_results import scrape_sailwave_results
@@ -2194,3 +2238,160 @@ def serve(host, port, workers, do_reload):
         workers=1 if do_reload else workers,
         reload=do_reload,
     )
+
+
+@cli.command(name="scrape-watchdog")
+@click.option("--cooldown-hours", type=int, default=4,
+              help="Minimum hours between repeat alerts for the same source.")
+@click.option("--dry-run", is_flag=True, help="Print what would alert; don't send email.")
+@click.pass_context
+def scrape_watchdog(ctx, cooldown_hours, dry_run):
+    """Check that every configured scraper has run recently. Email on breach.
+
+    Reads `scrape_supervision.SOURCES` for expected cadences and queries
+    `ingestion_log` for last success per source. If any non-optional source is
+    stale beyond its budget, send a single consolidated email via Resend
+    (cooldown prevents spam within COOLDOWN_HOURS).
+    """
+    import json
+    import os
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from irc_data.scrape_supervision import SOURCES
+
+    engine = ctx.obj["engine"]
+    now = datetime.now(timezone.utc)
+
+    # Pull last-success per source
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT source,
+                   MAX(started_at) AS last_started,
+                   MAX(completed_at) FILTER (WHERE status='completed') AS last_success
+            FROM ingestion_log
+            GROUP BY source
+        """)).fetchall()
+    by_src = {r.source: r for r in rows}
+
+    breaches = []
+    for cfg in SOURCES:
+        if cfg.optional:
+            continue
+        r = by_src.get(cfg.source)
+        last_success = r.last_success if r else None
+        if last_success is None:
+            breaches.append({
+                "source": cfg.source, "label": cfg.label,
+                "cadence": cfg.cadence_human, "age_hours": None,
+                "budget_hours": cfg.expected_within.total_seconds() / 3600,
+                "reason": "no successful run on record",
+            })
+            continue
+        age = now - last_success
+        if age > cfg.expected_within:
+            breaches.append({
+                "source": cfg.source, "label": cfg.label,
+                "cadence": cfg.cadence_human,
+                "age_hours": age.total_seconds() / 3600,
+                "budget_hours": cfg.expected_within.total_seconds() / 3600,
+                "reason": "stale",
+            })
+
+    if not breaches:
+        console.print("[green]All scrapers within budget.[/green]")
+        return
+
+    console.print(f"[yellow]{len(breaches)} scraper(s) stale:[/yellow]")
+    for b in breaches:
+        age_s = "never" if b["age_hours"] is None else f"{b['age_hours']:.1f}h"
+        console.print(f"  - {b['label']} ({b['source']}): {age_s} since last success "
+                      f"(budget {b['budget_hours']:.1f}h, {b['cadence']})")
+
+    # Cooldown: a small JSON file remembers when each source last alerted.
+    cooldown_path = Path(os.environ.get("WATCHDOG_STATE",
+                                        "/home/irc-data/.cache/sr_watchdog.json"))
+    cooldown_path.parent.mkdir(parents=True, exist_ok=True)
+    state: dict = {}
+    if cooldown_path.exists():
+        try:
+            state = json.loads(cooldown_path.read_text())
+        except Exception:
+            state = {}
+
+    cooldown_seconds = cooldown_hours * 3600
+    breaches_to_send: list[dict] = []
+    for b in breaches:
+        last_sent = state.get(b["source"])
+        if last_sent:
+            try:
+                last_dt = datetime.fromisoformat(last_sent)
+                if (now - last_dt).total_seconds() < cooldown_seconds:
+                    console.print(f"  [dim]  (cooldown active for {b['source']}, skipping)[/dim]")
+                    continue
+            except Exception:
+                pass
+        breaches_to_send.append(b)
+
+    if not breaches_to_send:
+        console.print("[dim]All breaches within cooldown — no email sent.[/dim]")
+        return
+
+    if dry_run:
+        console.print("[dim]--dry-run: not sending email.[/dim]")
+        return
+
+    alert_email = os.environ.get("ALERT_EMAIL", "stuart@stuartmcleod.me")
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        console.print("[red]RESEND_API_KEY not configured — cannot send alert.[/red]")
+        return
+
+    import resend
+    resend.api_key = api_key
+
+    # Build the email — plain, factual, with an actionable link
+    def _age_str(b):
+        return "never" if b["age_hours"] is None else f"{b['age_hours']:.1f}h"
+
+    rows_html = "\n".join(
+        f"<tr><td style='padding:6px 12px;border-bottom:1px solid #eee'>"
+        f"<strong>{b['label']}</strong><br/>"
+        f"<span style='color:#777;font-size:12px'>{b['source']} · {b['cadence']}</span></td>"
+        f"<td style='padding:6px 12px;border-bottom:1px solid #eee;color:#a00;font-family:monospace'>"
+        f"{_age_str(b)} / {b['budget_hours']:.0f}h</td></tr>"
+        for b in breaches_to_send
+    )
+    subject = f"SailRatings watchdog — {len(breaches_to_send)} scraper(s) stale"
+    html = f"""
+    <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:auto;color:#222">
+      <h2 style="color:#0A2240">SailRatings scraper alert</h2>
+      <p>The watchdog noticed {len(breaches_to_send)} scraper{'s' if len(breaches_to_send)!=1 else ''}
+         outside their freshness budget.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0">
+        <thead><tr style="background:#F4F1E8;text-align:left">
+          <th style="padding:8px 12px">Source</th><th style="padding:8px 12px">Stale for / budget</th>
+        </tr></thead>
+        <tbody>{rows_html}</tbody>
+      </table>
+      <p style="color:#777;font-size:12px">Open the dashboard:
+        <a href="https://dev.sailratings.com/justin/scrapers">/justin/scrapers</a></p>
+      <p style="color:#777;font-size:12px">Cooldown: same source won't alert again for {cooldown_hours}h.</p>
+    </div>
+    """
+    try:
+        resend.Emails.send({
+            "from": "SailRatings Watchdog <reports@sailratings.com>",
+            "to": [alert_email],
+            "subject": subject,
+            "html": html,
+        })
+        console.print(f"[green]Alert email sent to {alert_email}.[/green]")
+    except Exception as e:
+        console.print(f"[red]Failed to send alert email: {e}[/red]")
+        return
+
+    # Record the send time per source to enforce cooldown
+    for b in breaches_to_send:
+        state[b["source"]] = now.isoformat()
+    cooldown_path.write_text(json.dumps(state, indent=2))

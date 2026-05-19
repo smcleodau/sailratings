@@ -21,7 +21,7 @@ with IRC divisions.
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urljoin
 
@@ -32,6 +32,13 @@ from irc_data.scrapers.base import RateLimiter, fetch_with_retry, get_http_clien
 from irc_data.scrapers.result_base import EventRef, NormalizedResult, RaceResultSource
 
 rate_limiter = RateLimiter(min_delay=1.5, jitter=1.0)
+
+# Highest sailing-season year to scan. Resolved at import time so a long-lived
+# process still picks up the new season after midnight on 1 Jan. TopYacht
+# organises by sailing-season-start year, which is the current calendar year
+# for the SH season (Sep–Aug) — so we extend through current_year + 1.
+_NOW_YEAR = datetime.utcnow().year
+_LATEST_SEASON = _NOW_YEAR + 1
 
 # ---------------------------------------------------------------------------
 # Known clubs that publish TopYacht results with IRC divisions.
@@ -76,7 +83,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         "club_name": "Southport Yacht Club",
         "base_url": "http://files.southportyachtclub.com.au/results",
         "divisions": ["od"],  # offshore division has IRC
-        "years": list(range(2018, 2026)),
+        "years": list(range(2018, _LATEST_SEASON + 1)),
     },
 
     # -----------------------------------------------------------------------
@@ -92,7 +99,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         #   2018-2019: irc1..irc3 (+ irc4 in 2018)
         # discover_series_from_index picks up ALL divisions from the event
         # page; discover_races_from_series then filters to IRC column only.
-        "years": list(range(2018, 2026)),
+        "years": list(range(2018, _LATEST_SEASON + 1)),
     },
     "ABRW": {
         "club_name": "Airlie Beach Race Week",
@@ -104,7 +111,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         #   2024: pass-rat-1, pass-rat-2 (Rating Passage Div1/2)
         # The series.htm pages have an IRC column that the scraper picks up.
         # 2020/2021 may have been cancelled (COVID) — scraper handles 404s.
-        "years": list(range(2017, 2026)),
+        "years": list(range(2017, _LATEST_SEASON + 1)),
     },
     "FOS": {
         "club_name": "Festival of Sails",
@@ -119,7 +126,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         #     with IRC + ORC AP + AMS scoring inside series.htm
         # All have IRC column in series.htm that the scraper discovers.
         # 2021 may not exist (COVID cancellation).
-        "years": list(range(2012, 2026)),
+        "years": list(range(2012, _LATEST_SEASON + 1)),
     },
     "SPS": {
         "club_name": "Sail Port Stephens",
@@ -161,7 +168,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         # season at topyacht.net.au/results/orcv/ can be scraped.  For
         # historical seasons, the scraper needs to construct URLs like
         # orcv.org.au/results/2024-25/ (without /index.htm).
-        "years": list(range(2008, 2026)),
+        "years": list(range(2008, _LATEST_SEASON + 1)),
     },
 
     # -----------------------------------------------------------------------
@@ -175,7 +182,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         # IRC and PHF handicap columns confirmed in series.htm pages.
         # 2022 confirmed working. 2023 confirmed (BW2324, SH2324). 2024+ may
         # return 403 at directory level but series.htm pages may still work.
-        "years": list(range(2022, 2026)),
+        "years": list(range(2022, _LATEST_SEASON + 1)),
     },
     "RFBYC": {
         "club_name": "Royal Freshwater Bay Yacht Club",
@@ -184,7 +191,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         # WA club with IRC offshore divisions (Farrawa Cup etc.).
         # Directory listing returns 403 but year pages may still serve
         # index.htm with series.htm links.
-        "years": list(range(2022, 2025)),
+        "years": list(range(2022, _LATEST_SEASON + 1)),
     },
 
     # -----------------------------------------------------------------------
@@ -196,7 +203,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         "divisions": [""],
         # SA IRC Championship, Division 1 and 2 IRC, Great Southern Regatta.
         # Directory listing returns 403 but year/index.htm may work.
-        "years": list(range(2022, 2026)),
+        "years": list(range(2022, _LATEST_SEASON + 1)),
     },
     "LINCOLN_WEEK": {
         "club_name": "Port Lincoln Yacht Club — Lincoln Week",
@@ -206,7 +213,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         # IRC, AMS, PHS, and ORC all scored in series.htm — scraper
         # filters to IRC column.  2023 also hosted Australian Yachting
         # Championships with dedicated IRC divisions (ircchampsd1 etc.).
-        "years": list(range(2023, 2026)),
+        "years": list(range(2023, _LATEST_SEASON + 1)),
     },
 
     # -----------------------------------------------------------------------
@@ -218,7 +225,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         "divisions": [""],
         # IRC keelboat divisions.  Part of Port Phillip racing scene.
         # Directory listing returns 403.
-        "years": list(range(2024, 2026)),
+        "years": list(range(2024, _LATEST_SEASON + 1)),
     },
     "PPNYC": {
         "club_name": "Port Phillip North Yacht Clubs",
@@ -227,7 +234,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         # Combined racing between RYCV, RMYS, and HBYC.
         # Long Distance IRC divisions confirmed in research.
         # Directory listing returns 403.
-        "years": list(range(2024, 2026)),
+        "years": list(range(2024, _LATEST_SEASON + 1)),
     },
     "HBYC": {
         "club_name": "Hobsons Bay Yacht Club",
@@ -245,7 +252,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         # Mainly dinghy/keelboat PHS but some IRC may appear.
         # Directory listing returns 403.  The research notes "mainly
         # dinghy/keelboat PHS" so IRC yield may be low.
-        "years": list(range(2022, 2026)),
+        "years": list(range(2022, _LATEST_SEASON + 1)),
     },
 
     # -----------------------------------------------------------------------
@@ -272,7 +279,7 @@ TOPYACHT_CLUBS: dict[str, dict] = {
     #     # King of the Derwent and L2H both use IRC.  12 seasons of data.
     #     # Needs manual investigation of URL structure.
     #     "divisions": [""],
-    #     "years": list(range(2014, 2026)),
+    #     "years": list(range(2014, _LATEST_SEASON + 1)),
     # },
 }
 

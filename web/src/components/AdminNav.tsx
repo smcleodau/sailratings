@@ -14,7 +14,16 @@ const SECTIONS = [
     href: "/justin",
     label: "Chat",
     match: (p: string) =>
-      p === "/justin" || (p.startsWith("/justin") && !p.startsWith("/justin/tables") && !p.startsWith("/justin/corrections")),
+      p === "/justin" ||
+      (p.startsWith("/justin") &&
+        !p.startsWith("/justin/tables") &&
+        !p.startsWith("/justin/corrections") &&
+        !p.startsWith("/justin/scrapers")),
+  },
+  {
+    href: "/justin/scrapers",
+    label: "Scrapers",
+    match: (p: string) => p.startsWith("/justin/scrapers"),
   },
   {
     href: "/justin/tables",

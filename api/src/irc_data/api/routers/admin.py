@@ -506,6 +506,139 @@ User message: {message}"""
 # ── Endpoints ────────────────────────────────────────────────────────────
 
 
+@router.get("/scrapers")
+async def list_scrapers(
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Summary of every scraper source — last started, last success, freshness
+    state, and 7-day activity. Sourced from `ingestion_log` joined against the
+    static schedule in `scrape_supervision.SOURCES`.
+    """
+    _verify_admin(authorization)
+
+    from irc_data.scrape_supervision import SOURCES
+
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT source,
+                   MAX(started_at) AS last_started,
+                   MAX(completed_at) FILTER (WHERE status='completed') AS last_success,
+                   COUNT(*) FILTER (WHERE started_at > now() - interval '7 days') AS runs_7d,
+                   COUNT(*) FILTER (WHERE status='failed'
+                                    AND started_at > now() - interval '7 days') AS failed_7d,
+                   SUM(records_new) FILTER (WHERE started_at > now() - interval '7 days') AS new_records_7d
+            FROM ingestion_log
+            GROUP BY source
+        """)).fetchall()
+
+    by_src = {r.source: r for r in rows}
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    out = []
+    for cfg in SOURCES:
+        r = by_src.get(cfg.source)
+        last_started = r.last_started if r else None
+        last_success = r.last_success if r else None
+        age = (now - last_success) if last_success else None
+        if cfg.optional:
+            state = "optional"
+        elif last_success is None:
+            state = "never"
+        elif age is not None and age <= cfg.expected_within:
+            state = "fresh"
+        else:
+            state = "stale"
+        out.append({
+            "source": cfg.source,
+            "label": cfg.label,
+            "cadence": cfg.cadence_human,
+            "expected_within_hours": cfg.expected_within.total_seconds() / 3600.0,
+            "last_started": last_started.isoformat() if last_started else None,
+            "last_success": last_success.isoformat() if last_success else None,
+            "age_seconds": int(age.total_seconds()) if age else None,
+            "state": state,
+            "runs_7d": int(r.runs_7d) if r else 0,
+            "failed_7d": int(r.failed_7d) if r else 0,
+            "new_records_7d": int(r.new_records_7d) if r and r.new_records_7d else 0,
+            "optional": cfg.optional,
+        })
+
+    # Any sources that exist in ingestion_log but NOT in our config — surface
+    # so we don't quietly miss something the scraper authors added.
+    known = {s.source for s in SOURCES}
+    for src, r in by_src.items():
+        if src not in known:
+            age = (now - r.last_success) if r.last_success else None
+            out.append({
+                "source": src,
+                "label": src + " (uncatalogued)",
+                "cadence": "unknown",
+                "expected_within_hours": None,
+                "last_started": r.last_started.isoformat() if r.last_started else None,
+                "last_success": r.last_success.isoformat() if r.last_success else None,
+                "age_seconds": int(age.total_seconds()) if age else None,
+                "state": "uncatalogued",
+                "runs_7d": int(r.runs_7d),
+                "failed_7d": int(r.failed_7d),
+                "new_records_7d": int(r.new_records_7d) if r.new_records_7d else 0,
+                "optional": False,
+            })
+
+    return {
+        "as_of": now.isoformat(),
+        "sources": out,
+    }
+
+
+@router.get("/scrapers/{source}/runs")
+async def scraper_runs(
+    source: str,
+    limit: int = 30,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Recent runs for a single source — drawer detail behind the dashboard row."""
+    _verify_admin(authorization)
+    limit = max(1, min(limit, 200))
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT id, started_at, completed_at, status,
+                       records_found, records_new, records_updated,
+                       error_message, metadata
+                FROM ingestion_log
+                WHERE source = :source
+                ORDER BY started_at DESC
+                LIMIT :limit
+            """),
+            {"source": source, "limit": limit},
+        ).fetchall()
+
+    return {
+        "source": source,
+        "runs": [
+            {
+                "id": r.id,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                "duration_seconds": (
+                    (r.completed_at - r.started_at).total_seconds()
+                    if r.completed_at and r.started_at else None
+                ),
+                "status": r.status,
+                "records_found": r.records_found,
+                "records_new": r.records_new,
+                "records_updated": r.records_updated,
+                "error_message": r.error_message,
+                "metadata": r.metadata,
+            }
+            for r in rows
+        ],
+    }
+
+
 @router.get("/conversations")
 async def list_conversations(
     engine: Engine = Depends(get_db),
