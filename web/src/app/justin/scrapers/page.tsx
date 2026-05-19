@@ -5,16 +5,23 @@ import { CheckCircle2, AlertTriangle, Clock, ChevronDown, ChevronRight, RefreshC
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
-type SourceState = "fresh" | "stale" | "never" | "optional" | "uncatalogued";
+type SignalState = "fresh" | "stale" | "never" | "n/a" | "optional";
+type SourceState = SignalState | "uncatalogued";
 
 interface ScraperRow {
   source: string;
   label: string;
   cadence: string;
-  expected_within_hours: number | null;
+  run_within_hours: number | null;
+  data_within_hours: number | null;
   last_started: string | null;
   last_success: string | null;
-  age_seconds: number | null;
+  last_new_data: string | null;
+  latest_event_date: string | null;
+  run_age_seconds: number | null;
+  data_age_seconds: number | null;
+  run_state: SignalState;
+  data_state: SignalState;
   state: SourceState;
   runs_7d: number;
   failed_7d: number;
@@ -50,33 +57,32 @@ function fmtDateTime(iso: string | null): string {
   });
 }
 
-function StatePill({ state, optional }: { state: SourceState; optional: boolean }) {
-  if (optional || state === "optional") {
-    return <span className="data-mono text-[10px] uppercase tracking-[0.16em] text-white/35">Optional</span>;
+function SignalPill({ label, state }: { label: string; state: SignalState }) {
+  if (state === "n/a") {
+    return (
+      <span className="data-mono text-[10px] uppercase tracking-[0.14em] text-white/25">
+        {label}: —
+      </span>
+    );
   }
   if (state === "fresh") {
     return (
-      <span className="inline-flex items-center gap-1.5 data-mono text-[10px] uppercase tracking-[0.16em] text-emerald-400/90">
-        <CheckCircle2 size={12} strokeWidth={2} /> Fresh
+      <span className="inline-flex items-center gap-1 data-mono text-[10px] uppercase tracking-[0.14em] text-emerald-400/90">
+        <CheckCircle2 size={11} strokeWidth={2} /> {label}: fresh
       </span>
     );
   }
-  if (state === "stale") {
+  if (state === "stale" || state === "never") {
     return (
-      <span className="inline-flex items-center gap-1.5 data-mono text-[10px] uppercase tracking-[0.16em] text-brass">
-        <AlertTriangle size={12} strokeWidth={2} /> Stale
-      </span>
-    );
-  }
-  if (state === "never") {
-    return (
-      <span className="inline-flex items-center gap-1.5 data-mono text-[10px] uppercase tracking-[0.16em] text-brass">
-        <AlertTriangle size={12} strokeWidth={2} /> Never run
+      <span className="inline-flex items-center gap-1 data-mono text-[10px] uppercase tracking-[0.14em] text-brass">
+        <AlertTriangle size={11} strokeWidth={2} /> {label}: {state}
       </span>
     );
   }
   return (
-    <span className="data-mono text-[10px] uppercase tracking-[0.16em] text-white/40">{state}</span>
+    <span className="data-mono text-[10px] uppercase tracking-[0.14em] text-white/35">
+      {label}: {state}
+    </span>
   );
 }
 
@@ -210,33 +216,60 @@ export default function ScrapersPage() {
           </div>
         )}
 
-        {/* Stale banner */}
+        {/* Banner — only when cron health is breached (real alarm) */}
         {data && (() => {
-          const stale = data.sources.filter((s) => s.state === "stale" || s.state === "never");
-          if (stale.length === 0) return null;
+          const cronBreached = data.sources.filter(
+            (s) => !s.optional && (s.run_state === "stale" || s.run_state === "never"),
+          );
+          const dataBreached = data.sources.filter(
+            (s) => !s.optional && (s.data_state === "stale" || s.data_state === "never"),
+          );
+          if (cronBreached.length === 0 && dataBreached.length === 0) return null;
           return (
-            <div className="border border-brass/30 bg-brass/5 px-4 py-3 mb-6 flex items-start gap-3">
-              <AlertTriangle size={16} className="text-brass flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="body-text text-sm text-white/85">
-                  <span className="text-brass font-medium">{stale.length} source{stale.length === 1 ? " is" : "s are"} stale.</span>{" "}
-                  {stale.map((s) => s.label).join(", ")}.
-                </p>
-                <p className="body-text text-xs text-white/45 mt-1">
-                  Watchdog runs every 15 min and emails on breach. Cooldown 4h per source.
-                </p>
-              </div>
+            <div className="space-y-3 mb-6">
+              {cronBreached.length > 0 && (
+                <div className="border border-brass/40 bg-brass/8 px-4 py-3 flex items-start gap-3">
+                  <AlertTriangle size={16} className="text-brass flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="body-text text-sm text-white/85">
+                      <span className="text-brass font-medium">
+                        Cron health: {cronBreached.length} source{cronBreached.length === 1 ? " is" : "s are"} not running.
+                      </span>{" "}
+                      {cronBreached.map((s) => s.label).join(", ")}.
+                    </p>
+                    <p className="body-text text-xs text-white/45 mt-1">
+                      Watchdog runs every 15 min and emails on breach. Cooldown 4h per source.
+                    </p>
+                  </div>
+                </div>
+              )}
+              {dataBreached.length > 0 && (
+                <div className="border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
+                  <AlertTriangle size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="body-text text-sm text-white/85">
+                      <span className="text-amber-400 font-medium">
+                        Data tap: no new rows beyond seasonal lull for {dataBreached.length} source{dataBreached.length === 1 ? "" : "s"}.
+                      </span>{" "}
+                      {dataBreached.map((s) => s.label).join(", ")}.
+                    </p>
+                    <p className="body-text text-xs text-white/45 mt-1">
+                      The scraper is running; upstream just hasn&rsquo;t produced anything new beyond what the lull budget allows.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
 
         {/* Sources table */}
         <div className="border border-white/10 rounded-sm overflow-hidden">
-          <div className="grid grid-cols-[1fr_120px_140px_120px_60px] gap-4 px-4 py-3 bg-white/[0.03] border-b border-white/10 data-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
+          <div className="grid grid-cols-[1.6fr_1fr_1fr_140px_60px] gap-4 px-4 py-3 bg-white/[0.03] border-b border-white/10 data-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
             <span>Source</span>
-            <span className="text-right">Last success</span>
+            <span>Last run</span>
+            <span>Last new data</span>
             <span className="text-right">7-day runs / fail</span>
-            <span className="text-right">State</span>
             <span></span>
           </div>
 
@@ -246,22 +279,48 @@ export default function ScrapersPage() {
               <div key={src.source} className="border-b border-white/5 last:border-b-0">
                 <button
                   onClick={() => handleRowClick(src.source)}
-                  className="w-full grid grid-cols-[1fr_120px_140px_120px_60px] gap-4 px-4 py-3.5 items-center text-left hover:bg-white/[0.025] transition-colors"
+                  className="w-full grid grid-cols-[1.6fr_1fr_1fr_140px_60px] gap-4 px-4 py-3.5 items-start text-left hover:bg-white/[0.025] transition-colors"
                 >
                   <div className="min-w-0">
                     <p className="body-text text-sm text-white/85 truncate">{src.label}</p>
                     <p className="data-mono text-[10px] text-white/35 mt-0.5">
                       {src.source} · {src.cadence}
                     </p>
+                    {src.optional && (
+                      <p className="data-mono text-[10px] text-white/30 mt-0.5">Optional</p>
+                    )}
                   </div>
-                  <div className="text-right">
+
+                  {/* Last run column */}
+                  <div>
                     <p className="data-mono text-xs text-white/65 tabular-nums">
-                      {fmtAge(src.age_seconds)}
+                      {fmtAge(src.run_age_seconds)}{" "}
+                      <span className="text-white/30">ago</span>
                     </p>
-                    <p className="data-mono text-[10px] text-white/30">
+                    <p className="data-mono text-[10px] text-white/30 mt-0.5">
                       {fmtDateTime(src.last_success)}
                     </p>
+                    <div className="mt-1.5">
+                      <SignalPill label="run" state={src.run_state} />
+                    </div>
                   </div>
+
+                  {/* Last new data column */}
+                  <div>
+                    <p className="data-mono text-xs text-white/65 tabular-nums">
+                      {src.last_new_data ? `${fmtAge(src.data_age_seconds)} ago` : "—"}
+                    </p>
+                    <p className="data-mono text-[10px] text-white/30 mt-0.5">
+                      {src.latest_event_date
+                        ? `latest race ${src.latest_event_date}`
+                        : "no rows on file"}
+                    </p>
+                    <div className="mt-1.5">
+                      <SignalPill label="data" state={src.data_state} />
+                    </div>
+                  </div>
+
+                  {/* 7-day activity */}
                   <div className="text-right">
                     <p className="data-mono text-xs text-white/65 tabular-nums">
                       {src.runs_7d} <span className="text-white/30">/</span>{" "}
@@ -270,13 +329,10 @@ export default function ScrapersPage() {
                       </span>
                     </p>
                     {src.new_records_7d > 0 && (
-                      <p className="data-mono text-[10px] text-emerald-400/70">
+                      <p className="data-mono text-[10px] text-emerald-400/70 mt-0.5">
                         +{src.new_records_7d.toLocaleString()} rows
                       </p>
                     )}
-                  </div>
-                  <div className="text-right">
-                    <StatePill state={src.state} optional={src.optional} />
                   </div>
                   <div className="text-right text-white/30">
                     {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}

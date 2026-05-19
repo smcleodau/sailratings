@@ -511,9 +511,15 @@ async def list_scrapers(
     engine: Engine = Depends(get_db),
     authorization: str = Header(None),
 ):
-    """Summary of every scraper source — last started, last success, freshness
-    state, and 7-day activity. Sourced from `ingestion_log` joined against the
-    static schedule in `scrape_supervision.SOURCES`.
+    """Summary of every scraper source. Reports TWO freshness signals:
+
+    - `run_state` — has the scraper completed a run within its run_within
+      budget? This is cron health. Stale = "the scraper isn't running."
+    - `data_state` — have new race rows landed within its data_within
+      budget? This is upstream health. Stale = "the tap is dry beyond what
+      we'd expect from a seasonal lull."
+
+    The overall `state` is the worst of the two.
     """
     _verify_admin(authorization)
 
@@ -532,31 +538,60 @@ async def list_scrapers(
             GROUP BY source
         """)).fetchall()
 
+        # Last actually-imported race row per source. The "data tap" signal.
+        data_rows = conn.execute(text("""
+            SELECT source, MAX(created_at) AS last_new_data, MAX(event_date) AS latest_event_date
+            FROM race_results
+            GROUP BY source
+        """)).fetchall()
+
     by_src = {r.source: r for r in rows}
+    by_src_data = {r.source: r for r in data_rows}
     now = _dt.datetime.now(_dt.timezone.utc)
+
+    def _state(age: _dt.timedelta | None, budget: _dt.timedelta | None) -> str:
+        if budget is None:
+            return "n/a"
+        if age is None:
+            return "never"
+        return "fresh" if age <= budget else "stale"
+
+    def _overall(run_s: str, data_s: str, optional: bool) -> str:
+        if optional:
+            return "optional"
+        # Worst signal wins. "never" is worse than "stale".
+        order = ["never", "stale", "fresh", "n/a", "optional"]
+        return min((run_s, data_s), key=lambda s: order.index(s) if s in order else 5)
 
     out = []
     for cfg in SOURCES:
         r = by_src.get(cfg.source)
+        dr = by_src_data.get(cfg.source)
         last_started = r.last_started if r else None
         last_success = r.last_success if r else None
-        age = (now - last_success) if last_success else None
-        if cfg.optional:
-            state = "optional"
-        elif last_success is None:
-            state = "never"
-        elif age is not None and age <= cfg.expected_within:
-            state = "fresh"
-        else:
-            state = "stale"
+        last_new_data = dr.last_new_data if dr else None
+        latest_event_date = dr.latest_event_date if dr else None
+        run_age = (now - last_success) if last_success else None
+        data_age = (now - last_new_data) if last_new_data else None
+
+        run_state = _state(run_age, cfg.run_within)
+        data_state = _state(data_age, cfg.data_within) if cfg.data_within else "n/a"
+        state = _overall(run_state, data_state, cfg.optional)
+
         out.append({
             "source": cfg.source,
             "label": cfg.label,
             "cadence": cfg.cadence_human,
-            "expected_within_hours": cfg.expected_within.total_seconds() / 3600.0,
+            "run_within_hours": cfg.run_within.total_seconds() / 3600.0,
+            "data_within_hours": (cfg.data_within.total_seconds() / 3600.0) if cfg.data_within else None,
             "last_started": last_started.isoformat() if last_started else None,
             "last_success": last_success.isoformat() if last_success else None,
-            "age_seconds": int(age.total_seconds()) if age else None,
+            "last_new_data": last_new_data.isoformat() if last_new_data else None,
+            "latest_event_date": latest_event_date.isoformat() if latest_event_date else None,
+            "run_age_seconds": int(run_age.total_seconds()) if run_age else None,
+            "data_age_seconds": int(data_age.total_seconds()) if data_age else None,
+            "run_state": run_state,
+            "data_state": data_state,
             "state": state,
             "runs_7d": int(r.runs_7d) if r else 0,
             "failed_7d": int(r.failed_7d) if r else 0,
@@ -569,15 +604,21 @@ async def list_scrapers(
     known = {s.source for s in SOURCES}
     for src, r in by_src.items():
         if src not in known:
-            age = (now - r.last_success) if r.last_success else None
+            run_age = (now - r.last_success) if r.last_success else None
             out.append({
                 "source": src,
                 "label": src + " (uncatalogued)",
                 "cadence": "unknown",
-                "expected_within_hours": None,
+                "run_within_hours": None,
+                "data_within_hours": None,
                 "last_started": r.last_started.isoformat() if r.last_started else None,
                 "last_success": r.last_success.isoformat() if r.last_success else None,
-                "age_seconds": int(age.total_seconds()) if age else None,
+                "last_new_data": None,
+                "latest_event_date": None,
+                "run_age_seconds": int(run_age.total_seconds()) if run_age else None,
+                "data_age_seconds": None,
+                "run_state": "n/a",
+                "data_state": "n/a",
                 "state": "uncatalogued",
                 "runs_7d": int(r.runs_7d),
                 "failed_7d": int(r.failed_7d),

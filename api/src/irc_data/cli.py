@@ -2263,7 +2263,7 @@ def scrape_watchdog(ctx, cooldown_hours, dry_run):
     engine = ctx.obj["engine"]
     now = datetime.now(timezone.utc)
 
-    # Pull last-success per source
+    # Pull last-success per source + last new race-row landed (the data tap)
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT source,
@@ -2272,7 +2272,13 @@ def scrape_watchdog(ctx, cooldown_hours, dry_run):
             FROM ingestion_log
             GROUP BY source
         """)).fetchall()
+        data_rows = conn.execute(text("""
+            SELECT source, MAX(created_at) AS last_new_data
+            FROM race_results
+            GROUP BY source
+        """)).fetchall()
     by_src = {r.source: r for r in rows}
+    by_src_data = {r.source: r for r in data_rows}
 
     breaches = []
     for cfg in SOURCES:
@@ -2280,23 +2286,40 @@ def scrape_watchdog(ctx, cooldown_hours, dry_run):
             continue
         r = by_src.get(cfg.source)
         last_success = r.last_success if r else None
+        # Run-cadence check — the cron-health signal
         if last_success is None:
             breaches.append({
                 "source": cfg.source, "label": cfg.label,
                 "cadence": cfg.cadence_human, "age_hours": None,
-                "budget_hours": cfg.expected_within.total_seconds() / 3600,
+                "budget_hours": cfg.run_within.total_seconds() / 3600,
                 "reason": "no successful run on record",
             })
-            continue
-        age = now - last_success
-        if age > cfg.expected_within:
-            breaches.append({
-                "source": cfg.source, "label": cfg.label,
-                "cadence": cfg.cadence_human,
-                "age_hours": age.total_seconds() / 3600,
-                "budget_hours": cfg.expected_within.total_seconds() / 3600,
-                "reason": "stale",
-            })
+        else:
+            run_age = now - last_success
+            if run_age > cfg.run_within:
+                breaches.append({
+                    "source": cfg.source, "label": cfg.label,
+                    "cadence": cfg.cadence_human,
+                    "age_hours": run_age.total_seconds() / 3600,
+                    "budget_hours": cfg.run_within.total_seconds() / 3600,
+                    "reason": "cron stopped (no successful run)",
+                })
+
+        # Data-tap check — only when configured (long budget that survives lulls)
+        if cfg.data_within is not None:
+            dr = by_src_data.get(cfg.source)
+            last_new = dr.last_new_data if dr else None
+            if last_new is not None:
+                data_age = now - last_new
+                if data_age > cfg.data_within:
+                    breaches.append({
+                        "source": cfg.source + ":data",
+                        "label": cfg.label + " (no new data)",
+                        "cadence": cfg.cadence_human,
+                        "age_hours": data_age.total_seconds() / 3600,
+                        "budget_hours": cfg.data_within.total_seconds() / 3600,
+                        "reason": "no new race rows beyond seasonal lull",
+                    })
 
     if not breaches:
         console.print("[green]All scrapers within budget.[/green]")
