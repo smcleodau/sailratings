@@ -13,6 +13,7 @@ from sqlalchemy import text
 from irc_data.config import IMPORTS_DIR, TCC_LISTINGS_DIR
 from irc_data.db.connection import get_engine, init_db
 from irc_data.db.operations import (
+    find_boat_by_sail_number,
     get_boat_detail,
     get_stats,
     list_boats,
@@ -75,10 +76,23 @@ def import_csv(ctx, path: Path, snapshot_date: str):
     rows = parse_tcc_csv(path)
     console.print(f"  Parsed {len(rows)} rows")
 
-    # Import
+    # Import in two passes so primary rows always land before secondaries.
+    # Otherwise a secondary that arrives before its primary would be skipped
+    # (boat doesn't yet exist) or trigger a stub-insert race condition.
+    primary_rows = [r for r in rows if not r.is_secondary]
+    secondary_rows = [r for r in rows if r.is_secondary]
+    if secondary_rows:
+        console.print(
+            f"  {len(secondary_rows)} secondary-cert row(s) — will attach to "
+            f"existing boats by sail_number (no duplicate boat rows created)."
+        )
+
     imported = 0
+    sec_attached = 0
+    sec_skipped_no_primary = 0
     with console.status("Importing boats...") as status:
-        for row in rows:
+        # ── Pass 1: primary rows — create / update boats + tcc_snapshots
+        for row in primary_rows:
             country = detect_country(row.sail_number)
             design = detect_design(row.lh, row.beam)
 
@@ -119,9 +133,45 @@ def import_csv(ctx, path: Path, snapshot_date: str):
             imported += 1
 
             if imported % 200 == 0:
-                status.update(f"Importing boats... {imported}/{len(rows)}")
+                status.update(f"Importing boats... {imported}/{len(primary_rows)}")
 
-    console.print(f"[green]Imported {imported} boats with TCC snapshots.[/green]")
+        # ── Pass 2: secondary rows — attach to existing boat by
+        # (sail_number, boat_name). Matching on sail_number alone is unsafe
+        # because sail numbers are legitimately reused across design classes
+        # (1,265 such cases in the boats table). The cleaned boat_name plus
+        # sail_number is the strongest signal short of cert_number.
+        for row in secondary_rows:
+            with engine.begin() as conn:
+                lookup = conn.execute(text("""
+                    SELECT id FROM boats
+                     WHERE sail_number = :sn
+                       AND UPPER(TRIM(boat_name)) = UPPER(TRIM(:bn))
+                     LIMIT 1
+                """), {"sn": row.sail_number, "bn": row.boat_name}).first()
+                if lookup is None:
+                    sec_skipped_no_primary += 1
+                    continue
+                # The primary snapshot for this date already exists; UPDATE
+                # the `secondary` flag without overwriting primary TCC.
+                conn.execute(text("""
+                    UPDATE tcc_snapshots
+                       SET secondary = COALESCE(:flag, secondary)
+                     WHERE boat_id = :bid AND snapshot_date = :sd
+                """), {
+                    "flag": row.secondary or "SEC",
+                    "bid": lookup.id,
+                    "sd": snap_date,
+                })
+            sec_attached += 1
+
+    msg = f"[green]Imported {imported} primary boat(s) + snapshots.[/green]"
+    if sec_attached or sec_skipped_no_primary:
+        msg += (
+            f"  Secondary certs: {sec_attached} attached"
+            + (f", {sec_skipped_no_primary} skipped (no primary boat found)" if sec_skipped_no_primary else "")
+            + "."
+        )
+    console.print(msg)
     stats = get_stats(engine)
     console.print(
         f"  Total: {stats['boats']} boats, {stats['countries']} countries, "
