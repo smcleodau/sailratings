@@ -145,8 +145,17 @@ def upsert_race_result(
     }
     update_cols = {k: stmt.excluded[k] for k in update_keys}
 
+    # The old UNIQUE constraint `race_results_boat_event_race_key` was
+    # replaced 2026-05-20 with two partial UNIQUE indexes:
+    #   - race_results_matched_unique_key   for boat_id IS NOT NULL
+    #   - race_results_unmatched_unique_key for unmatched rows keyed on
+    #     raw_data->>'boat_name'
+    # `on_conflict_do_update` with `index_elements=` matches by the
+    # column tuple (so the right partial index is picked automatically
+    # based on which rows can collide).
     stmt = stmt.on_conflict_do_update(
-        constraint="race_results_boat_event_race_key",
+        index_elements=["boat_id", "event_name", "race_name", "event_date"],
+        index_where=text("boat_id IS NOT NULL"),
         set_=update_cols,
     )
     stmt = stmt.returning(RaceResultModel.__table__.c.id)
