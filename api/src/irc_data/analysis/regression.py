@@ -521,7 +521,11 @@ def get_boat_sensitivity_context(
 ) -> dict | None:
     """Get sensitivity analysis contextualised for a specific boat.
 
-    Returns dict with coefficients plus this boat's position on each lever.
+    Returns dict with:
+    - coefficients: regression coefficients for the design class
+    - boat_position: per-feature value + z-score for this boat
+    - class_baseline: mean/median/p25/p75/min/max TCC for the class,
+      plus this boat's TCC and percentile rank within the class
     """
     result = analyze_design_sensitivity(engine, design)
     if result is None:
@@ -575,14 +579,19 @@ def get_boat_sensitivity_context(
     # Class baseline TCC distribution + this boat's percentile rank.
     boat_tcc = boat_data.get("tcc")
     boat_tcc_f = float(boat_tcc) if boat_tcc is not None else None
-    cb: dict[str, float | None] = {
-        "mean_tcc":    class_stats.get("mean_tcc"),
-        "median_tcc":  class_stats.get("median_tcc"),
-        "p25_tcc":     class_stats.get("p25_tcc"),
-        "p75_tcc":     class_stats.get("p75_tcc"),
-        "min_tcc":     class_stats.get("min_tcc"),
-        "max_tcc":     class_stats.get("max_tcc"),
-        "n_boats":     class_stats.get("n_boats"),
+    def _ff(v):
+        return float(v) if v is not None else None
+    def _ii(v):
+        return int(v) if v is not None else None
+
+    cb: dict[str, float | int | None] = {
+        "mean_tcc":      _ff(class_stats.get("mean_tcc")),
+        "median_tcc":    _ff(class_stats.get("median_tcc")),
+        "p25_tcc":       _ff(class_stats.get("p25_tcc")),
+        "p75_tcc":       _ff(class_stats.get("p75_tcc")),
+        "min_tcc":       _ff(class_stats.get("min_tcc")),
+        "max_tcc":       _ff(class_stats.get("max_tcc")),
+        "n_boats":       _ii(class_stats.get("n_boats")),
         "this_boat_tcc": boat_tcc_f,
     }
     # Percentile rank: count peers with tcc < this boat / total.
