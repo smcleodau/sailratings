@@ -30,24 +30,46 @@ router = APIRouter(prefix="/admin/tables", tags=["Admin", "Tables"])
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 # Per-table policy. Tables not listed are hidden from the UI entirely.
+# `search_cols` enables the bare-string filter — a typed value with no
+# operator does ILIKE %v% across each listed column with OR semantics.
+# Column-targeted syntax (`col~text`, `col=value`) still works on every
+# column.
 TABLE_POLICY: dict[str, dict] = {
-    "boats":               {"editable": True,  "pk": "id"},
-    "design_classes":      {"editable": True,  "pk": "id"},
-    "boat_identities":     {"editable": True,  "pk": "id"},
-    "boat_corrections":    {"editable": True,  "pk": "id"},
-    "orders":              {"editable": True,  "pk": "id"},
-    "admin_conversations": {"editable": True,  "pk": "id"},
-    "admin_messages":      {"editable": True,  "pk": "id"},
-    "ingestion_log":       {"editable": True,  "pk": "id"},
-    "survey_responses":    {"editable": True,  "pk": "id"},
-    "insight_cache":       {"editable": True,  "pk": "id"},
-    "dupe_review_queue":   {"editable": True,  "pk": "id"},
-    "admin_edits":         {"editable": False, "pk": "id"},
-    "cert_probe_attempts": {"editable": False, "pk": "id"},
-    "race_results":        {"editable": False, "pk": "id"},
-    "orc_certificates":    {"editable": False, "pk": "id"},
+    "boats":               {"editable": True,  "pk": "id",
+                            "search_cols": ["boat_name", "sail_number", "design",
+                                            "design_canonical", "cert_number"]},
+    "design_classes":      {"editable": True,  "pk": "id",
+                            "search_cols": ["name_canonical", "aliases"]},
+    "boat_identities":     {"editable": True,  "pk": "id",
+                            "search_cols": ["boat_name", "sail_number", "owner"]},
+    "boat_corrections":    {"editable": True,  "pk": "id",
+                            "search_cols": ["notes"]},
+    "orders":              {"editable": True,  "pk": "id",
+                            "search_cols": ["email", "order_token"]},
+    "admin_conversations": {"editable": True,  "pk": "id",
+                            "search_cols": ["title"]},
+    "admin_messages":      {"editable": True,  "pk": "id",
+                            "search_cols": ["content"]},
+    "ingestion_log":       {"editable": True,  "pk": "id",
+                            "search_cols": ["source", "status", "error_message"]},
+    "survey_responses":    {"editable": True,  "pk": "id",
+                            "search_cols": ["email", "user_type"]},
+    "insight_cache":       {"editable": True,  "pk": "id",
+                            "search_cols": ["detail_level"]},
+    "dupe_review_queue":   {"editable": True,  "pk": "id",
+                            "search_cols": ["notes"]},
+    "admin_edits":         {"editable": False, "pk": "id",
+                            "search_cols": ["table_name", "column_name"]},
+    "cert_probe_attempts": {"editable": False, "pk": "id",
+                            "search_cols": ["sail_number"]},
+    "race_results":        {"editable": False, "pk": "id",
+                            "search_cols": ["event_name", "race_name", "class_name",
+                                            "organizing_club", "source"]},
+    "orc_certificates":    {"editable": False, "pk": "id",
+                            "search_cols": ["class_name"]},
     "orc_snapshots":       {"editable": False, "pk": "id"},
-    "irc_certificates":    {"editable": False, "pk": "id"},
+    "irc_certificates":    {"editable": False, "pk": "id",
+                            "search_cols": ["cert_number"]},
     "tcc_snapshots":       {"editable": False, "pk": "id"},
 }
 
@@ -198,7 +220,10 @@ def get_rows(
     if pk not in col_names:
         raise HTTPException(status_code=500, detail=f"PK {pk!r} missing on {name}")
 
-    # Build optional WHERE
+    # Build optional WHERE.
+    # Two modes:
+    #   - column-targeted (`col=value`, `col~text`, …): exact-syntax filter
+    #   - bare string ("sunfish"): ILIKE %v% across each table's search_cols
     where_clause = ""
     params: dict[str, Any] = {}
     if q:
@@ -220,21 +245,44 @@ def get_rows(
                 if head in col_names:
                     col, op_sql, val = head, sql_op, tail
                     break
-        if not col:
-            raise HTTPException(status_code=422, detail=f"Bad filter {q!r}")
-        if op_sql == ":":
-            if val == "null":
-                where_clause = f"WHERE {col} IS NULL"
-            elif val == "not_null":
-                where_clause = f"WHERE {col} IS NOT NULL"
+
+        if col:
+            # Column-targeted path
+            if op_sql == ":":
+                if val == "null":
+                    where_clause = f"WHERE {col} IS NULL"
+                elif val == "not_null":
+                    where_clause = f"WHERE {col} IS NOT NULL"
+                else:
+                    raise HTTPException(status_code=422, detail=f"Bad filter {q!r}")
+            elif op_sql == "ILIKE":
+                where_clause = f"WHERE CAST({col} AS TEXT) ILIKE :_v"
+                params["_v"] = f"%{val}%"
             else:
-                raise HTTPException(status_code=422, detail=f"Bad filter {q!r}")
-        elif op_sql == "ILIKE":
-            where_clause = f"WHERE CAST({col} AS TEXT) ILIKE :_v"
-            params["_v"] = f"%{val}%"
+                where_clause = f"WHERE {col} {op_sql} :_v"
+                params["_v"] = val
         else:
-            where_clause = f"WHERE {col} {op_sql} :_v"
-            params["_v"] = val
+            # Bare string — ILIKE OR across the table's search_cols.
+            # Strip non-alphanumerics on both sides so "sunfish" finds
+            # "SUN FISH", "Sun-Fish", "sun_fish" etc. Wrapped in % on each
+            # end to still behave like a substring search.
+            search_cols = [c for c in policy.get("search_cols", []) if c in col_names]
+            if not search_cols:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"No text columns configured for free-text search on {name!r}. "
+                           f"Use column=value or column~text instead.",
+                )
+            import re as _re
+            norm_q = _re.sub(r"[^A-Za-z0-9]+", "", q).lower()
+            if not norm_q:
+                raise HTTPException(status_code=422, detail=f"Empty search after normalising {q!r}")
+            ors = " OR ".join(
+                f"regexp_replace(LOWER(CAST({c} AS TEXT)), '[^a-z0-9]+', '', 'g') ILIKE :_v"
+                for c in search_cols
+            )
+            where_clause = f"WHERE ({ors})"
+            params["_v"] = f"%{norm_q}%"
 
     # Order
     order_col = order_by if order_by in col_names else pk

@@ -65,33 +65,6 @@ interface DomainStat {
   last_called: string | null;
 }
 
-interface DiffRow {
-  id: number;
-  ran_at: string;
-  source: string;
-  source_url: string;
-  event_name: string | null;
-  event_date: string | null;
-  legacy_rows: number;
-  firecrawl_rows: number;
-  matched: number;
-  match_rate: number;
-  confidence: number | null;
-  missing_names: string[];
-  extra_names: string[];
-  notes: string | null;
-}
-
-interface DiffRollup {
-  source: string;
-  runs: number;
-  avg_rate: number;
-  min_rate: number;
-  green: number;
-  amber: number;
-  red: number;
-  last_run: string | null;
-}
 
 /* ────────────────────────────────────────────────────────────────── */
 /* Helpers                                                            */
@@ -163,10 +136,13 @@ function StatCard({
 }
 
 function ModePill({ mode }: { mode: CallMode }) {
+  // Warm tones for legibility on navy — blue text on blue background
+  // read as smudges. Scrape is the routine call (brass); map is the
+  // rarer site-walk (cream accent).
   const cls =
     mode === "scrape"
-      ? "bg-blue-500/15 text-blue-300 border-blue-400/30"
-      : "bg-purple-500/15 text-purple-300 border-purple-400/30";
+      ? "bg-brass/15 text-brass border-brass/40"
+      : "bg-white/10 text-white/90 border-white/30";
   return (
     <span
       className={`data-mono text-[10px] uppercase tracking-[0.14em] px-2 py-0.5 border ${cls}`}
@@ -209,9 +185,6 @@ export default function FirecrawlPage() {
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
   const [recent, setRecent] = useState<RecentCall[]>([]);
   const [domains, setDomains] = useState<DomainStat[]>([]);
-  const [diffs, setDiffs] = useState<DiffRow[]>([]);
-  const [diffRollup, setDiffRollup] = useState<DiffRollup[]>([]);
-  const [expandedDiff, setExpandedDiff] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -233,14 +206,13 @@ export default function FirecrawlPage() {
       if (statusFilter !== "all") recentParams.set("status", statusFilter);
       if (modeFilter !== "all") recentParams.set("mode", modeFilter);
 
-      const [sumRes, recRes, domRes, diffRes] = await Promise.all([
+      const [sumRes, recRes, domRes] = await Promise.all([
         fetch(`${API_BASE}/admin/firecrawl/summary`, { headers }),
         fetch(`${API_BASE}/admin/firecrawl/recent?${recentParams}`, { headers }),
         fetch(`${API_BASE}/admin/firecrawl/by-domain?days=7`, { headers }),
-        fetch(`${API_BASE}/admin/firecrawl/diffs?limit=50`, { headers }),
       ]);
 
-      for (const r of [sumRes, recRes, domRes, diffRes]) {
+      for (const r of [sumRes, recRes, domRes]) {
         if (!r.ok) {
           if (r.status === 401 || r.status === 403) {
             localStorage.removeItem("admin_token");
@@ -251,17 +223,14 @@ export default function FirecrawlPage() {
         }
       }
 
-      const [sumJson, recJson, domJson, diffJson] = await Promise.all([
+      const [sumJson, recJson, domJson] = await Promise.all([
         sumRes.json(),
         recRes.json(),
         domRes.json(),
-        diffRes.json(),
       ]);
       setSummary(sumJson);
       setRecent(recJson.calls);
       setDomains(domJson.domains);
-      setDiffs(diffJson.diffs);
-      setDiffRollup(diffJson.rollup);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -532,182 +501,6 @@ export default function FirecrawlPage() {
                   <p className="data-mono text-xs text-white/45 tabular-nums text-right">
                     {fmtAge(d.last_called)}
                   </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Parallel-run diffs: legacy vs Firecrawl */}
-        <div className="mb-8">
-          <div className="flex items-baseline justify-between mb-3">
-            <h2 className="heading-display text-base text-white/85">
-              Parallel run · legacy ↔ Firecrawl
-            </h2>
-            <span className="data-mono text-[10px] text-white/30">
-              {diffs.length} comparison{diffs.length === 1 ? "" : "s"}
-            </span>
-          </div>
-
-          {/* Per-source rollup row — at-a-glance cut-over readiness */}
-          {diffRollup.length > 0 && (
-            <div className="border border-white/10 rounded-sm overflow-hidden mb-3">
-              <div className="grid grid-cols-[1fr_60px_90px_90px_120px_110px] gap-3 px-4 py-3 bg-white/[0.03] border-b border-white/10 data-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-                <span>Source</span>
-                <span className="text-right">Runs</span>
-                <span className="text-right">Avg</span>
-                <span className="text-right">Min</span>
-                <span className="text-right">G / A / R</span>
-                <span className="text-right">Last run</span>
-              </div>
-              {diffRollup.map((r) => {
-                const avgCls =
-                  r.avg_rate >= 0.95
-                    ? "text-emerald-400/85"
-                    : r.avg_rate >= 0.85
-                    ? "text-white/70"
-                    : "text-brass";
-                const ready = r.avg_rate >= 0.95 && r.red === 0;
-                return (
-                  <div
-                    key={r.source}
-                    className="grid grid-cols-[1fr_60px_90px_90px_120px_110px] gap-3 px-4 py-2.5 items-center border-b border-white/5 last:border-b-0 hover:bg-white/[0.02]"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="body-text text-sm text-white/85">{r.source}</span>
-                      {ready && (
-                        <span className="data-mono text-[10px] uppercase tracking-[0.14em] text-emerald-400/80 border border-emerald-400/30 px-1.5 py-0.5">
-                          ready to cut
-                        </span>
-                      )}
-                    </div>
-                    <p className="data-mono text-xs text-white/70 tabular-nums text-right">
-                      {r.runs}
-                    </p>
-                    <p className={`data-mono text-xs tabular-nums text-right ${avgCls}`}>
-                      {pct(r.avg_rate)}
-                    </p>
-                    <p className="data-mono text-xs text-white/55 tabular-nums text-right">
-                      {pct(r.min_rate)}
-                    </p>
-                    <p className="data-mono text-xs tabular-nums text-right">
-                      <span className="text-emerald-400/85">{r.green}</span>
-                      <span className="text-white/25"> / </span>
-                      <span className="text-white/55">{r.amber}</span>
-                      <span className="text-white/25"> / </span>
-                      <span className={r.red > 0 ? "text-brass" : "text-white/25"}>
-                        {r.red}
-                      </span>
-                    </p>
-                    <p className="data-mono text-xs text-white/45 tabular-nums text-right">
-                      {fmtAge(r.last_run)}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Per-event diff log */}
-          <div className="border border-white/10 rounded-sm overflow-hidden">
-            <div className="grid grid-cols-[100px_110px_1fr_90px_90px_80px] gap-3 px-4 py-3 bg-white/[0.03] border-b border-white/10 data-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
-              <span>When</span>
-              <span>Source</span>
-              <span>Event / URL</span>
-              <span className="text-right">Rows L / F</span>
-              <span className="text-right">Match</span>
-              <span className="text-right">Conf</span>
-            </div>
-            {diffs.length === 0 && !loading && (
-              <div className="px-4 py-8 body-text text-sm text-white/40 italic text-center">
-                No parallel-run comparisons yet. Run{" "}
-                <code className="data-mono text-white/55 bg-white/5 px-1">
-                  irc-data firecrawl-diff --source &lt;X&gt;
-                </code>{" "}
-                to seed.
-              </div>
-            )}
-            {diffs.map((d) => {
-              const open = expandedDiff === d.id;
-              const rateCls =
-                d.match_rate >= 0.95
-                  ? "text-emerald-400/85"
-                  : d.match_rate >= 0.85
-                  ? "text-white/75"
-                  : "text-brass";
-              return (
-                <div key={d.id} className="border-b border-white/5 last:border-b-0">
-                  <button
-                    onClick={() => setExpandedDiff(open ? null : d.id)}
-                    className="w-full grid grid-cols-[100px_110px_1fr_90px_90px_80px] gap-3 px-4 py-2.5 items-center text-left hover:bg-white/[0.02]"
-                  >
-                    <p className="data-mono text-[11px] text-white/55 tabular-nums truncate">
-                      {fmtAge(d.ran_at)}
-                    </p>
-                    <p className="data-mono text-[11px] text-white/70 truncate">
-                      {d.source}
-                    </p>
-                    <div className="min-w-0">
-                      <p className="body-text text-xs text-white/80 truncate">
-                        {d.event_name || d.source_url}
-                      </p>
-                      <p className="data-mono text-[10px] text-white/30 truncate">
-                        {d.source_url.replace(/^https?:\/\/(www\.)?/, "")}
-                      </p>
-                    </div>
-                    <p className="data-mono text-[11px] text-white/65 tabular-nums text-right">
-                      {d.legacy_rows} / {d.firecrawl_rows}
-                    </p>
-                    <p className={`data-mono text-xs tabular-nums text-right ${rateCls}`}>
-                      {pct(d.match_rate)}
-                      <span className="text-white/30 ml-1 text-[10px]">
-                        ({d.matched})
-                      </span>
-                    </p>
-                    <p className="data-mono text-[11px] text-white/45 tabular-nums text-right">
-                      {d.confidence != null ? pct(d.confidence) : "—"}
-                    </p>
-                  </button>
-                  {open && (
-                    <div className="px-4 pb-4 pt-1 bg-white/[0.015] grid grid-cols-2 gap-6">
-                      <div>
-                        <p className="data-mono text-[10px] uppercase tracking-[0.14em] text-brass/80 mb-1.5">
-                          In legacy, missing from Firecrawl
-                        </p>
-                        {d.missing_names.length === 0 ? (
-                          <p className="body-text text-xs text-white/35 italic">none</p>
-                        ) : (
-                          <ul className="data-mono text-[11px] text-white/65 space-y-0.5">
-                            {d.missing_names.map((n) => (
-                              <li key={n}>{n}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                      <div>
-                        <p className="data-mono text-[10px] uppercase tracking-[0.14em] text-emerald-400/70 mb-1.5">
-                          In Firecrawl, not in legacy
-                        </p>
-                        {d.extra_names.length === 0 ? (
-                          <p className="body-text text-xs text-white/35 italic">none</p>
-                        ) : (
-                          <ul className="data-mono text-[11px] text-white/65 space-y-0.5">
-                            {d.extra_names.map((n) => (
-                              <li key={n}>{n}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                      {d.notes && (
-                        <div className="col-span-2">
-                          <p className="data-mono text-[10px] uppercase tracking-[0.14em] text-white/35 mb-1.5">
-                            Notes
-                          </p>
-                          <p className="body-text text-xs text-brass/80">{d.notes}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}

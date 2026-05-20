@@ -213,7 +213,7 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
                 setFilterApplied("");
               }
             }}
-            placeholder="filter, e.g. country=AUS or boat_name~sun"
+            placeholder="search… (e.g. sunfish) or col=value, col~text"
             className="bg-navy-light/60 border border-white/15 text-white/90 placeholder:text-white/30 px-3 py-1.5 text-xs data-mono w-72 focus:border-brass/60 focus:outline-none"
           />
           <button
