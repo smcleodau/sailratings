@@ -960,6 +960,95 @@ async def firecrawl_by_domain(
     }
 
 
+@router.get("/firecrawl/diffs")
+async def firecrawl_diffs(
+    source: str | None = None,
+    limit: int = 100,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Recent Firecrawl-vs-legacy comparisons from the parallel-run harness.
+
+    One row per replayed event. Used to decide when a legacy source can
+    be retired — when a source's last 5 diffs are all ≥95% match, the
+    scraper code is safe to delete.
+
+    Optional filter: source=cowesweek | sydneyhobart | rhkyc | isora | …
+    """
+    _verify_admin(authorization)
+    limit = max(1, min(limit, 500))
+
+    clauses = []
+    params: dict = {"limit": limit}
+    if source:
+        clauses.append("source = :source")
+        params["source"] = source
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, ran_at, source, source_url, event_name, event_date,
+                   legacy_rows, firecrawl_rows, matched, match_rate, confidence,
+                   missing_names, extra_names, notes
+            FROM firecrawl_diffs
+            {where}
+            ORDER BY ran_at DESC
+            LIMIT :limit
+        """), params).fetchall()
+
+        # Per-source rollup (last 30 days) for the at-a-glance traffic-light row
+        per_source = conn.execute(text("""
+            SELECT source,
+                   COUNT(*)::int                                        AS runs,
+                   AVG(match_rate)::numeric(4,3)                        AS avg_rate,
+                   MIN(match_rate)::numeric(4,3)                        AS min_rate,
+                   COUNT(*) FILTER (WHERE match_rate >= 0.95)::int      AS green,
+                   COUNT(*) FILTER (WHERE match_rate >= 0.85
+                                    AND match_rate < 0.95)::int         AS amber,
+                   COUNT(*) FILTER (WHERE match_rate < 0.85)::int       AS red,
+                   MAX(ran_at)                                          AS last_run
+            FROM firecrawl_diffs
+            WHERE ran_at > now() - interval '30 days'
+            GROUP BY source
+            ORDER BY source
+        """)).fetchall()
+
+    return {
+        "diffs": [
+            {
+                "id": r.id,
+                "ran_at": r.ran_at.isoformat() if r.ran_at else None,
+                "source": r.source,
+                "source_url": r.source_url,
+                "event_name": r.event_name,
+                "event_date": r.event_date.isoformat() if r.event_date else None,
+                "legacy_rows": r.legacy_rows,
+                "firecrawl_rows": r.firecrawl_rows,
+                "matched": r.matched,
+                "match_rate": float(r.match_rate),
+                "confidence": float(r.confidence) if r.confidence else None,
+                "missing_names": r.missing_names or [],
+                "extra_names": r.extra_names or [],
+                "notes": r.notes,
+            }
+            for r in rows
+        ],
+        "rollup": [
+            {
+                "source": r.source,
+                "runs": r.runs,
+                "avg_rate": float(r.avg_rate) if r.avg_rate else 0.0,
+                "min_rate": float(r.min_rate) if r.min_rate else 0.0,
+                "green": r.green,
+                "amber": r.amber,
+                "red": r.red,
+                "last_run": r.last_run.isoformat() if r.last_run else None,
+            }
+            for r in per_source
+        ],
+    }
+
+
 @router.get("/conversations")
 async def list_conversations(
     engine: Engine = Depends(get_db),

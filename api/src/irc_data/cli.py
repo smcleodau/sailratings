@@ -1101,6 +1101,265 @@ def scrape_snapshot(ctx):
     console.print(f"[green]Snapshot complete for {today}[/green]")
 
 
+@cli.command(name="ingest-event")
+@click.option("--url", required=True, help="Race results page URL to scrape")
+@click.option(
+    "--source",
+    type=click.Choice(["cowesweek", "sydneyhobart", "rhkyc", "isora",
+                       "sailracehq", "sailwave", "firecrawl"]),
+    default="firecrawl",
+    help="Value written to race_results.source. Use the legacy source name "
+         "when cutting over; 'firecrawl' for parallel-run mode.",
+)
+@click.option("--dry-run", is_flag=True,
+              help="Scrape + extract + print results, do NOT write to DB")
+@click.pass_context
+def ingest_event(ctx, url, source, dry_run):
+    """Scrape one event URL via Firecrawl, extract via Claude, import to race_results.
+
+    This is the crawler-path replacement for `scrape results --source X`
+    for sources without a structured API. The same pipeline handles every
+    target site — Firecrawl normalises HTML/PDF to markdown and Claude
+    pulls a typed RaceResult[] out via tool_use.
+    """
+    from decimal import Decimal
+
+    from irc_data.discovery.firecrawl_client import scrape_url
+    from irc_data.discovery.extractor import extract_results
+    from irc_data.parsers.schemas import RaceResult
+    from irc_data.scrapers.result_import import import_scraper_results
+
+    engine = ctx.obj["engine"]
+    console.print(f"[cyan]Scraping[/cyan] {url}")
+
+    scraped = scrape_url(url, caller="cli.ingest-event")
+    if not scraped.markdown.strip():
+        console.print("[red]Firecrawl returned no content — aborting[/red]")
+        raise SystemExit(2)
+    console.print(f"  scraped {len(scraped.markdown):,} chars  title={scraped.title!r}")
+
+    extraction = extract_results(url, scraped.markdown)
+    if extraction.get("_error"):
+        console.print(f"[red]Extractor failed: {extraction['_error']}[/red]")
+        raise SystemExit(2)
+
+    rows = extraction.get("results", [])
+    console.print(
+        f"  event={extraction.get('event_name')!r}  "
+        f"class={extraction.get('class_name')!r}  "
+        f"confidence={extraction.get('confidence')}  "
+        f"rows={len(rows)}"
+    )
+    if not rows:
+        console.print("[yellow]Extractor returned 0 rows — nothing to import[/yellow]")
+        return
+
+    event_name = extraction.get("event_name") or scraped.title or "Unknown Event"
+    event_date = None
+    if extraction.get("event_date"):
+        from datetime import datetime as _dt
+        try:
+            event_date = _dt.fromisoformat(extraction["event_date"]).date()
+        except Exception:
+            event_date = None
+    race_name = extraction.get("race_name")
+    class_name = extraction.get("class_name")
+
+    def _dec(v):
+        if v is None:
+            return None
+        try:
+            return Decimal(str(v))
+        except Exception:
+            return None
+
+    race_results: list[RaceResult] = []
+    for r in rows:
+        rating = _dec(r.get("rating_value"))
+        rd = {
+            "boat_name": r.get("boat_name"),
+            "sail_number": r.get("sail_number"),
+            "fleet_size": len(rows),
+            "division": class_name,
+            "race_name": race_name,
+            "rating_type": "irc_tcc" if rating else None,
+            "rating_value": float(rating) if rating else None,
+            "status": r.get("status"),
+            "elapsed_time": r.get("elapsed_time"),
+            "corrected_time": r.get("corrected_time"),
+            "confidence": extraction.get("confidence"),
+        }
+        race_results.append(RaceResult(
+            event_name=event_name,
+            event_date=event_date,
+            source_url=url,
+            tcc_at_race=rating,
+            place=r.get("place"),
+            division=class_name,
+            elapsed_time=r.get("elapsed_time"),
+            corrected_time=r.get("corrected_time"),
+            raw_data=rd,
+        ))
+
+    if dry_run:
+        console.print("[yellow]--dry-run: not writing to DB[/yellow]")
+        for r in race_results[:5]:
+            console.print(f"  {r.place}  {r.raw_data.get('boat_name')!r}  TCC={r.tcc_at_race}")
+        if len(race_results) > 5:
+            console.print(f"  ... and {len(race_results) - 5} more")
+        return
+
+    stats = import_scraper_results(engine, race_results, source=source)
+    console.print(
+        f"[green]Imported[/green] {stats['imported']}/{stats['total']} rows  "
+        f"({stats['matched']} matched to boats, {stats['errors']} errors)"
+    )
+
+
+@cli.command(name="firecrawl-diff")
+@click.option(
+    "--source",
+    type=click.Choice(["cowesweek", "sydneyhobart", "rhkyc", "isora",
+                       "sailracehq", "sailwave"]),
+    required=True,
+    help="Legacy source to compare against",
+)
+@click.option("--limit", type=int, default=5,
+              help="Number of source_urls to replay (newest first)")
+@click.option("--days", type=int, default=365,
+              help="Only consider source_urls with event_date in the last N days")
+@click.pass_context
+def firecrawl_diff(ctx, source, limit, days):
+    """Replay recent event URLs through the Firecrawl extractor and log
+    a row-level comparison against the legacy rows in race_results.
+
+    Writes one row per event to firecrawl_diffs. Surfaced on
+    /justin/firecrawl so we can watch the gap shrink (or not) across the
+    parallel-run window before retiring the bespoke scraper.
+    """
+    import json as _json
+    import re
+
+    from irc_data.discovery.firecrawl_client import scrape_url
+    from irc_data.discovery.extractor import extract_results
+
+    engine = ctx.obj["engine"]
+
+    def _norm(s):
+        if not s:
+            return ""
+        s = s.upper()
+        s = re.sub(r"\s*\((DH|TH|DOUBLE.?HANDED|TWO.?HANDED)\)\s*", "", s)
+        s = re.sub(r"[^A-Z0-9]+", "", s)
+        return s
+
+    def _name_match(a, b):
+        if not a or not b:
+            return False
+        if a == b:
+            return True
+        return (a in b or b in a) and min(len(a), len(b)) >= 3
+
+    with engine.connect() as conn:
+        urls = conn.execute(text("""
+            SELECT source_url,
+                   MIN(event_name) AS event_name,
+                   MIN(event_date) AS event_date,
+                   COUNT(*) AS rows
+            FROM race_results
+            WHERE source = :source
+              AND source_url IS NOT NULL
+              AND (event_date IS NULL OR event_date > now() - make_interval(days => :days))
+            GROUP BY source_url
+            HAVING COUNT(*) >= 5
+            ORDER BY MAX(event_date) DESC NULLS LAST, MIN(id) DESC
+            LIMIT :limit
+        """), {"source": source, "days": days, "limit": limit}).fetchall()
+
+    if not urls:
+        console.print(f"[yellow]No source_urls found for source={source!r}[/yellow]")
+        return
+
+    console.print(f"[cyan]firecrawl-diff[/cyan] {source}: comparing {len(urls)} URL(s)")
+
+    for u in urls:
+        url = u.source_url
+        with engine.connect() as conn:
+            db_rows = conn.execute(text("""
+                SELECT raw_data->>'boat_name' AS boat_name
+                FROM race_results
+                WHERE source_url = :url
+            """), {"url": url}).fetchall()
+        db_names = {_norm(r.boat_name) for r in db_rows if r.boat_name}
+        db_names.discard("")
+
+        try:
+            scraped = scrape_url(url, caller="cli.firecrawl-diff")
+        except Exception as e:
+            console.print(f"  [red]scrape failed:[/red] {url[:90]}  ({e})")
+            continue
+
+        extraction = extract_results(url, scraped.markdown)
+        new_names_raw = [r.get("boat_name") for r in extraction.get("results", [])]
+        new_names = {_norm(n) for n in new_names_raw if n}
+        new_names.discard("")
+
+        # Tolerant matching (containment)
+        matched: set[str] = set()
+        used: set[str] = set()
+        for n in db_names:
+            if n in new_names:
+                matched.add(n)
+                used.add(n)
+                continue
+            for m in new_names:
+                if m in used:
+                    continue
+                if _name_match(n, m):
+                    matched.add(n)
+                    used.add(m)
+                    break
+
+        missing = sorted(db_names - matched - used)[:25]
+        extra = sorted(new_names - used)[:25]
+        rate = len(matched) / len(db_names) if db_names else 0.0
+        confidence = extraction.get("confidence") or 0.0
+
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO firecrawl_diffs
+                  (source, source_url, event_name, event_date, legacy_rows,
+                   firecrawl_rows, matched, match_rate, confidence,
+                   missing_names, extra_names, notes)
+                VALUES
+                  (:source, :url, :event_name, :event_date, :legacy, :fc,
+                   :matched, :rate, :conf, CAST(:miss AS jsonb),
+                   CAST(:extra AS jsonb), :notes)
+            """), {
+                "source": source,
+                "url": url,
+                "event_name": extraction.get("event_name") or u.event_name,
+                "event_date": u.event_date,
+                "legacy": len(db_rows),
+                "fc": len(new_names_raw),
+                "matched": len(matched),
+                "rate": round(rate, 3),
+                "conf": round(confidence, 3),
+                "miss": _json.dumps(missing),
+                "extra": _json.dumps(extra),
+                "notes": extraction.get("_error"),
+            })
+
+        verdict = "[green]GREEN[/green]" if rate >= 0.95 else "[yellow]AMBER[/yellow]" if rate >= 0.85 else "[red]RED[/red]"
+        console.print(
+            f"  {verdict} {rate*100:5.1f}%  "
+            f"legacy={len(db_rows):>3} fc={len(new_names_raw):>3} "
+            f"matched={len(matched):>3}  {url[:80]}"
+        )
+
+    console.print(f"[cyan]Done[/cyan] — view results at /justin/firecrawl (Diffs panel)")
+
+
 @cli.command(name="parse-certs")
 @click.option("--dir", "cert_dir", type=click.Path(path_type=Path), default=None)
 @click.pass_context
