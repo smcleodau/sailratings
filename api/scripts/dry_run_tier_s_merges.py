@@ -163,6 +163,51 @@ HAVING COUNT(*) > 1
  ORDER BY bn
 """
 
+# Tier U: same-hull dupes WHERE design is unset on one or both rows.
+# Drops Tier T-prime's design-required filter. Cluster key is
+# (boat_name, country, hull_num) — design ignored. Catches the residual
+# cluster of name+country+hull matches where one row's design was
+# never populated by the scraper.
+TIER_U_QUERY = """
+WITH norm AS (
+  SELECT id,
+         UPPER(TRIM(boat_name))                         AS bn,
+         country,
+         regexp_replace(UPPER(sail_number), '[^0-9]', '', 'g') AS hull_num
+    FROM boats
+   WHERE sail_number > ''
+)
+SELECT bn AS k1, COALESCE(country, '') AS k2, NULL::int AS k3,
+       ARRAY_AGG(id ORDER BY id) AS ids
+  FROM norm
+ WHERE hull_num <> ''
+ GROUP BY bn, country, hull_num
+HAVING COUNT(*) > 1
+ ORDER BY bn
+"""
+
+# Tier U-prime: cross-country same-hull dupes. Same name + same hull
+# number, country differs OR one side is NULL. Boats sold internationally
+# or scraped under different national contexts. Hull numbers are
+# manufacturer-assigned and globally unique within a design class, so a
+# name+hull match across countries is a strong signal of the same boat.
+TIER_U_PRIME_QUERY = """
+WITH norm AS (
+  SELECT id,
+         UPPER(TRIM(boat_name))                         AS bn,
+         regexp_replace(UPPER(sail_number), '[^0-9]', '', 'g') AS hull_num
+    FROM boats
+   WHERE sail_number > ''
+)
+SELECT bn AS k1, hull_num AS k2, NULL::int AS k3,
+       ARRAY_AGG(id ORDER BY id) AS ids
+  FROM norm
+ WHERE hull_num <> ''
+ GROUP BY bn, hull_num
+HAVING COUNT(*) > 1
+ ORDER BY bn
+"""
+
 
 # ── FK topology for re-pointing ──────────────────────────────────────────
 
@@ -477,12 +522,14 @@ def ensure_boat_merges_table(engine: Engine) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--tier", choices=["s", "s-prime", "s-double-prime", "t", "t-prime"], default="s",
+    ap.add_argument("--tier", choices=["s", "s-prime", "s-double-prime", "t", "t-prime", "u", "u-prime"], default="s",
                     help="Which Tier to run. 's' = same sail+design+year. "
                          "'s-prime' = SEC twins matched by (sail, canon_name), 1-primary only. "
-                         "'s-double-prime' = N-way clusters with a SEC member. "
+                         "'s-double-prime' = N-way clusters with a SEC/SH member. "
                          "'t' = same boat, sail-number-prefix variations (with country). "
-                         "'t-prime' = like t but drops country requirement.")
+                         "'t-prime' = like t but drops country requirement. "
+                         "'u' = like t but drops design requirement. "
+                         "'u-prime' = like u but drops country requirement (cross-country same-hull).")
     ap.add_argument("--apply", action="store_true",
                     help="Actually commit the merges. Default is dry-run (rollback).")
     args = ap.parse_args()
@@ -497,6 +544,8 @@ def main() -> int:
         "s-double-prime": TIER_S_DOUBLE_PRIME_QUERY,
         "t": TIER_T_QUERY,
         "t-prime": TIER_T_PRIME_QUERY,
+        "u": TIER_U_QUERY,
+        "u-prime": TIER_U_PRIME_QUERY,
     }[args.tier]
     label = f"TIER {args.tier.upper()}"
     with engine.connect() as conn:
