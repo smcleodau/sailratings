@@ -572,6 +572,38 @@ def get_boat_sensitivity_context(
 
             result_dict["boat_position"][feat] = pos
 
+    # Class baseline TCC distribution + this boat's percentile rank.
+    boat_tcc = boat_data.get("tcc")
+    boat_tcc_f = float(boat_tcc) if boat_tcc is not None else None
+    cb: dict[str, float | None] = {
+        "mean_tcc":    class_stats.get("mean_tcc"),
+        "median_tcc":  class_stats.get("median_tcc"),
+        "p25_tcc":     class_stats.get("p25_tcc"),
+        "p75_tcc":     class_stats.get("p75_tcc"),
+        "min_tcc":     class_stats.get("min_tcc"),
+        "max_tcc":     class_stats.get("max_tcc"),
+        "n_boats":     class_stats.get("n_boats"),
+        "this_boat_tcc": boat_tcc_f,
+    }
+    # Percentile rank: count peers with tcc < this boat / total.
+    if boat_tcc_f is not None and (class_stats.get("n_boats") or 0) > 1:
+        with engine.connect() as conn:
+            rank_row = conn.execute(text("""
+                WITH latest AS (
+                    SELECT DISTINCT ON (b.id) t.tcc
+                    FROM boats b JOIN tcc_snapshots t ON t.boat_id = b.id
+                    WHERE COALESCE(b.design_canonical, b.design) = :design
+                      AND t.tcc IS NOT NULL
+                    ORDER BY b.id, t.snapshot_date DESC
+                )
+                SELECT COUNT(*)::float / NULLIF((SELECT COUNT(*) FROM latest), 0)::float AS pct
+                FROM latest WHERE tcc < :boat_tcc
+            """), {"design": design, "boat_tcc": boat_tcc_f}).first()
+        cb["this_boat_percentile"] = round((rank_row.pct or 0.0) * 100, 1)
+    else:
+        cb["this_boat_percentile"] = None
+
+    result_dict["class_baseline"] = cb
     return result_dict
 
 
@@ -668,35 +700,54 @@ def _correlation_only(data: list[dict], design: str) -> CorrelationResult:
 
 
 def _fetch_class_means(engine: Engine, design: str) -> dict:
-    """Fetch class means/stddevs from the materialized view, falling back to live query."""
-    try:
-        query = text("SELECT * FROM mv_within_class_stats WHERE design_name = :design")
-        with engine.connect() as conn:
-            row = conn.execute(query, {"design": design}).first()
-            if row:
-                return dict(row._mapping)
-    except Exception:
-        pass
+    """Return per-feature means + a TCC distribution for the design class.
 
-    # Fallback: compute from snapshot data
+    Uses the latest tcc_snapshot per boat. The TCC summary lets the
+    report anchor decomposition with the median rating in the class.
+    """
     query = text("""
+        WITH latest AS (
+            SELECT DISTINCT ON (b.id)
+                   b.id, t.tcc, t.lh, t.beam, t.draft, t.headsails,
+                   t.spinnakers, t.crew, t.dlr,
+                   c.displacement_kg AS displacement, c.p, c.e, c.j,
+                   c.hlu, c.hlp, c.muw, c.mhw, c.stl,
+                   c.sym_slu, c.sym_sf
+            FROM boats b
+            LEFT JOIN tcc_snapshots t ON t.boat_id = b.id
+            LEFT JOIN irc_certificates c ON c.boat_id = b.id
+            WHERE COALESCE(b.design_canonical, b.design) = :design
+              AND t.tcc IS NOT NULL
+            ORDER BY b.id, t.snapshot_date DESC, c.issue_date DESC
+        )
         SELECT
-            AVG(t.lh)::numeric(8,3) AS mean_lh,
-            STDDEV(t.lh)::numeric(8,3) AS std_lh,
-            AVG(t.beam)::numeric(8,3) AS mean_beam,
-            STDDEV(t.beam)::numeric(8,3) AS std_beam,
-            AVG(t.draft)::numeric(8,3) AS mean_draft,
-            STDDEV(t.draft)::numeric(8,3) AS std_draft,
-            AVG(t.headsails)::numeric(4,2) AS mean_headsails,
-            AVG(t.spinnakers)::numeric(4,2) AS mean_spinnakers,
-            AVG(t.crew)::numeric(6,2) AS mean_crew,
-            AVG(t.dlr)::numeric(8,1) AS mean_dlr
-        FROM boats b
-        JOIN LATERAL (
-            SELECT * FROM tcc_snapshots WHERE boat_id = b.id ORDER BY snapshot_date DESC LIMIT 1
-        ) t ON true
-        WHERE COALESCE(b.design_canonical, b.design) = :design
+            AVG(tcc)::float AS mean_tcc,
+            (percentile_cont(0.5)  WITHIN GROUP (ORDER BY tcc))::float AS median_tcc,
+            (percentile_cont(0.25) WITHIN GROUP (ORDER BY tcc))::float AS p25_tcc,
+            (percentile_cont(0.75) WITHIN GROUP (ORDER BY tcc))::float AS p75_tcc,
+            MIN(tcc)::float AS min_tcc,
+            MAX(tcc)::float AS max_tcc,
+            COUNT(*)::int   AS n_boats,
+            AVG(lh)::float AS mean_lh, STDDEV(lh)::float AS std_lh,
+            AVG(beam)::float AS mean_beam, STDDEV(beam)::float AS std_beam,
+            AVG(draft)::float AS mean_draft, STDDEV(draft)::float AS std_draft,
+            AVG(headsails)::float AS mean_headsails, STDDEV(headsails)::float AS std_headsails,
+            AVG(spinnakers)::float AS mean_spinnakers, STDDEV(spinnakers)::float AS std_spinnakers,
+            AVG(crew)::float AS mean_crew, STDDEV(crew)::float AS std_crew,
+            AVG(dlr)::float AS mean_dlr, STDDEV(dlr)::float AS std_dlr,
+            AVG(displacement)::float AS mean_displacement, STDDEV(displacement)::float AS std_displacement,
+            AVG(p)::float AS mean_p, STDDEV(p)::float AS std_p,
+            AVG(e)::float AS mean_e, STDDEV(e)::float AS std_e,
+            AVG(j)::float AS mean_j, STDDEV(j)::float AS std_j,
+            AVG(hlu)::float AS mean_hlu, STDDEV(hlu)::float AS std_hlu,
+            AVG(hlp)::float AS mean_hlp, STDDEV(hlp)::float AS std_hlp,
+            AVG(muw)::float AS mean_muw, STDDEV(muw)::float AS std_muw,
+            AVG(mhw)::float AS mean_mhw, STDDEV(mhw)::float AS std_mhw,
+            AVG(stl)::float AS mean_stl, STDDEV(stl)::float AS std_stl,
+            AVG(sym_slu)::float AS mean_sym_slu, STDDEV(sym_slu)::float AS std_sym_slu,
+            AVG(sym_sf)::float AS mean_sym_sf, STDDEV(sym_sf)::float AS std_sym_sf
+        FROM latest
     """)
     with engine.connect() as conn:
         row = conn.execute(query, {"design": design}).first()
-        return dict(row._mapping) if row else {}
+    return dict(row._mapping) if row else {}
