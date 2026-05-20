@@ -59,7 +59,9 @@ def build_rating_anatomy(engine: Engine, boat_id: int) -> RatingAnatomyFacts:
             boat_name=(row.boat_name if row else f"boat #{boat_id}"),
             tcc_now=Decimal("0"),
             class_mean_tcc=None, class_median_tcc=None,
-            decomposition=[], explained_variance_pct=None,
+            decomposition=[],
+            design=(row.design if row else ""),
+            explained_variance_pct=None,
             model_tier="", n_boats_in_class=0,
         )
 
@@ -68,7 +70,9 @@ def build_rating_anatomy(engine: Engine, boat_id: int) -> RatingAnatomyFacts:
         return RatingAnatomyFacts(
             boat_name=row.boat_name, tcc_now=row.tcc,
             class_mean_tcc=None, class_median_tcc=None,
-            decomposition=[], explained_variance_pct=None,
+            decomposition=[],
+            design=row.design,
+            explained_variance_pct=None,
             model_tier="", n_boats_in_class=0,
         )
 
@@ -101,6 +105,7 @@ def build_rating_anatomy(engine: Engine, boat_id: int) -> RatingAnatomyFacts:
         class_mean_tcc=baseline.get("mean_tcc"),
         class_median_tcc=baseline.get("median_tcc"),
         decomposition=decomposition,
+        design=row.design,
         explained_variance_pct=round((sens.get("r_squared") or 0) * 100, 1),
         model_tier=sens.get("model_tier", ""),
         n_boats_in_class=sens.get("n_boats") or 0,

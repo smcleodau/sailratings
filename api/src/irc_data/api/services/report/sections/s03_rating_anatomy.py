@@ -33,7 +33,7 @@ def generate(engine: Engine, boat_id: int) -> SectionResult:
 
     facts_json = json.dumps(_facts_to_jsonable(facts), indent=2, default=str)
     user_msg = RATING_ANATOMY_PROMPT.format(
-        tcc_now=facts.tcc_now, design=facts.boat_name,
+        tcc_now=facts.tcc_now, design=facts.design or facts.boat_name,
         class_median_tcc=facts.class_median_tcc,
         delta=round(float(facts.tcc_now) - (facts.class_median_tcc or 0), 4),
         facts_json=facts_json,

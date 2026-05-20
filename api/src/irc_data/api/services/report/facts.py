@@ -126,6 +126,7 @@ class RatingAnatomyFacts:
     class_mean_tcc: float | None
     class_median_tcc: float | None
     decomposition: list[MeasurementContribution] = field(default_factory=list)
+    design: str = ""
     explained_variance_pct: float | None = None   # R² × 100
     model_tier: str = ""
     n_boats_in_class: int = 0
