@@ -36,8 +36,11 @@ from irc_data.db.connection import get_engine
 
 # ── Cluster discovery ────────────────────────────────────────────────────
 
+# Tier S: same sail+design+year_built. The cleanest signal — paired
+# Sunfast 3300s where both rows are fully populated. 37 clusters merged
+# 2026-05-20.
 TIER_S_QUERY = """
-SELECT sail_number, design, year_built,
+SELECT sail_number AS k1, design AS k2, year_built AS k3,
        ARRAY_AGG(id ORDER BY id) AS ids
   FROM boats
  WHERE sail_number > ''
@@ -46,6 +49,42 @@ SELECT sail_number, design, year_built,
  GROUP BY sail_number, design, year_built
 HAVING COUNT(*) > 1
  ORDER BY sail_number
+"""
+
+# Tier S-prime: the residual SEC twins where the scraper left fields
+# unpopulated. Match an existing "BOAT - SEC" row to its non-SEC twin
+# by (sail_number, name-without-suffix). Skip ambiguous cases where the
+# SEC has more than one candidate primary. Stuart-approved cleanup of
+# the 199 remaining SEC residuals after the import-path fix.
+TIER_S_PRIME_QUERY = """
+WITH sec AS (
+  SELECT id, sail_number,
+         regexp_replace(boat_name, '\\s*-\\s*SEC\\s*$', '', 'i') AS canon_name,
+         boat_name AS sec_name
+    FROM boats
+   WHERE boat_name ILIKE '% - SEC' AND sail_number > ''
+),
+candidates AS (
+  SELECT s.id AS sec_id, b.id AS primary_id, s.sail_number,
+         s.canon_name, b.design AS primary_design
+    FROM sec s
+    JOIN boats b
+      ON b.sail_number = s.sail_number
+     AND b.id <> s.id
+     AND b.boat_name NOT ILIKE '% - SEC'
+     AND UPPER(TRIM(b.boat_name)) = UPPER(TRIM(s.canon_name))
+),
+counted AS (
+  SELECT sec_id, COUNT(*) AS n FROM candidates GROUP BY sec_id
+)
+SELECT c.sail_number AS k1,
+       c.canon_name  AS k2,
+       NULL::int     AS k3,
+       ARRAY[c.primary_id, c.sec_id] AS ids
+  FROM candidates c
+  JOIN counted t ON t.sec_id = c.sec_id
+ WHERE t.n = 1               -- skip ambiguous (multi-primary) SEC twins
+ ORDER BY c.sail_number
 """
 
 
@@ -73,8 +112,8 @@ SIMPLE_FK_TABLES = [
 class MergePlan:
     cluster_key: str
     sail_number: str
-    design: str
-    year_built: int
+    k2: str                              # design (Tier S) or canon_name (S-prime)
+    k3: int | None                       # year_built (Tier S) or None
     winner_id: int = 0
     winner_name: str = ""
     loser_ids: list[int] = field(default_factory=list)
@@ -255,14 +294,17 @@ def resolve_race_result_collisions(conn, winner_id: int, loser_id: int) -> tuple
 # ── Cluster merge driver ─────────────────────────────────────────────────
 
 
-def plan_cluster(engine: Engine, sail: str, design: str, year: int,
+def plan_cluster(engine: Engine, sail: str, k2: str, k3: int | None,
                  ids: list[int], *, apply: bool) -> MergePlan:
     """Run a merge for one cluster. In dry-run mode (apply=False), the
     transaction rolls back at the end and the database is unchanged.
+
+    `k2`/`k3` carry the secondary cluster keys: design + year_built for
+    Tier S, canon_name + None for Tier S-prime. Used only for logging.
     """
     plan = MergePlan(
-        cluster_key=f"{sail}|{design}|{year}",
-        sail_number=sail, design=design, year_built=year,
+        cluster_key=f"{sail}|{k2}|{k3 if k3 is not None else '-'}",
+        sail_number=sail, k2=k2, k3=k3,
     )
 
     class _DryRunOnly(Exception):
@@ -359,6 +401,9 @@ def ensure_boat_merges_table(engine: Engine) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--tier", choices=["s", "s-prime"], default="s",
+                    help="Which Tier to run. 's' = same sail+design+year (37 merged 2026-05-20). "
+                         "'s-prime' = residual SEC twins matched by (sail, canon_name).")
     ap.add_argument("--apply", action="store_true",
                     help="Actually commit the merges. Default is dry-run (rollback).")
     args = ap.parse_args()
@@ -367,26 +412,29 @@ def main() -> int:
     if args.apply:
         ensure_boat_merges_table(engine)
 
+    query = TIER_S_QUERY if args.tier == "s" else TIER_S_PRIME_QUERY
+    label = f"TIER {args.tier.upper()}"
     with engine.connect() as conn:
-        clusters = conn.execute(text(TIER_S_QUERY)).fetchall()
+        clusters = conn.execute(text(query)).fetchall()
 
     mode = "APPLY (will commit)" if args.apply else "DRY-RUN (will rollback)"
     print(f"\n{'═' * 100}")
-    print(f"TIER S BOAT MERGE — {mode}")
+    print(f"{label} BOAT MERGE — {mode}")
     print(f"{'═' * 100}")
     print(f"{len(clusters)} clusters found.\n")
 
     plans: list[MergePlan] = []
     for c in clusters:
         plan = plan_cluster(
-            engine, c.sail_number, c.design, c.year_built, list(c.ids),
+            engine, c.k1, str(c.k2), c.k3, list(c.ids),
             apply=args.apply,
         )
         plans.append(plan)
         loser_label = ", ".join(f"{n} (#{i})" for i, n in zip(plan.loser_ids, plan.loser_names))
         winner_label = f"{plan.winner_name} (#{plan.winner_id})"
         prefix = "FAIL" if plan.error else ("APPL" if args.apply else "PREV")
-        print(f"[{prefix}] {plan.sail_number:<10} y{plan.year_built}  "
+        suffix = f" y{plan.k3}" if plan.k3 is not None else ""
+        print(f"[{prefix}] {plan.sail_number:<10}{suffix}  "
               f"winner: {winner_label}  ←  drops: {loser_label}")
         if plan.rows_repointed:
             details = "  ".join(
