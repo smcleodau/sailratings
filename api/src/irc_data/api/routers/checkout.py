@@ -192,9 +192,22 @@ def _handle_checkout_completed(
     """Process a successful checkout."""
     from datetime import datetime, timezone
 
+    # The Stripe SDK's StripeObject supports dict indexing (session["id"])
+    # but does NOT expose .get() the way a plain dict does — .get collides
+    # with the SDK's internal HTTP GET. Use indexing with explicit None
+    # defaults instead.
+    def _g(obj, key, default=None):
+        try:
+            v = obj[key]
+            return v if v is not None else default
+        except (KeyError, TypeError):
+            return default
+
     session_id = session["id"]
-    email = session.get("customer_details", {}).get("email")
-    payment_intent = session.get("payment_intent")
+    customer_details = _g(session, "customer_details") or {}
+    email = _g(customer_details, "email")
+    payment_intent = _g(session, "payment_intent")
+    metadata = _g(session, "metadata") or {}
 
     with engine.begin() as conn:
         result = conn.execute(
@@ -225,13 +238,13 @@ def _handle_checkout_completed(
     logger.info(f"Order {order_id} marked as paid (session {session_id})")
 
     from irc_data.api.services.analytics_service import track
-    track("order_paid", session.get("metadata", {}).get("order_token") or str(order_id), {
+    track("order_paid", _g(metadata, "order_token") or str(order_id), {
         "order_id": order_id,
         "session_id": session_id,
-        "amount_total": session.get("amount_total"),
-        "currency": session.get("currency"),
+        "amount_total": _g(session, "amount_total"),
+        "currency": _g(session, "currency"),
         "email": email,
-        "boat_id": session.get("metadata", {}).get("boat_id"),
+        "boat_id": _g(metadata, "boat_id"),
     })
 
     # Kick off report generation in background
