@@ -86,6 +86,16 @@ def _persist(engine: Engine, url: str, seed_url: str | None,
     """Upsert one extraction into event_discovery. Idempotent on source_url."""
     platform = extraction.get("scoring_platform", "unknown") or "unknown"
     platform_ids = extraction.get("platform_ids") or {}
+    # Claude sometimes nests platform_ids under the platform name
+    # (e.g. {"sailsys": {"club_id": …}}). Flatten when we see that.
+    if (
+        platform != "unknown"
+        and isinstance(platform_ids, dict)
+        and len(platform_ids) == 1
+        and platform in platform_ids
+        and isinstance(platform_ids[platform], dict)
+    ):
+        platform_ids = platform_ids[platform]
     title = extraction.get("title")
     event_date = _parse_date(extraction.get("event_date"))
     location = extraction.get("event_location")
@@ -132,7 +142,7 @@ def _persist(engine: Engine, url: str, seed_url: str | None,
                 VALUES
                   (:url, :stype, :seed, :platform, CAST(:ids AS jsonb),
                    :title, :event_date, :location, :conf, CAST(:raw AS jsonb),
-                   CASE WHEN :err IS NOT NULL THEN 'failed' ELSE 'pending' END,
+                   CASE WHEN CAST(:err AS text) IS NOT NULL THEN 'failed' ELSE 'pending' END,
                    :err)
                 RETURNING id
             """), {
