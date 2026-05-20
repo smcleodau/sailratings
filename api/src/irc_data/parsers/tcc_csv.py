@@ -154,24 +154,30 @@ def load_all_known_certs() -> list[dict]:
 
 
 _SEC_SUFFIX_RE = re.compile(r"\s*-\s*SEC\s*$", re.IGNORECASE)
+_SH_SUFFIX_RE = re.compile(r"\s*\(\s*SH\s*\)\s*$", re.IGNORECASE)
 
 
 def _detect_secondary(boat_name: str, secondary_col: str | None) -> tuple[str, bool]:
     """Return (cleaned_boat_name, is_secondary).
 
     A row is "secondary" when:
-      - boat_name ends with " - SEC" (the legacy IRC convention), OR
+      - boat_name ends with " - SEC" (re-issued IRC cert), OR
+      - boat_name ends with " (SH)" (short-handed cert), OR
       - the CSV "Secondary" / "Short Handed" column is non-empty.
 
-    The cleaned boat_name has any " - SEC" suffix stripped, so the boat's
-    canonical name is consistent across primary and secondary certs.
+    The cleaned boat_name has any " - SEC" / " (SH)" suffix stripped, so
+    the boat's canonical name is consistent across primary and secondary
+    certs.
     """
     name = boat_name or ""
-    suffix_match = _SEC_SUFFIX_RE.search(name)
-    if suffix_match:
+    sec_match = _SEC_SUFFIX_RE.search(name)
+    if sec_match:
         name = _SEC_SUFFIX_RE.sub("", name).strip()
+    sh_match = _SH_SUFFIX_RE.search(name)
+    if sh_match:
+        name = _SH_SUFFIX_RE.sub("", name).strip()
     flag_set = bool(secondary_col and secondary_col.strip())
-    return name, bool(suffix_match) or flag_set
+    return name, bool(sec_match) or bool(sh_match) or flag_set
 
 
 def parse_tcc_csv(path: Path) -> list[TCCListingRow]:

@@ -35,15 +35,17 @@ def upsert_boat(
 ) -> int:
     """Insert or update a boat, returning its id.
 
-    Defensive guard: strip a trailing " - SEC" suffix on boat_name before
-    insertion. The IRC TCC CSV publishes secondary-cert rows with this
-    suffix, and historically every caller had to remember to handle it;
-    centralising the strip here ensures no path can create "BOAT - SEC"
-    duplicate boats again. The TCC importer additionally routes secondary
-    rows to attach to the primary boat instead of upserting through here.
+    Defensive guard: strip trailing " - SEC" / " (SH)" suffixes from
+    boat_name. The IRC TCC CSV publishes secondary-cert rows with these
+    suffixes (re-issued and short-handed certs respectively), and
+    historically every caller had to remember to handle them; centralising
+    the strip here ensures no path can create duplicate boats again. The
+    TCC importer additionally routes secondary rows to attach to the
+    primary boat instead of upserting through here.
     """
     import re as _re
-    boat_name = _re.sub(r"\s*-\s*SEC\s*$", "", boat_name or "", flags=_re.IGNORECASE).strip()
+    boat_name = _re.sub(r"\s*-\s*SEC\s*$", "", boat_name or "", flags=_re.IGNORECASE)
+    boat_name = _re.sub(r"\s*\(\s*SH\s*\)\s*$", "", boat_name, flags=_re.IGNORECASE).strip()
     stmt = pg_insert(Boat.__table__).values(
         boat_name=boat_name,
         sail_number=sail_number,

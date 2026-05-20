@@ -87,6 +87,82 @@ SELECT c.sail_number AS k1,
  ORDER BY c.sail_number
 """
 
+# Tier S-double-prime: 3-way (or N-way) SEC/SH clusters. Group every
+# boat by (sail_number, canon_name) — where canon_name strips a trailing
+# " - SEC" or " (SH)" suffix — and return clusters of size >= 2 that
+# contain at least one secondary-suffix row. The IRC CSV publishes both
+# variants; same bug, same fix.
+TIER_S_DOUBLE_PRIME_QUERY = r"""
+WITH canonized AS (
+  SELECT id, sail_number, boat_name,
+         UPPER(TRIM(regexp_replace(
+           regexp_replace(boat_name, '\s*-\s*SEC\s*$', '', 'i'),
+           '\s*\(\s*SH\s*\)\s*$', '', 'i'
+         ))) AS canon
+    FROM boats
+   WHERE sail_number > ''
+),
+clusters AS (
+  SELECT sail_number, canon,
+         ARRAY_AGG(id ORDER BY id) AS ids,
+         BOOL_OR(boat_name ILIKE '%- SEC' OR boat_name ILIKE '%(SH)') AS has_secondary
+    FROM canonized
+   GROUP BY sail_number, canon
+  HAVING COUNT(*) > 1
+)
+SELECT sail_number AS k1, canon AS k2, NULL::int AS k3, ids
+  FROM clusters
+ WHERE has_secondary
+ ORDER BY sail_number
+"""
+
+# Tier T: same boat scraped from multiple sources with different
+# sail-number formatting (AUS1303 vs 1303, EAUS1213 vs AUS1213, etc.).
+# Cluster key is (boat_name_upper, design, country, digits_of_sail).
+# Stripping the alphabetic prefix from the sail number leaves the hull
+# number — boats sharing all four signals are the same physical boat.
+TIER_T_QUERY = """
+WITH norm AS (
+  SELECT id,
+         UPPER(TRIM(boat_name))                         AS bn,
+         design, country,
+         regexp_replace(UPPER(sail_number), '[^0-9]', '', 'g') AS hull_num
+    FROM boats
+   WHERE country IS NOT NULL AND country <> ''
+     AND design IS NOT NULL
+     AND sail_number > ''
+)
+SELECT bn AS k1, country AS k2, NULL::int AS k3,
+       ARRAY_AGG(id ORDER BY id) AS ids
+  FROM norm
+ WHERE hull_num <> ''
+ GROUP BY bn, design, country, hull_num
+HAVING COUNT(*) > 1
+ ORDER BY bn
+"""
+
+# Tier T-prime: same as Tier T but drops the country requirement —
+# catches dupes where one scrape captured country and another left it
+# NULL. Cluster key is (boat_name, design, digits_of_sail).
+TIER_T_PRIME_QUERY = """
+WITH norm AS (
+  SELECT id,
+         UPPER(TRIM(boat_name))                         AS bn,
+         design,
+         regexp_replace(UPPER(sail_number), '[^0-9]', '', 'g') AS hull_num
+    FROM boats
+   WHERE design IS NOT NULL
+     AND sail_number > ''
+)
+SELECT bn AS k1, design AS k2, NULL::int AS k3,
+       ARRAY_AGG(id ORDER BY id) AS ids
+  FROM norm
+ WHERE hull_num <> ''
+ GROUP BY bn, design, hull_num
+HAVING COUNT(*) > 1
+ ORDER BY bn
+"""
+
 
 # ── FK topology for re-pointing ──────────────────────────────────────────
 
@@ -401,9 +477,12 @@ def ensure_boat_merges_table(engine: Engine) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--tier", choices=["s", "s-prime"], default="s",
-                    help="Which Tier to run. 's' = same sail+design+year (37 merged 2026-05-20). "
-                         "'s-prime' = residual SEC twins matched by (sail, canon_name).")
+    ap.add_argument("--tier", choices=["s", "s-prime", "s-double-prime", "t", "t-prime"], default="s",
+                    help="Which Tier to run. 's' = same sail+design+year. "
+                         "'s-prime' = SEC twins matched by (sail, canon_name), 1-primary only. "
+                         "'s-double-prime' = N-way clusters with a SEC member. "
+                         "'t' = same boat, sail-number-prefix variations (with country). "
+                         "'t-prime' = like t but drops country requirement.")
     ap.add_argument("--apply", action="store_true",
                     help="Actually commit the merges. Default is dry-run (rollback).")
     args = ap.parse_args()
@@ -412,7 +491,13 @@ def main() -> int:
     if args.apply:
         ensure_boat_merges_table(engine)
 
-    query = TIER_S_QUERY if args.tier == "s" else TIER_S_PRIME_QUERY
+    query = {
+        "s": TIER_S_QUERY,
+        "s-prime": TIER_S_PRIME_QUERY,
+        "s-double-prime": TIER_S_DOUBLE_PRIME_QUERY,
+        "t": TIER_T_QUERY,
+        "t-prime": TIER_T_PRIME_QUERY,
+    }[args.tier]
     label = f"TIER {args.tier.upper()}"
     with engine.connect() as conn:
         clusters = conn.execute(text(query)).fetchall()

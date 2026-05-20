@@ -64,6 +64,32 @@ def test_does_not_strip_unrelated_dashes():
     assert name == "MR. GRAY-MATTER"
 
 
+def test_detect_secondary_sh_suffix():
+    # " (SH)" suffix marks a short-handed secondary cert.
+    name, is_sec = _detect_secondary("NO DOUBT (SH)", None)
+    assert is_sec is True
+    assert name == "NO DOUBT"
+
+
+def test_detect_secondary_sh_suffix_case_insensitive():
+    name, is_sec = _detect_secondary("Astarte (sh)", None)
+    assert is_sec is True
+    assert name == "Astarte"
+
+
+def test_detect_secondary_sh_with_extra_spacing():
+    name, is_sec = _detect_secondary("LICKETY SPLIT ( SH )", None)
+    assert is_sec is True
+    assert name == "LICKETY SPLIT"
+
+
+def test_does_not_strip_unrelated_parens():
+    # Boats with " (II)" or " (2)" suffixes must not be marked SH.
+    name, is_sec = _detect_secondary("WILD OATS (XI)", None)
+    assert is_sec is False
+    assert name == "WILD OATS (XI)"
+
+
 def test_parse_tcc_csv_marks_sec_rows():
     """End-to-end: a CSV with primary + secondary rows for the same boat
     produces two TCCListingRow records, the secondary one flagged."""
