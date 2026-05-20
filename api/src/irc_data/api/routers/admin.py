@@ -803,6 +803,163 @@ async def reject_discovery(
     return {"status": "rejected"}
 
 
+@router.get("/firecrawl/summary")
+async def firecrawl_summary(
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Aggregate Firecrawl usage — today / 7-day / 30-day, plus the
+    authoritative remaining-credits number off the Firecrawl account.
+
+    Built for the /justin/firecrawl dashboard. Two cost-control signals:
+    - `remaining_credits` is the truth — what Firecrawl will bill against.
+    - The per-window aggregates are *ours*, computed from the calls log,
+      and double as a cross-check that our logging is sane.
+    """
+    _verify_admin(authorization)
+
+    with engine.connect() as conn:
+        # Aggregate over three windows in one query.
+        rows = conn.execute(text("""
+            WITH windows AS (
+                SELECT 'today'::text  AS window, now() - interval '24 hours' AS since UNION ALL
+                SELECT '7d',     now() - interval '7 days'  UNION ALL
+                SELECT '30d',    now() - interval '30 days'
+            )
+            SELECT w.window,
+                   COUNT(c.id)::int                                  AS calls,
+                   COALESCE(SUM(c.credits), 0)::int                  AS credits,
+                   COUNT(*) FILTER (WHERE c.status = 'ok')::int      AS ok,
+                   COUNT(*) FILTER (WHERE c.status = 'empty')::int   AS empty,
+                   COUNT(*) FILTER (WHERE c.status = 'error')::int   AS errored,
+                   COUNT(*) FILTER (WHERE c.mode   = 'scrape')::int  AS scrapes,
+                   COUNT(*) FILTER (WHERE c.mode   = 'map')::int     AS maps,
+                   COALESCE(AVG(c.duration_ms), 0)::int              AS avg_ms,
+                   COUNT(DISTINCT c.domain)::int                     AS domains
+            FROM windows w
+            LEFT JOIN firecrawl_calls c ON c.called_at >= w.since
+            GROUP BY w.window
+        """)).fetchall()
+
+    by_window = {r.window: dict(r._mapping) for r in rows}
+
+    # Remaining credits from Firecrawl directly (authoritative source).
+    from irc_data.discovery.firecrawl_client import get_credit_usage
+    remaining = get_credit_usage()  # may be None if API down or key missing
+
+    return {
+        "as_of": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "remaining": remaining,            # {"remaining_credits": …, "plan_credits": …} | null
+        "windows": by_window,              # {"today": {...}, "7d": {...}, "30d": {...}}
+    }
+
+
+@router.get("/firecrawl/recent")
+async def firecrawl_recent(
+    limit: int = 100,
+    status: str | None = None,
+    mode: str | None = None,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Last N Firecrawl calls. Default 100, max 500.
+
+    Optional filters: status=ok|empty|error, mode=scrape|map.
+    """
+    _verify_admin(authorization)
+    limit = max(1, min(limit, 500))
+
+    clauses: list[str] = []
+    params: dict = {"limit": limit}
+    if status:
+        clauses.append("status = :status")
+        params["status"] = status
+    if mode:
+        clauses.append("mode = :mode")
+        params["mode"] = mode
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, called_at, mode, url, domain, status, credits,
+                   duration_ms, response_chars, links_found, error_message, caller
+            FROM firecrawl_calls
+            {where}
+            ORDER BY called_at DESC
+            LIMIT :limit
+        """), params).fetchall()
+
+    return {
+        "calls": [
+            {
+                "id": r.id,
+                "called_at": r.called_at.isoformat() if r.called_at else None,
+                "mode": r.mode,
+                "url": r.url,
+                "domain": r.domain,
+                "status": r.status,
+                "credits": r.credits,
+                "duration_ms": r.duration_ms,
+                "response_chars": r.response_chars,
+                "links_found": r.links_found,
+                "error_message": r.error_message,
+                "caller": r.caller,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/firecrawl/by-domain")
+async def firecrawl_by_domain(
+    days: int = 7,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Per-domain rollup over the last N days (default 7, max 90).
+
+    Sorted by call count, descending. Shows success rate so problem
+    domains (anti-bot blocks, dead URLs) bubble to the top.
+    """
+    _verify_admin(authorization)
+    days = max(1, min(days, 90))
+
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT domain,
+                   COUNT(*)::int                                       AS calls,
+                   COALESCE(SUM(credits), 0)::int                      AS credits,
+                   COUNT(*) FILTER (WHERE status = 'ok')::int          AS ok,
+                   COUNT(*) FILTER (WHERE status = 'empty')::int       AS empty,
+                   COUNT(*) FILTER (WHERE status = 'error')::int       AS errored,
+                   COALESCE(AVG(duration_ms), 0)::int                  AS avg_ms,
+                   MAX(called_at)                                      AS last_called
+            FROM firecrawl_calls
+            WHERE called_at > now() - make_interval(days => :days)
+            GROUP BY domain
+            ORDER BY calls DESC, domain
+            LIMIT 100
+        """), {"days": days}).fetchall()
+
+    return {
+        "days": days,
+        "domains": [
+            {
+                "domain": r.domain or "(unknown)",
+                "calls": r.calls,
+                "credits": r.credits,
+                "ok": r.ok,
+                "empty": r.empty,
+                "errored": r.errored,
+                "success_rate": (r.ok / r.calls) if r.calls else 0,
+                "avg_ms": r.avg_ms,
+                "last_called": r.last_called.isoformat() if r.last_called else None,
+            }
+            for r in rows
+        ],
+    }
+
+
 @router.get("/conversations")
 async def list_conversations(
     engine: Engine = Depends(get_db),

@@ -19,7 +19,8 @@ const SECTIONS = [
         !p.startsWith("/justin/tables") &&
         !p.startsWith("/justin/corrections") &&
         !p.startsWith("/justin/scrapers") &&
-        !p.startsWith("/justin/discovery")),
+        !p.startsWith("/justin/discovery") &&
+        !p.startsWith("/justin/firecrawl")),
   },
   {
     href: "/justin/scrapers",
@@ -30,6 +31,11 @@ const SECTIONS = [
     href: "/justin/discovery",
     label: "Discovery",
     match: (p: string) => p.startsWith("/justin/discovery"),
+  },
+  {
+    href: "/justin/firecrawl",
+    label: "Firecrawl",
+    match: (p: string) => p.startsWith("/justin/firecrawl"),
   },
   {
     href: "/justin/tables",
