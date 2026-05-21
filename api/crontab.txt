@@ -40,22 +40,37 @@ LOG_DIR=/home/irc-data/logs
 # ISORA — Irish Sea Offshore Racing Association. Weekly Tuesday 11:00.
 0 11 * * 2   cd $IRC_DATA_DIR && irc-data scrape results --source isora >> $LOG_DIR/isora_$(date +\%F).log 2>&1
 
-# RHKYC — Royal Hong Kong Yacht Club fleet. Weekly Wednesday 10:00 (timezone
-# offset: Wednesday morning UTC is a sensible quiet time for the Asia fleet).
-0 10 * * 3   cd $IRC_DATA_DIR && irc-data scrape results --source rhkyc >> $LOG_DIR/rhkyc_$(date +\%F).log 2>&1
+# --- Firecrawl parallel-run entries (Task A6) -------------------------------
+# These run alongside the bespoke scrapers above for ~14 days. After parity
+# is green per `irc-data parity-report`, the legacy entries are retired and
+# only the Firecrawl entries remain.
+0 11 * * 2   cd $IRC_DATA_DIR && irc-data discover-and-ingest --seed-url "https://sailracehq.com/" --source sailracehq --tag-as firecrawl >> $LOG_DIR/sailracehq-firecrawl_$(date +\%F).log 2>&1
+0 12 * * 2   cd $IRC_DATA_DIR && irc-data discover-and-ingest --seed-url "https://www.isora.org/index.php/notice-board/results2" --source isora --tag-as firecrawl >> $LOG_DIR/isora-firecrawl_$(date +\%F).log 2>&1
+
+# RHKYC — Royal Hong Kong Yacht Club fleet. Weekly Wednesday 10:00 UTC.
+# Cut over to Firecrawl discover-and-ingest against the public results index
+# (see Task A5/A7). The bespoke scraper at irc_data.scrapers.rhkyc is retained
+# during the parallel-run window and retired in a follow-up commit.
+0 10 * * 3   cd $IRC_DATA_DIR && irc-data discover-and-ingest --seed-url "https://www.rhkyc.org.hk/sailing-results" --source rhkyc >> $LOG_DIR/rhkyc_$(date +\%F).log 2>&1
 
 # TopYacht — Southport YC + major AU regattas (HIRW, ABRW, FoS, ORWA, CYCSA…).
 # Daily 02:30 UTC. RQYS/SYC publish race-by-race; an annual cron pass would
 # miss the current sailing season for weeks at a time.
 30 2 * * *   cd $IRC_DATA_DIR && irc-data scrape results --source topyacht --incremental --store >> $LOG_DIR/topyacht_$(date +\%F).log 2>&1
 
+# --- Annual events via Firecrawl + Claude extractor ---
+# Cowes Week — runs in the first week of August. Scrape 5 September to catch
+# late-published amended results.
+0 6 5 9 *    cd $IRC_DATA_DIR && irc-data ingest-event --source cowesweek --year $(date +\%Y) >> $LOG_DIR/cowesweek_$(date +\%F).log 2>&1
+
+# Sydney–Hobart — race start 26 December; results finalised by 30 December.
+0 6 30 12 *  cd $IRC_DATA_DIR && irc-data ingest-event --source sydneyhobart --year $(date +\%Y) >> $LOG_DIR/sydneyhobart_$(date +\%F).log 2>&1
+
 # --- Decommissioned / on-demand sources (intentionally NOT scheduled) ---
 # rorc:        static HTML only covers 2007-2022. Use sailracehq for post-2023.
-# cowesweek:   annual event (early August). Run by hand during/after the event:
-#                irc-data scrape results --source cowesweek --year YYYY
-# sydneyhobart: annual event (26 December). Same pattern as Cowes Week.
 # sailwave:    used by scattered clubs, no canonical URL pattern. Run by hand
-#              against specific event URLs when needed.
+#              against specific event URLs when needed:
+#                irc-data ingest-event --url <URL> --source sailwave
 
 # === Identity & Design Maintenance ===
 # Weekly: match new ORC certs to IRC boats (Sunday 05:00 UTC)
@@ -76,6 +91,12 @@ LOG_DIR=/home/irc-data/logs
 # non-optional source breaches its freshness budget. 4h cooldown per source
 # is enforced inside the command. Reads RESEND_API_KEY + ALERT_EMAIL from env.
 */15 * * * * cd $IRC_DATA_DIR && irc-data scrape-watchdog >> $LOG_DIR/watchdog_$(date +\%F).log 2>&1
+
+# === Discovery seed-crawl (Task A7) ===
+# Nightly 22:30 UTC: walk the aggregator/fixture sites listed in
+# DEFAULT_AGGREGATORS (see cli.py) and queue every discovered URL into
+# event_discovery for Justin to confirm at /justin/discovery.
+30 22 * * *  cd $IRC_DATA_DIR && irc-data seed-crawl --aggregators >> $LOG_DIR/seedcrawl_$(date +\%F).log 2>&1
 
 # === Cleanup ===
 # Delete logs older than 30 days (midnight)

@@ -1152,25 +1152,36 @@ def scrape_snapshot(ctx):
 
 
 @cli.command(name="ingest-event")
-@click.option("--url", required=True, help="Race results page URL to scrape")
+@click.option("--url", default=None,
+              help="Race results page URL. Optional when --source + --year "
+                   "uniquely identifies the event (cowesweek, sydneyhobart).")
 @click.option(
     "--source",
     type=click.Choice(["cowesweek", "sydneyhobart", "rhkyc", "isora",
-                       "sailracehq", "sailwave", "firecrawl"]),
+                       "sailracehq", "sailwave", "yachtscoring", "rpayc",
+                       "firecrawl"]),
     default="firecrawl",
     help="Value written to race_results.source. Use the legacy source name "
          "when cutting over; 'firecrawl' for parallel-run mode.",
 )
+@click.option("--year", type=int, default=None,
+              help="Archive year for annual events (cowesweek, sydneyhobart). "
+                   "If --url is omitted, the canonical URL for the year is "
+                   "derived from --source.")
 @click.option("--dry-run", is_flag=True,
               help="Scrape + extract + print results, do NOT write to DB")
 @click.pass_context
-def ingest_event(ctx, url, source, dry_run):
+def ingest_event(ctx, url, source, year, dry_run):
     """Scrape one event URL via Firecrawl, extract via Claude, import to race_results.
 
     This is the crawler-path replacement for `scrape results --source X`
     for sources without a structured API. The same pipeline handles every
     target site — Firecrawl normalises HTML/PDF to markdown and Claude
     pulls a typed RaceResult[] out via tool_use.
+
+    Annual events accept --year and derive the URL:
+      irc-data ingest-event --source cowesweek --year 2024
+      irc-data ingest-event --source sydneyhobart --year 2024
     """
     from decimal import Decimal
 
@@ -1178,6 +1189,19 @@ def ingest_event(ctx, url, source, dry_run):
     from irc_data.discovery.extractor import extract_results
     from irc_data.parsers.schemas import RaceResult
     from irc_data.scrapers.result_import import import_scraper_results
+
+    # Resolve --url from --source + --year for annual events.
+    if not url and year:
+        if source == "cowesweek":
+            url = f"https://www.cowesweek.co.uk/results/{year}"
+        elif source == "sydneyhobart":
+            url = f"https://www.cyca.com.au/results/{year}-rolex-sydney-hobart"
+    if not url:
+        console.print(
+            "[red]--url is required (or pass --source cowesweek|sydneyhobart "
+            "with --year)[/red]"
+        )
+        raise SystemExit(2)
 
     engine = ctx.obj["engine"]
     console.print(f"[cyan]Scraping[/cyan] {url}")
@@ -1259,7 +1283,9 @@ def ingest_event(ctx, url, source, dry_run):
             console.print(f"  ... and {len(race_results) - 5} more")
         return
 
-    stats = import_scraper_results(engine, race_results, source=source)
+    stats = import_scraper_results(
+        engine, race_results, source=source, transport="firecrawl"
+    )
     console.print(
         f"[green]Imported[/green] {stats['imported']}/{stats['total']} rows  "
         f"({stats['matched']} matched to boats, {stats['errors']} errors)"
@@ -2599,6 +2625,112 @@ def discover_events(ctx, url, seed_url, limit, auto_ingest):
                 console.print(f"  [red]ingest #{r['id']} failed: {e}[/red]")
 
 
+@cli.command(name="discover-and-ingest")
+@click.option("--seed-url", required=True,
+              help="Seed URL — Firecrawl maps it, then race results are "
+                   "extracted + imported from every reachable sub-URL.")
+@click.option(
+    "--source",
+    type=click.Choice(["cowesweek", "sydneyhobart", "rhkyc", "isora",
+                       "sailracehq", "sailwave", "yachtscoring", "rpayc",
+                       "firecrawl"]),
+    required=True,
+    help="Value written to race_results.source.",
+)
+@click.option("--max-pages", type=int, default=20,
+              help="Cap on how many mapped URLs to crawl per run.")
+@click.option("--tag-as", default="firecrawl",
+              help="Value written to race_results.transport (typically "
+                   "'firecrawl' during parallel-run; can be 'legacy' to "
+                   "replay an old scraper through the same pipeline).")
+@click.pass_context
+def discover_and_ingest(ctx, seed_url, source, max_pages, tag_as):
+    """Map a seed URL, extract race results from every page, import them.
+
+    The Firecrawl-based replacement for the bespoke ``scrape results
+    --source X`` crons. Each mapped URL is scraped, the markdown is sent
+    to Claude's ``extract_results``, and structured rows are inserted via
+    ``import_scraper_results`` with the supplied source + transport tag.
+
+    Fails soft per-URL: a single bad page doesn't poison the batch.
+    """
+    from irc_data.discovery.orchestrator import seed_crawl_and_ingest
+
+    engine = ctx.obj["engine"]
+    console.print(
+        f"[cyan]discover-and-ingest[/cyan] seed={seed_url} source={source} "
+        f"max_pages={max_pages} tag_as={tag_as}"
+    )
+
+    stats = seed_crawl_and_ingest(
+        engine,
+        seed_url=seed_url,
+        source=source,
+        max_pages=max_pages,
+        transport_tag=tag_as,
+    )
+    console.print(
+        f"[green]urls_mapped={stats['urls_mapped']}[/green]  "
+        f"with_results={stats['urls_with_results']}  "
+        f"failed={stats['urls_failed']}  "
+        f"rows_imported={stats['rows_imported']}  "
+        f"rows_matched={stats['rows_matched']}"
+    )
+
+
+# Default aggregator seed URLs used by `irc-data seed-crawl --aggregators`.
+# Edit here to add/remove top-level sources for the nightly discovery loop.
+DEFAULT_AGGREGATORS = [
+    "https://www.rya.org.uk/racing/fixtures",
+    "https://www.australiansailing.org/events",
+    "https://www.rorc.org/events",
+]
+
+
+@cli.command(name="seed-crawl")
+@click.option("--aggregators", is_flag=True,
+              help="Crawl the built-in list of aggregator/fixture sites and "
+                   "queue every discovered URL into event_discovery.")
+@click.option("--seed-url", default=None,
+              help="Optional override — crawl just this one seed URL.")
+@click.option("--limit", type=int, default=50,
+              help="Max URLs to map per seed (default 50).")
+@click.pass_context
+def seed_crawl(ctx, aggregators, seed_url, limit):
+    """Nightly seed-crawl. Map aggregator sites → queue URLs in event_discovery.
+
+    Aggregator pages are calendars/fixture lists — not results pages
+    themselves — so we use the discovery service (extract_event, not
+    extract_results). Rows land in ``event_discovery`` with status='pending'
+    for Justin to confirm at /justin/discovery before ingestion.
+    """
+    from irc_data.discovery.service import discover_seed
+
+    engine = ctx.obj["engine"]
+    seeds: list[str] = []
+    if aggregators:
+        seeds.extend(DEFAULT_AGGREGATORS)
+    if seed_url:
+        seeds.append(seed_url)
+    if not seeds:
+        console.print(
+            "[red]Pass --aggregators and/or --seed-url URL.[/red]"
+        )
+        raise SystemExit(2)
+
+    total = 0
+    for seed in seeds:
+        console.print(f"[cyan]mapping[/cyan] {seed}")
+        try:
+            rows = discover_seed(engine, seed, limit=limit)
+            console.print(f"  {len(rows)} URLs queued / refreshed")
+            total += len(rows)
+        except Exception as e:
+            console.print(f"  [red]failed: {e}[/red]")
+
+    console.print(f"[green]done — {total} URLs total[/green]")
+
+
 @cli.command(name="scrape-watchdog")
 @click.option("--cooldown-hours", type=int, default=4,
               help="Minimum hours between repeat alerts for the same source.")
@@ -2777,3 +2909,15 @@ def scrape_watchdog(ctx, cooldown_hours, dry_run):
     for b in breaches_to_send:
         state[b["source"]] = now.isoformat()
     cooldown_path.write_text(json.dumps(state, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Externally-defined sub-commands.
+#
+# Diagnostics + discovery commands live in their own modules; we attach them
+# to the top-level `cli` group here so they appear in `irc-data --help`.
+# ---------------------------------------------------------------------------
+
+from irc_data.diagnostics.scraper_parity import parity_report as _parity_report  # noqa: E402
+
+cli.add_command(_parity_report)
