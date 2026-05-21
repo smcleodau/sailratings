@@ -69,4 +69,26 @@ FACTS:
 {facts_json}
 """
 
+EXECUTIVE_SUMMARY_PROMPT = """SECTION: s01_executive
+GOAL: A one-page verdict the owner reads first. Three short paragraphs.
+
+Paragraph 1: Who this boat is in one breath — name, design, sail
+number, current TCC, where she sits in her class.
+
+Paragraph 2: The three headline findings (verbatim from the FACTS
+payload, woven into prose — don't bullet them). Lead with the most
+striking number.
+
+Paragraph 3: One pointer at the most actionable section in the rest
+of the report. If FACTS.top_recommendation is set, paraphrase it;
+otherwise close with "the recommendation table in §8 ranks her
+opportunities by impact."
+
+No headers. No bullets. ~150-200 words total.
+
+FACTS:
+{facts_json}
+"""
+
+
 # More section prompts added per-task as each section is built.

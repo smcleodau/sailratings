@@ -14,7 +14,7 @@ from sqlalchemy.engine import Engine
 
 from irc_data.analysis.regression import get_boat_sensitivity_context
 from irc_data.api.services.report.facts import (
-    MeasurementContribution, RatingAnatomyFacts,
+    ExecutiveSummaryFacts, MeasurementContribution, RatingAnatomyFacts,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,4 +109,88 @@ def build_rating_anatomy(engine: Engine, boat_id: int) -> RatingAnatomyFacts:
         explained_variance_pct=round((sens.get("r_squared") or 0) * 100, 1),
         model_tier=sens.get("model_tier", ""),
         n_boats_in_class=sens.get("n_boats") or 0,
+    )
+
+
+# ── Executive Summary ──────────────────────────────────────────────────
+
+
+def build_executive_summary(engine: Engine, boat_id: int) -> ExecutiveSummaryFacts:
+    """Pull the headline numbers + pre-compute three findings.
+
+    Findings are computed from raw DB facts (not LLM-derived) so the
+    executive summary cannot drift from reality. Claude only paraphrases.
+    """
+    with engine.connect() as conn:
+        boat = conn.execute(text("""
+            SELECT b.boat_name, b.sail_number, b.country,
+                   COALESCE(b.design_canonical, b.design) AS design, t.tcc
+            FROM boats b
+            LEFT JOIN LATERAL (
+                SELECT tcc FROM tcc_snapshots WHERE boat_id = b.id
+                ORDER BY snapshot_date DESC LIMIT 1
+            ) t ON true
+            WHERE b.id = :id
+        """), {"id": boat_id}).first()
+        if not boat:
+            return ExecutiveSummaryFacts(
+                boat_name=f"boat #{boat_id}", sail_number="", design="",
+                country=None, tcc_now=Decimal("0"),
+                class_median_tcc=None, this_boat_percentile=None,
+                finishes=0, wins=0, podiums=0,
+                headline_finding_1="", headline_finding_2="",
+                headline_finding_3="", top_recommendation=None,
+            )
+
+        race_row = conn.execute(text("""
+            SELECT COUNT(*) FILTER (WHERE status='finished' AND place IS NOT NULL) AS finishes,
+                   COUNT(*) FILTER (WHERE place = 1) AS wins,
+                   COUNT(*) FILTER (WHERE place BETWEEN 1 AND 3) AS podiums
+            FROM race_results WHERE boat_id = :id
+        """), {"id": boat_id}).first()
+
+    # Class median + percentile from the anatomy facts (already computed).
+    anatomy = build_rating_anatomy(engine, boat_id)
+    class_median = anatomy.class_median_tcc
+
+    # Pre-cook findings from raw signals — no LLM in the loop here.
+    findings: list[str] = []
+    if class_median and boat.tcc and abs(float(boat.tcc) - class_median) > 0.005:
+        gap = float(boat.tcc) - class_median
+        direction = "above" if gap > 0 else "below"
+        findings.append(
+            f"Rates {gap:+.4f} TCC {direction} the {boat.design} median "
+            f"({float(boat.tcc):.4f} vs {class_median:.4f})."
+        )
+    if race_row.finishes >= 10:
+        win_pct = (race_row.wins / race_row.finishes) * 100
+        findings.append(
+            f"{race_row.wins} wins and {race_row.podiums} podiums "
+            f"across {race_row.finishes} finishes ({win_pct:.0f}% win rate)."
+        )
+    if anatomy.decomposition:
+        top = anatomy.decomposition[0]
+        findings.append(
+            f"Largest rating driver: {top.field} ({top.contrib_tcc:+.4f} TCC "
+            f"vs class mean — this boat is {abs(top.delta):.2f}{'kg' if top.field=='displacement' else 'm' if 'per' in top.unit and 'm' in top.unit else ''} "
+            f"{'above' if top.delta > 0 else 'below'} the class mean)."
+        )
+    while len(findings) < 3:
+        findings.append("")
+
+    return ExecutiveSummaryFacts(
+        boat_name=boat.boat_name,
+        sail_number=boat.sail_number or "",
+        design=boat.design or "",
+        country=boat.country,
+        tcc_now=boat.tcc or Decimal("0"),
+        class_median_tcc=class_median,
+        this_boat_percentile=None,  # filled by class_context if available
+        finishes=race_row.finishes or 0,
+        wins=race_row.wins or 0,
+        podiums=race_row.podiums or 0,
+        headline_finding_1=findings[0],
+        headline_finding_2=findings[1],
+        headline_finding_3=findings[2],
+        top_recommendation=None,  # filled by optimisation builder; default None
     )
