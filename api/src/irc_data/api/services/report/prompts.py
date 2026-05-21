@@ -182,4 +182,33 @@ FACTS:
 """
 
 
+SENSITIVITY_PROMPT = """SECTION: s07_sensitivity
+GOAL: Explain WHICH measurements move TCC most across the {design}
+fleet — independent of whether THIS boat is high or low on each.
+This complements §3 (Rating Anatomy), which decomposed THIS BOAT's
+TCC gap. §7 is the structural view: "in any Sunfast 3300, here are
+the levers that move rating."
+
+Cover:
+- Lead with the model context: "Our regression model fits the fleet
+  with R² = {r_squared_pct}%, on a sample of {n_boats} {design}s.
+  Tier {model_tier} model — Tier A includes full IRC certificate
+  measurements; Tier B is snapshot-only."
+- The top 4-5 LARGEST-magnitude β coefficients (absolute value).
+  For each, name the measurement, give a sense of its direction
+  (positive β = more of this raises rating), and the unit.
+- ONE sentence on what's notable about this measurement's effect
+  for the design (e.g. "displacement has a strong negative effect —
+  heavier boats save TCC points").
+
+The chart above shows ALL coefficients ranked by absolute magnitude.
+
+~250-350 words. Avoid duplicating §3's per-boat decomposition; the
+focus here is the fleet-wide model, not this specific boat.
+
+FACTS:
+{facts_json}
+"""
+
+
 # More section prompts added per-task as each section is built.

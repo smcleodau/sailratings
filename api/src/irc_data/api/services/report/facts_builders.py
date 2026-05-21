@@ -17,6 +17,7 @@ from irc_data.api.services.report.facts import (
     ClassContextFacts, ExecutiveSummaryFacts, Identity, IdentityFacts,
     MeasurementContribution, PerformanceFacts, RaceResultLite,
     RatingAnatomyFacts, RatingEvolutionFacts, RatingSnapshot, RivalSummary,
+    SensitivityFacts,
 )
 
 logger = logging.getLogger(__name__)
@@ -472,4 +473,55 @@ def build_performance(engine: Engine, boat_id: int) -> PerformanceFacts:
         ],
         by_event_type=by_event_type,
         head_to_head=h2h,
+    )
+
+
+# ── Measurement Sensitivity ────────────────────────────────────────────
+
+
+def build_sensitivity(engine: Engine, boat_id: int) -> SensitivityFacts:
+    """Per-design measurement sensitivity — what levers move TCC across
+    the fleet. Reuses get_boat_sensitivity_context and translates each
+    coefficient into a MeasurementContribution (no decomposition this
+    time — just the raw model output)."""
+    with engine.connect() as conn:
+        boat = conn.execute(text("""
+            SELECT COALESCE(design_canonical, design) AS design FROM boats WHERE id = :id
+        """), {"id": boat_id}).first()
+    if not boat or not boat.design:
+        return SensitivityFacts(
+            design="", model_tier="", n_boats_in_class=0, r_squared=0.0,
+        )
+
+    sens = get_boat_sensitivity_context(engine, boat_id, boat.design)
+    if sens is None:
+        return SensitivityFacts(
+            design=boat.design, model_tier="", n_boats_in_class=0, r_squared=0.0,
+        )
+
+    coefs: list[MeasurementContribution] = []
+    for coef in sens.get("coefficients", []):
+        feat = coef["field"]
+        pos = (sens.get("boat_position") or {}).get(feat) or {}
+        boat_val = pos.get("value")
+        class_mean = pos.get("class_mean")
+        delta = (boat_val - class_mean) if (boat_val is not None and class_mean is not None) else 0.0
+        scale = _scale_for_unit(coef.get("unit", ""))
+        contrib = (delta / scale) * coef["beta_per_unit"] if delta else 0.0
+        coefs.append(MeasurementContribution(
+            field=feat,
+            this_boat=round(boat_val or 0.0, 3),
+            class_mean=round(class_mean or 0.0, 3),
+            delta=round(delta, 3),
+            contrib_tcc=round(contrib, 5),
+            unit=coef.get("unit", ""),
+            beta=coef["beta_per_unit"],
+        ))
+
+    return SensitivityFacts(
+        design=boat.design,
+        model_tier=sens.get("model_tier", ""),
+        n_boats_in_class=sens.get("n_boats") or 0,
+        r_squared=float(sens.get("r_squared") or 0.0),
+        coefficients=coefs,
     )
