@@ -17,7 +17,7 @@ from irc_data.api.services.report.facts import (
     ClassContextFacts, ExecutiveSummaryFacts, FormulaDriftFacts, Identity,
     IdentityFacts, MeasurementContribution, OptimisationFacts, PerformanceFacts,
     RaceResultLite, RatingAnatomyFacts, RatingEvolutionFacts, RatingSnapshot,
-    Recommendation, RivalSummary, SensitivityFacts,
+    Recommendation, RivalsFacts, RivalSummary, SensitivityFacts,
 )
 
 logger = logging.getLogger(__name__)
@@ -665,3 +665,65 @@ def build_formula_drift(engine: Engine, boat_id: int) -> FormulaDriftFacts:
         affected_measurements=affected,
         this_boat_likely_impact=impact,
     )
+
+
+# ── Rival Watch ────────────────────────────────────────────────────────
+
+
+def build_rivals(engine: Engine, boat_id: int) -> RivalsFacts:
+    """Pick 5-10 boats within ±0.005 TCC of this boat, sorted by recent
+    racing activity. Reuses RivalSummary."""
+    with engine.connect() as conn:
+        boat = conn.execute(text("""
+            SELECT b.boat_name, t.tcc
+            FROM boats b
+            LEFT JOIN LATERAL (
+                SELECT tcc FROM tcc_snapshots WHERE boat_id = b.id
+                ORDER BY snapshot_date DESC LIMIT 1
+            ) t ON true
+            WHERE b.id = :id
+        """), {"id": boat_id}).first()
+        if not boat or boat.tcc is None:
+            return RivalsFacts(
+                boat_name=(boat.boat_name if boat else f"boat #{boat_id}"),
+            )
+
+        rivals_rows = conn.execute(text("""
+            WITH latest AS (
+                SELECT DISTINCT ON (b.id)
+                       b.id, b.boat_name, b.sail_number, b.country, t.tcc,
+                       (SELECT COUNT(*) FROM race_results r
+                        WHERE r.boat_id = b.id
+                          AND r.event_date > now() - interval '2 years'
+                       ) AS recent_finishes
+                FROM boats b
+                JOIN tcc_snapshots t ON t.boat_id = b.id
+                WHERE t.tcc BETWEEN :lo AND :hi
+                  AND b.id <> :self_id
+                ORDER BY b.id, t.snapshot_date DESC
+            )
+            SELECT * FROM latest
+            WHERE recent_finishes > 0
+            ORDER BY recent_finishes DESC
+            LIMIT 10
+        """), {
+            "self_id": boat_id,
+            "lo": float(boat.tcc) - 0.005,
+            "hi": float(boat.tcc) + 0.005,
+        }).fetchall()
+
+    rivals = [
+        RivalSummary(
+            boat_id=r.id,
+            name=r.boat_name,
+            sail_number=r.sail_number,
+            country=r.country,
+            tcc=r.tcc or Decimal("0"),
+            recent_finishes_count=r.recent_finishes or 0,
+            head_to_head_wins=0,
+            head_to_head_losses=0,
+        )
+        for r in rivals_rows
+    ]
+
+    return RivalsFacts(boat_name=boat.boat_name, rivals=rivals)

@@ -262,4 +262,26 @@ FACTS:
 """
 
 
+RIVALS_PROMPT = """SECTION: s10_rivals
+GOAL: Surface the boats most worth watching at this rating band. The
+owner uses this to know who to study at events.
+
+Cover:
+- Lead: one sentence on how many same-band boats are racing currently
+  (FACTS.rivals length), and the TCC width of the band (±0.005).
+- Name 4-6 NAMED rivals from FACTS.rivals (with sail numbers, country
+  flag if present, and recent_finishes_count as "X races in the last
+  two years"). NEVER invent rivals — they MUST come from FACTS.rivals.
+- For variety, lead with the most active rival (highest
+  recent_finishes_count) and pick 3-4 others across the country mix.
+- Close with one sentence on watching the leaderboard — direct,
+  actionable.
+
+~300-450 words. NEVER cite a rival not in FACTS.rivals.
+
+FACTS:
+{facts_json}
+"""
+
+
 # More section prompts added per-task as each section is built.
