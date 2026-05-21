@@ -785,12 +785,275 @@ def _compute_thinking_steps(engine: Engine, boat_id: int) -> list[dict]:
     return steps
 
 
-async def stream_insight(engine: Engine, boat_id: int, question: str | None = None, detail_level: str = "free"):
+def _compute_thinking_prose(engine: Engine, boat_id: int) -> list[str]:
+    """Return a list of prose paragraphs — what an analyst would mutter while
+    opening the boat's file. Each item is one short thought (1–3 sentences),
+    grounded entirely in real DB data.
+
+    No numbers in headers, no checklists, no step labels. Used by the modal's
+    prose-thinking stream — the frontend reveals them word by word so the user
+    reads an analyst thinking aloud, not a job queue.
+    """
+    blocks: list[str] = []
+    try:
+        with engine.connect() as conn:
+            boat = conn.execute(
+                text("""
+                    SELECT b.*, t.tcc, t.snapshot_date AS tcc_date,
+                           t.headsails, t.spinnakers, t.crew
+                    FROM boats b
+                    LEFT JOIN LATERAL (
+                        SELECT * FROM tcc_snapshots WHERE boat_id = b.id
+                        ORDER BY snapshot_date DESC LIMIT 1
+                    ) t ON true
+                    WHERE b.id = :id
+                """),
+                {"id": boat_id},
+            ).first()
+            if not boat:
+                return []
+
+            name = boat.boat_name or "this boat"
+            sail = boat.sail_number or "—"
+            design = boat.design_canonical or boat.design
+            country = boat.country
+
+            # Opening — locating her in the registry
+            opener = f"{name} — {sail}. Yes, here she is."
+            if design and country:
+                opener += f" A {design}, flagged {country}."
+            elif design:
+                opener += f" A {design}."
+            elif country:
+                opener += f" Flagged {country}."
+            blocks.append(opener)
+
+            # Hull provenance
+            prov: list[str] = []
+            if boat.designer:
+                prov.append(f"{boat.designer} drew her")
+            if boat.builder:
+                prov.append(f"yard's listed as {boat.builder}")
+            if boat.year_built:
+                age = max(0, 2026 - int(boat.year_built))
+                prov.append(f"laid down in {boat.year_built}, about {age} seasons in the water")
+            if prov:
+                blocks.append(". ".join(s.capitalize() if i == 0 else s for i, s in enumerate(prov)) + ".")
+
+            # Identities — prior names / sail numbers (proxy for ownership change)
+            identities = conn.execute(
+                text("""
+                    SELECT DISTINCT boat_name, sail_number, flag, source, observed_date
+                    FROM boat_identities WHERE boat_id = :id
+                """),
+                {"id": boat_id},
+            ).fetchall()
+            prior_names = sorted({i.boat_name for i in identities if i.boat_name and i.boat_name.strip() and i.boat_name != name})
+            prior_sails = sorted({i.sail_number for i in identities if i.sail_number and i.sail_number.strip() and i.sail_number != sail})
+            if prior_names:
+                listed = ", ".join(prior_names[:3])
+                blocks.append(
+                    f"She's been on the register before as {listed} — likely a rename, possibly a change of hands."
+                )
+            elif prior_sails:
+                listed = ", ".join(prior_sails[:3])
+                blocks.append(f"Her sail number has shifted at one point — also recorded as {listed}.")
+            elif identities:
+                # First-seen date — gives a sense of tenure
+                dates = [i.observed_date for i in identities if i.observed_date]
+                if dates:
+                    earliest = min(dates)
+                    blocks.append(
+                        f"First on the system {earliest.strftime('%B %Y')}. Steady ownership — no name or sail-number changes recorded."
+                    )
+
+            # IRC certificate history
+            tccs = conn.execute(
+                text("""
+                    SELECT snapshot_date, tcc FROM tcc_snapshots
+                    WHERE boat_id = :id AND tcc IS NOT NULL
+                    ORDER BY snapshot_date ASC
+                """),
+                {"id": boat_id},
+            ).fetchall()
+            if len(tccs) >= 2:
+                first, last = tccs[0], tccs[-1]
+                delta = float(last.tcc) - float(first.tcc)
+                pts = int(round(abs(delta) * 1000))
+                direction = "off her rating" if delta < 0 else "added to her rating"
+                blocks.append(
+                    f"Latest TCC sits at {float(last.tcc):.4f}. That's {pts} point"
+                    f"{'s' if pts != 1 else ''} {direction} since the {first.snapshot_date.year} certificate — "
+                    f"worth poking at where the movement came from."
+                )
+            elif len(tccs) == 1:
+                blocks.append(
+                    f"Single certificate on file — TCC {float(tccs[0].tcc):.4f}, dated {tccs[0].snapshot_date.year}."
+                )
+
+            # Declared inventory
+            if boat.headsails or boat.spinnakers:
+                decls: list[str] = []
+                if boat.headsails:
+                    h = int(boat.headsails)
+                    decls.append(f"{h} headsail{'s' if h != 1 else ''}")
+                if boat.spinnakers:
+                    s = int(boat.spinnakers)
+                    decls.append(f"{s} spinnaker{'s' if s != 1 else ''}")
+                if boat.crew:
+                    decls.append(f"crew of {int(boat.crew)}")
+                blocks.append(f"Declared inventory reads: {', '.join(decls)}.")
+
+            # Race results — most recent + career picture
+            races = conn.execute(
+                text("""
+                    SELECT event_name, event_date, place, fleet_size,
+                           class_name, class_place, class_fleet_size, status, source
+                    FROM race_results WHERE boat_id = :id
+                    ORDER BY event_date DESC NULLS LAST
+                """),
+                {"id": boat_id},
+            ).fetchall()
+            if races:
+                # Most recent
+                latest_with_place = next(
+                    (r for r in races if r.place and r.event_date), None
+                )
+                if latest_with_place:
+                    r = latest_with_place
+                    fleet = r.class_fleet_size or r.fleet_size
+                    place = r.class_place or r.place
+                    when = r.event_date.strftime("%B %Y") if r.event_date else "recently"
+                    if fleet:
+                        blocks.append(
+                            f"Last logged result: {place} of {fleet} at {r.event_name}, {when}."
+                        )
+                    else:
+                        blocks.append(f"Last logged result: place {place} at {r.event_name}, {when}.")
+
+                finished = [
+                    r for r in races
+                    if r.status == "finished" and r.place
+                ]
+                if len(finished) >= 5:
+                    wins = sum(1 for r in finished if r.place == 1)
+                    podiums = sum(1 for r in finished if r.place <= 3)
+                    distinct_events = len({r.event_name for r in finished})
+                    summary = (
+                        f"{len(finished)} finishes across {distinct_events} event"
+                        f"{'s' if distinct_events != 1 else ''} on record"
+                    )
+                    accolades: list[str] = []
+                    if wins:
+                        accolades.append(f"{wins} outright win{'s' if wins != 1 else ''}")
+                    if podiums:
+                        accolades.append(f"{podiums} podium{'s' if podiums != 1 else ''}")
+                    if accolades:
+                        summary += " — " + ", ".join(accolades)
+                    elif distinct_events >= 3:
+                        summary += " — no podium so far on this hull"
+                    blocks.append(summary + ".")
+                elif races:
+                    blocks.append(
+                        f"Race history is thin — {len(races)} entries on the system. "
+                        "Worth thinking about whether more results are out there to pull in."
+                    )
+            else:
+                blocks.append(
+                    "No race results on file for this hull — either she's a club racer who doesn't publish, or the regatta scoring hasn't made it into the system yet."
+                )
+
+            # Design class context
+            if design:
+                band = conn.execute(
+                    text("""
+                        SELECT COUNT(DISTINCT b.id) AS n,
+                               AVG(t.tcc) AS avg_tcc,
+                               MIN(t.tcc) AS lo, MAX(t.tcc) AS hi
+                        FROM boats b
+                        JOIN LATERAL (
+                            SELECT tcc FROM tcc_snapshots
+                            WHERE boat_id = b.id ORDER BY snapshot_date DESC LIMIT 1
+                        ) t ON true
+                        WHERE COALESCE(b.design_canonical, b.design) = :d
+                          AND t.tcc IS NOT NULL
+                    """),
+                    {"d": design},
+                ).first()
+                if band and band.n and band.n > 1 and band.avg_tcc and boat.tcc:
+                    avg = float(band.avg_tcc)
+                    lo, hi = float(band.lo), float(band.hi)
+                    own = float(boat.tcc)
+                    spread = hi - lo
+                    if spread < 0.0005:
+                        # All sister boats sit at the same rating — degenerate
+                        # "band". Frame it differently: they all line up.
+                        blocks.append(
+                            f"Class context: {int(band.n)} {design}s on the system — every one of them rated at {avg:.4f}. "
+                            "Either the class is tightly one-design under IRC, or the others haven't moved off the stock certificate."
+                        )
+                    else:
+                        if own < avg - 0.005:
+                            position = "she's a touch below the class average — she's rated favourably"
+                        elif own > avg + 0.005:
+                            position = "she sits above the class average — more declared than the median boat in her fleet"
+                        else:
+                            position = "she's bang in the middle of the class band"
+                        blocks.append(
+                            f"Class context: {int(band.n)} {design}s on the system, band running "
+                            f"{lo:.4f} to {hi:.4f}, average {avg:.4f}. {position.capitalize()}."
+                        )
+
+            # ORC, if present
+            orc = conn.execute(
+                text("""
+                    SELECT gph, class_name, snapshot_date FROM orc_certificates
+                    WHERE boat_id = :id ORDER BY snapshot_date DESC LIMIT 1
+                """),
+                {"id": boat_id},
+            ).first()
+            if orc and orc.gph:
+                blocks.append(
+                    f"She's ORC-rated as well — GPH {float(orc.gph):.2f}"
+                    f"{', class ' + orc.class_name if orc.class_name else ''}. "
+                    "That gives a second lens on her actual speed potential."
+                )
+
+            # Segue to the report
+            blocks.append("Alright — that's enough flipping through the file. Let me write up what the data is actually saying.")
+    except Exception:
+        # Never fail the stream on prose-assembly errors; just shorten.
+        pass
+
+    return blocks
+
+
+def _chunk_prose_to_words(paragraph: str) -> list[str]:
+    """Split a paragraph into stream-able tokens that preserve whitespace.
+
+    The frontend simply appends these — we keep punctuation attached so words
+    like "TCC." or "1985," don't get awkwardly broken.
+    """
+    out: list[str] = []
+    buf = ""
+    for ch in paragraph:
+        buf += ch
+        if ch == " ":
+            out.append(buf)
+            buf = ""
+    if buf:
+        out.append(buf)
+    return out
+
+
+async def stream_insight(engine: Engine, boat_id: int, question: str | None = None, detail_level: str = "free", thinking_style: str = "steps"):
     """Stream an AI insight about a boat using Claude.
 
     Yields SSE-formatted events:
-    - {"type": "step", "data": {"label": "...", "detail": "..."}}  (one per work step)
-    - {"type": "text", "data": "chunk..."}
+    - {"type": "step", "data": {...}}        (when thinking_style == "steps")
+    - {"type": "thought_chunk", "data": "…"} (when thinking_style == "prose")
+    - {"type": "phase", "data": "report"}    (prose → report transition)
+    - {"type": "text", "data": "chunk..."}   (LLM-generated report text)
     - {"type": "done", "data": {"boat_id": ...}}
 
     Requires ANTHROPIC_API_KEY environment variable.
@@ -803,15 +1066,17 @@ async def stream_insight(engine: Engine, boat_id: int, question: str | None = No
         yield {"type": "error", "data": "ANTHROPIC_API_KEY not configured"}
         return
 
-    # Pre-compute steps AND the boat context up front (both sync DB work) so
-    # by the time we start emitting events, the only outstanding work is the
-    # Anthropic call. That way the final "Drafting" spinner sits during real
-    # AI compute — not stuck behind our own context-building SQL.
-    steps_to_emit = _compute_thinking_steps(engine, boat_id)
+    # Pre-compute everything that involves sync DB work, so once events start
+    # flowing, only the Anthropic stream is outstanding.
     context = build_boat_context(engine, boat_id, detail_level=detail_level)
     if not context:
         yield {"type": "error", "data": f"Boat {boat_id} not found"}
         return
+
+    if thinking_style == "prose":
+        prose_blocks = _compute_thinking_prose(engine, boat_id)
+    else:
+        steps_to_emit = _compute_thinking_steps(engine, boat_id)
 
     # Build user message
     if question:
@@ -819,22 +1084,35 @@ async def stream_insight(engine: Engine, boat_id: int, question: str | None = No
     else:
         user_message = context
 
-    # Emit step events with variable cadence — heavier-sounding steps get
-    # longer dwell so the eye reads each line; total ~5s.
-    dwells = [0.55, 0.75, 0.95, 1.05, 1.15, 1.25]
-    for i, step in enumerate(steps_to_emit):
-        yield {"type": "step", "data": step}
-        dwell = dwells[i] if i < len(dwells) else 1.0
-        await asyncio.sleep(dwell)
-
-    # Final "drafting" step — held active (spinner) by the frontend until the
-    # first text token arrives, so the screen never goes still during the
-    # Anthropic warm-up.
-    yield {"type": "step", "data": {
-        "label": "Drafting the executive summary",
-        "detail": "Reading your file",
-    }}
-    await asyncio.sleep(0)  # force flush before sync Anthropic call
+    if thinking_style == "prose":
+        # Stream prose word-by-word. Between paragraphs we hold a slightly
+        # longer beat so the reader catches the break.
+        WORD_DELAY = 0.055
+        PARAGRAPH_BEAT = 0.55
+        for i, paragraph in enumerate(prose_blocks):
+            if i > 0:
+                # Paragraph break in the stream
+                yield {"type": "thought_chunk", "data": "\n\n"}
+                await asyncio.sleep(PARAGRAPH_BEAT)
+            tokens = _chunk_prose_to_words(paragraph)
+            for tok in tokens:
+                yield {"type": "thought_chunk", "data": tok}
+                await asyncio.sleep(WORD_DELAY)
+        # Transition marker — frontend uses this to switch into report mode
+        yield {"type": "phase", "data": "report"}
+        await asyncio.sleep(0.4)
+    else:
+        # Legacy: stepped checklist with a final "drafting" placeholder
+        dwells = [0.55, 0.75, 0.95, 1.05, 1.15, 1.25]
+        for i, step in enumerate(steps_to_emit):
+            yield {"type": "step", "data": step}
+            dwell = dwells[i] if i < len(dwells) else 1.0
+            await asyncio.sleep(dwell)
+        yield {"type": "step", "data": {
+            "label": "Drafting the executive summary",
+            "detail": "Reading your file",
+        }}
+        await asyncio.sleep(0)  # force flush before sync Anthropic call
 
     # Select system prompt based on detail level
     if detail_level == "premium":

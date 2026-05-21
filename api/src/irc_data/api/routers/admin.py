@@ -506,6 +506,549 @@ User message: {message}"""
 # ── Endpoints ────────────────────────────────────────────────────────────
 
 
+@router.get("/scrapers")
+async def list_scrapers(
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Summary of every scraper source. Reports TWO freshness signals:
+
+    - `run_state` — has the scraper completed a run within its run_within
+      budget? This is cron health. Stale = "the scraper isn't running."
+    - `data_state` — have new race rows landed within its data_within
+      budget? This is upstream health. Stale = "the tap is dry beyond what
+      we'd expect from a seasonal lull."
+
+    The overall `state` is the worst of the two.
+    """
+    _verify_admin(authorization)
+
+    from irc_data.scrape_supervision import SOURCES
+
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT source,
+                   MAX(started_at) AS last_started,
+                   MAX(completed_at) FILTER (WHERE status='completed') AS last_success,
+                   COUNT(*) FILTER (WHERE started_at > now() - interval '7 days') AS runs_7d,
+                   COUNT(*) FILTER (WHERE status='failed'
+                                    AND started_at > now() - interval '7 days') AS failed_7d,
+                   SUM(records_new) FILTER (WHERE started_at > now() - interval '7 days') AS new_records_7d
+            FROM ingestion_log
+            GROUP BY source
+        """)).fetchall()
+
+        # Last actually-imported race row per source. The "data tap" signal.
+        data_rows = conn.execute(text("""
+            SELECT source, MAX(created_at) AS last_new_data, MAX(event_date) AS latest_event_date
+            FROM race_results
+            GROUP BY source
+        """)).fetchall()
+
+    by_src = {r.source: r for r in rows}
+    by_src_data = {r.source: r for r in data_rows}
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    def _state(age: _dt.timedelta | None, budget: _dt.timedelta | None) -> str:
+        if budget is None:
+            return "n/a"
+        if age is None:
+            return "never"
+        return "fresh" if age <= budget else "stale"
+
+    def _overall(run_s: str, data_s: str, optional: bool) -> str:
+        if optional:
+            return "optional"
+        # Worst signal wins. "never" is worse than "stale".
+        order = ["never", "stale", "fresh", "n/a", "optional"]
+        return min((run_s, data_s), key=lambda s: order.index(s) if s in order else 5)
+
+    out = []
+    for cfg in SOURCES:
+        r = by_src.get(cfg.source)
+        dr = by_src_data.get(cfg.source)
+        last_started = r.last_started if r else None
+        last_success = r.last_success if r else None
+        last_new_data = dr.last_new_data if dr else None
+        latest_event_date = dr.latest_event_date if dr else None
+        run_age = (now - last_success) if last_success else None
+        data_age = (now - last_new_data) if last_new_data else None
+
+        run_state = _state(run_age, cfg.run_within)
+        data_state = _state(data_age, cfg.data_within) if cfg.data_within else "n/a"
+        state = _overall(run_state, data_state, cfg.optional)
+
+        out.append({
+            "source": cfg.source,
+            "label": cfg.label,
+            "cadence": cfg.cadence_human,
+            "run_within_hours": cfg.run_within.total_seconds() / 3600.0,
+            "data_within_hours": (cfg.data_within.total_seconds() / 3600.0) if cfg.data_within else None,
+            "last_started": last_started.isoformat() if last_started else None,
+            "last_success": last_success.isoformat() if last_success else None,
+            "last_new_data": last_new_data.isoformat() if last_new_data else None,
+            "latest_event_date": latest_event_date.isoformat() if latest_event_date else None,
+            "run_age_seconds": int(run_age.total_seconds()) if run_age else None,
+            "data_age_seconds": int(data_age.total_seconds()) if data_age else None,
+            "run_state": run_state,
+            "data_state": data_state,
+            "state": state,
+            "runs_7d": int(r.runs_7d) if r else 0,
+            "failed_7d": int(r.failed_7d) if r else 0,
+            "new_records_7d": int(r.new_records_7d) if r and r.new_records_7d else 0,
+            "optional": cfg.optional,
+        })
+
+    # Any sources that exist in ingestion_log but NOT in our config — surface
+    # so we don't quietly miss something the scraper authors added.
+    known = {s.source for s in SOURCES}
+    for src, r in by_src.items():
+        if src not in known:
+            run_age = (now - r.last_success) if r.last_success else None
+            out.append({
+                "source": src,
+                "label": src + " (uncatalogued)",
+                "cadence": "unknown",
+                "run_within_hours": None,
+                "data_within_hours": None,
+                "last_started": r.last_started.isoformat() if r.last_started else None,
+                "last_success": r.last_success.isoformat() if r.last_success else None,
+                "last_new_data": None,
+                "latest_event_date": None,
+                "run_age_seconds": int(run_age.total_seconds()) if run_age else None,
+                "data_age_seconds": None,
+                "run_state": "n/a",
+                "data_state": "n/a",
+                "state": "uncatalogued",
+                "runs_7d": int(r.runs_7d),
+                "failed_7d": int(r.failed_7d),
+                "new_records_7d": int(r.new_records_7d) if r.new_records_7d else 0,
+                "optional": False,
+            })
+
+    return {
+        "as_of": now.isoformat(),
+        "sources": out,
+    }
+
+
+@router.get("/scrapers/{source}/runs")
+async def scraper_runs(
+    source: str,
+    limit: int = 30,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Recent runs for a single source — drawer detail behind the dashboard row."""
+    _verify_admin(authorization)
+    limit = max(1, min(limit, 200))
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT id, started_at, completed_at, status,
+                       records_found, records_new, records_updated,
+                       error_message, metadata
+                FROM ingestion_log
+                WHERE source = :source
+                ORDER BY started_at DESC
+                LIMIT :limit
+            """),
+            {"source": source, "limit": limit},
+        ).fetchall()
+
+    return {
+        "source": source,
+        "runs": [
+            {
+                "id": r.id,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                "duration_seconds": (
+                    (r.completed_at - r.started_at).total_seconds()
+                    if r.completed_at and r.started_at else None
+                ),
+                "status": r.status,
+                "records_found": r.records_found,
+                "records_new": r.records_new,
+                "records_updated": r.records_updated,
+                "error_message": r.error_message,
+                "metadata": r.metadata,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/discovery")
+async def list_discovery(
+    status: str | None = None,
+    platform: str | None = None,
+    limit: int = 100,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """List event_discovery rows, most recent first.
+
+    Query params:
+    - status:   pending | confirmed | rejected | ingested | failed
+    - platform: sailsys | topyacht | sailwave | yachtscoring | pdf | unknown
+    """
+    _verify_admin(authorization)
+    limit = max(1, min(limit, 500))
+
+    clauses = []
+    params: dict = {"limit": limit}
+    if status:
+        clauses.append("status = :status")
+        params["status"] = status
+    if platform:
+        clauses.append("scoring_platform = :platform")
+        params["platform"] = platform
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, discovered_at, source_url, source_type, seed_url,
+                   scoring_platform, platform_ids, title, event_date,
+                   event_location, confidence, status, error_message,
+                   confirmed_at, ingested_at, notes
+            FROM event_discovery
+            {where}
+            ORDER BY discovered_at DESC
+            LIMIT :limit
+        """), params).fetchall()
+
+    out = []
+    for r in rows:
+        d = dict(r._mapping)
+        for k, v in list(d.items()):
+            d[k] = _jsonable(v)
+        out.append(d)
+    return {"discoveries": out}
+
+
+@router.post("/discovery/seed")
+async def queue_discovery_seed(
+    body: dict,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Kick off a discovery crawl from a seed URL. Returns the new rows.
+
+    Body: {url: str, limit?: int (default 20)}
+
+    Synchronous for now (small batches feel snappy enough). If we start
+    seeding 100+ URLs at once, push this to a background task.
+    """
+    _verify_admin(authorization)
+    from irc_data.discovery.service import discover_seed, discover_url
+
+    url = (body or {}).get("url")
+    if not url:
+        raise HTTPException(status_code=400, detail="missing 'url'")
+    limit = int((body or {}).get("limit") or 20)
+    single = bool((body or {}).get("single"))
+
+    try:
+        if single:
+            rows = [discover_url(engine, url)]
+        else:
+            rows = discover_seed(engine, url, limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"discovery failed: {e}")
+
+    return {"processed": len(rows), "rows": [_jsonable(r) for r in rows]}
+
+
+@router.post("/discovery/{discovery_id}/confirm")
+async def confirm_discovery(
+    discovery_id: int,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Confirm + ingest. Returns the ingestion result."""
+    _verify_admin(authorization)
+    from irc_data.discovery.service import ingest_confirmed
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE event_discovery
+            SET status = 'confirmed',
+                confirmed_at = now(),
+                confirmed_by = 'admin'
+            WHERE id = :id AND status IN ('pending','failed')
+        """), {"id": discovery_id})
+
+    try:
+        result = ingest_confirmed(engine, discovery_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return result
+
+
+@router.post("/discovery/{discovery_id}/reject")
+async def reject_discovery(
+    discovery_id: int,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Mark a discovery as rejected — won't show in the pending list."""
+    _verify_admin(authorization)
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE event_discovery SET status='rejected' WHERE id=:id"),
+            {"id": discovery_id},
+        )
+    return {"status": "rejected"}
+
+
+@router.get("/firecrawl/summary")
+async def firecrawl_summary(
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Aggregate Firecrawl usage — today / 7-day / 30-day, plus the
+    authoritative remaining-credits number off the Firecrawl account.
+
+    Built for the /justin/firecrawl dashboard. Two cost-control signals:
+    - `remaining_credits` is the truth — what Firecrawl will bill against.
+    - The per-window aggregates are *ours*, computed from the calls log,
+      and double as a cross-check that our logging is sane.
+    """
+    _verify_admin(authorization)
+
+    with engine.connect() as conn:
+        # Aggregate over three windows in one query.
+        rows = conn.execute(text("""
+            WITH windows AS (
+                SELECT 'today'::text  AS window, now() - interval '24 hours' AS since UNION ALL
+                SELECT '7d',     now() - interval '7 days'  UNION ALL
+                SELECT '30d',    now() - interval '30 days'
+            )
+            SELECT w.window,
+                   COUNT(c.id)::int                                  AS calls,
+                   COALESCE(SUM(c.credits), 0)::int                  AS credits,
+                   COUNT(*) FILTER (WHERE c.status = 'ok')::int      AS ok,
+                   COUNT(*) FILTER (WHERE c.status = 'empty')::int   AS empty,
+                   COUNT(*) FILTER (WHERE c.status = 'error')::int   AS errored,
+                   COUNT(*) FILTER (WHERE c.mode   = 'scrape')::int  AS scrapes,
+                   COUNT(*) FILTER (WHERE c.mode   = 'map')::int     AS maps,
+                   COALESCE(AVG(c.duration_ms), 0)::int              AS avg_ms,
+                   COUNT(DISTINCT c.domain)::int                     AS domains
+            FROM windows w
+            LEFT JOIN firecrawl_calls c ON c.called_at >= w.since
+            GROUP BY w.window
+        """)).fetchall()
+
+    by_window = {r.window: dict(r._mapping) for r in rows}
+
+    # Remaining credits from Firecrawl directly (authoritative source).
+    from irc_data.discovery.firecrawl_client import get_credit_usage
+    remaining = get_credit_usage()  # may be None if API down or key missing
+
+    return {
+        "as_of": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "remaining": remaining,            # {"remaining_credits": …, "plan_credits": …} | null
+        "windows": by_window,              # {"today": {...}, "7d": {...}, "30d": {...}}
+    }
+
+
+@router.get("/firecrawl/recent")
+async def firecrawl_recent(
+    limit: int = 100,
+    status: str | None = None,
+    mode: str | None = None,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Last N Firecrawl calls. Default 100, max 500.
+
+    Optional filters: status=ok|empty|error, mode=scrape|map.
+    """
+    _verify_admin(authorization)
+    limit = max(1, min(limit, 500))
+
+    clauses: list[str] = []
+    params: dict = {"limit": limit}
+    if status:
+        clauses.append("status = :status")
+        params["status"] = status
+    if mode:
+        clauses.append("mode = :mode")
+        params["mode"] = mode
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, called_at, mode, url, domain, status, credits,
+                   duration_ms, response_chars, links_found, error_message, caller
+            FROM firecrawl_calls
+            {where}
+            ORDER BY called_at DESC
+            LIMIT :limit
+        """), params).fetchall()
+
+    return {
+        "calls": [
+            {
+                "id": r.id,
+                "called_at": r.called_at.isoformat() if r.called_at else None,
+                "mode": r.mode,
+                "url": r.url,
+                "domain": r.domain,
+                "status": r.status,
+                "credits": r.credits,
+                "duration_ms": r.duration_ms,
+                "response_chars": r.response_chars,
+                "links_found": r.links_found,
+                "error_message": r.error_message,
+                "caller": r.caller,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/firecrawl/by-domain")
+async def firecrawl_by_domain(
+    days: int = 7,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Per-domain rollup over the last N days (default 7, max 90).
+
+    Sorted by call count, descending. Shows success rate so problem
+    domains (anti-bot blocks, dead URLs) bubble to the top.
+    """
+    _verify_admin(authorization)
+    days = max(1, min(days, 90))
+
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT domain,
+                   COUNT(*)::int                                       AS calls,
+                   COALESCE(SUM(credits), 0)::int                      AS credits,
+                   COUNT(*) FILTER (WHERE status = 'ok')::int          AS ok,
+                   COUNT(*) FILTER (WHERE status = 'empty')::int       AS empty,
+                   COUNT(*) FILTER (WHERE status = 'error')::int       AS errored,
+                   COALESCE(AVG(duration_ms), 0)::int                  AS avg_ms,
+                   MAX(called_at)                                      AS last_called
+            FROM firecrawl_calls
+            WHERE called_at > now() - make_interval(days => :days)
+            GROUP BY domain
+            ORDER BY calls DESC, domain
+            LIMIT 100
+        """), {"days": days}).fetchall()
+
+    return {
+        "days": days,
+        "domains": [
+            {
+                "domain": r.domain or "(unknown)",
+                "calls": r.calls,
+                "credits": r.credits,
+                "ok": r.ok,
+                "empty": r.empty,
+                "errored": r.errored,
+                "success_rate": (r.ok / r.calls) if r.calls else 0,
+                "avg_ms": r.avg_ms,
+                "last_called": r.last_called.isoformat() if r.last_called else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/firecrawl/diffs")
+async def firecrawl_diffs(
+    source: str | None = None,
+    limit: int = 100,
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Recent Firecrawl-vs-legacy comparisons from the parallel-run harness.
+
+    One row per replayed event. Used to decide when a legacy source can
+    be retired — when a source's last 5 diffs are all ≥95% match, the
+    scraper code is safe to delete.
+
+    Optional filter: source=cowesweek | sydneyhobart | rhkyc | isora | …
+    """
+    _verify_admin(authorization)
+    limit = max(1, min(limit, 500))
+
+    clauses = []
+    params: dict = {"limit": limit}
+    if source:
+        clauses.append("source = :source")
+        params["source"] = source
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, ran_at, source, source_url, event_name, event_date,
+                   legacy_rows, firecrawl_rows, matched, match_rate, confidence,
+                   missing_names, extra_names, notes
+            FROM firecrawl_diffs
+            {where}
+            ORDER BY ran_at DESC
+            LIMIT :limit
+        """), params).fetchall()
+
+        # Per-source rollup (last 30 days) for the at-a-glance traffic-light row
+        per_source = conn.execute(text("""
+            SELECT source,
+                   COUNT(*)::int                                        AS runs,
+                   AVG(match_rate)::numeric(4,3)                        AS avg_rate,
+                   MIN(match_rate)::numeric(4,3)                        AS min_rate,
+                   COUNT(*) FILTER (WHERE match_rate >= 0.95)::int      AS green,
+                   COUNT(*) FILTER (WHERE match_rate >= 0.85
+                                    AND match_rate < 0.95)::int         AS amber,
+                   COUNT(*) FILTER (WHERE match_rate < 0.85)::int       AS red,
+                   MAX(ran_at)                                          AS last_run
+            FROM firecrawl_diffs
+            WHERE ran_at > now() - interval '30 days'
+            GROUP BY source
+            ORDER BY source
+        """)).fetchall()
+
+    return {
+        "diffs": [
+            {
+                "id": r.id,
+                "ran_at": r.ran_at.isoformat() if r.ran_at else None,
+                "source": r.source,
+                "source_url": r.source_url,
+                "event_name": r.event_name,
+                "event_date": r.event_date.isoformat() if r.event_date else None,
+                "legacy_rows": r.legacy_rows,
+                "firecrawl_rows": r.firecrawl_rows,
+                "matched": r.matched,
+                "match_rate": float(r.match_rate),
+                "confidence": float(r.confidence) if r.confidence else None,
+                "missing_names": r.missing_names or [],
+                "extra_names": r.extra_names or [],
+                "notes": r.notes,
+            }
+            for r in rows
+        ],
+        "rollup": [
+            {
+                "source": r.source,
+                "runs": r.runs,
+                "avg_rate": float(r.avg_rate) if r.avg_rate else 0.0,
+                "min_rate": float(r.min_rate) if r.min_rate else 0.0,
+                "green": r.green,
+                "amber": r.amber,
+                "red": r.red,
+                "last_run": r.last_run.isoformat() if r.last_run else None,
+            }
+            for r in per_source
+        ],
+    }
+
+
 @router.get("/conversations")
 async def list_conversations(
     engine: Engine = Depends(get_db),

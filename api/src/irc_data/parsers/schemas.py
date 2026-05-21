@@ -18,6 +18,11 @@ class TCCListingRow(BaseModel):
     tcc: Decimal
     endorsed: str | None = None
     secondary: str | None = None
+    is_secondary: bool = False  # True when this CSV row is a secondary cert
+                                # (boat_name ends in ' - SEC' or 'Secondary' col
+                                # is set). The importer must NOT create a new
+                                # boats row for these — the cert is attached to
+                                # the primary boat via the cert PDF scraper.
     non_spi_tcc: Decimal | None = None
     crew: int | None = None
     dlr: int | None = None

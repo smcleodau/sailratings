@@ -21,6 +21,7 @@ class InsightAskRequest(BaseModel):
     boat_id: int
     question: str
     detail_level: str = "free"  # "free" or "premium"
+    thinking_style: str = "steps"  # "steps" (legacy) or "prose" (modal)
 
 
 def _search_boats(engine: Engine, query: str) -> list[dict]:
@@ -49,11 +50,13 @@ def _search_boats(engine: Engine, query: str) -> list[dict]:
         return [dict(r._mapping) for r in result]
 
 
-async def _sse_generator(engine: Engine, boat_id: int, question: str | None = None, detail_level: str = "free"):
+async def _sse_generator(engine: Engine, boat_id: int, question: str | None = None, detail_level: str = "free", thinking_style: str = "steps"):
     """Generate SSE events for streaming insight."""
     from irc_data.api.services.insights_service import stream_insight
 
-    async for event in stream_insight(engine, boat_id, question, detail_level=detail_level):
+    async for event in stream_insight(
+        engine, boat_id, question, detail_level=detail_level, thinking_style=thinking_style
+    ):
         yield f"data: {json.dumps(event)}\n\n"
 
 
@@ -112,7 +115,13 @@ async def ask_about_boat(
         raise HTTPException(status_code=404, detail=f"Boat {body.boat_id} not found")
 
     return StreamingResponse(
-        _sse_generator(engine, body.boat_id, body.question, detail_level=body.detail_level),
+        _sse_generator(
+            engine,
+            body.boat_id,
+            body.question,
+            detail_level=body.detail_level,
+            thinking_style=body.thinking_style,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

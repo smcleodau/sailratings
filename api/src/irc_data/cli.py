@@ -13,6 +13,7 @@ from sqlalchemy import text
 from irc_data.config import IMPORTS_DIR, TCC_LISTINGS_DIR
 from irc_data.db.connection import get_engine, init_db
 from irc_data.db.operations import (
+    find_boat_by_sail_number,
     get_boat_detail,
     get_stats,
     list_boats,
@@ -75,10 +76,23 @@ def import_csv(ctx, path: Path, snapshot_date: str):
     rows = parse_tcc_csv(path)
     console.print(f"  Parsed {len(rows)} rows")
 
-    # Import
+    # Import in two passes so primary rows always land before secondaries.
+    # Otherwise a secondary that arrives before its primary would be skipped
+    # (boat doesn't yet exist) or trigger a stub-insert race condition.
+    primary_rows = [r for r in rows if not r.is_secondary]
+    secondary_rows = [r for r in rows if r.is_secondary]
+    if secondary_rows:
+        console.print(
+            f"  {len(secondary_rows)} secondary-cert row(s) — will attach to "
+            f"existing boats by sail_number (no duplicate boat rows created)."
+        )
+
     imported = 0
+    sec_attached = 0
+    sec_skipped_no_primary = 0
     with console.status("Importing boats...") as status:
-        for row in rows:
+        # ── Pass 1: primary rows — create / update boats + tcc_snapshots
+        for row in primary_rows:
             country = detect_country(row.sail_number)
             design = detect_design(row.lh, row.beam)
 
@@ -119,9 +133,45 @@ def import_csv(ctx, path: Path, snapshot_date: str):
             imported += 1
 
             if imported % 200 == 0:
-                status.update(f"Importing boats... {imported}/{len(rows)}")
+                status.update(f"Importing boats... {imported}/{len(primary_rows)}")
 
-    console.print(f"[green]Imported {imported} boats with TCC snapshots.[/green]")
+        # ── Pass 2: secondary rows — attach to existing boat by
+        # (sail_number, boat_name). Matching on sail_number alone is unsafe
+        # because sail numbers are legitimately reused across design classes
+        # (1,265 such cases in the boats table). The cleaned boat_name plus
+        # sail_number is the strongest signal short of cert_number.
+        for row in secondary_rows:
+            with engine.begin() as conn:
+                lookup = conn.execute(text("""
+                    SELECT id FROM boats
+                     WHERE sail_number = :sn
+                       AND UPPER(TRIM(boat_name)) = UPPER(TRIM(:bn))
+                     LIMIT 1
+                """), {"sn": row.sail_number, "bn": row.boat_name}).first()
+                if lookup is None:
+                    sec_skipped_no_primary += 1
+                    continue
+                # The primary snapshot for this date already exists; UPDATE
+                # the `secondary` flag without overwriting primary TCC.
+                conn.execute(text("""
+                    UPDATE tcc_snapshots
+                       SET secondary = COALESCE(:flag, secondary)
+                     WHERE boat_id = :bid AND snapshot_date = :sd
+                """), {
+                    "flag": row.secondary or "SEC",
+                    "bid": lookup.id,
+                    "sd": snap_date,
+                })
+            sec_attached += 1
+
+    msg = f"[green]Imported {imported} primary boat(s) + snapshots.[/green]"
+    if sec_attached or sec_skipped_no_primary:
+        msg += (
+            f"  Secondary certs: {sec_attached} attached"
+            + (f", {sec_skipped_no_primary} skipped (no primary boat found)" if sec_skipped_no_primary else "")
+            + "."
+        )
+    console.print(msg)
     stats = get_stats(engine)
     console.print(
         f"  Total: {stats['boats']} boats, {stats['countries']} countries, "
@@ -327,15 +377,36 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
     engine = ctx.obj["engine"]
     results = []
 
+    # Helper used by every source-specific upsert below — inject the matching
+    # signals into raw_data so rematch passes can find a boat later.
+    def _enrich_raw_data(r):
+        rd = dict(r.raw_data) if getattr(r, "raw_data", None) else {}
+        bname = getattr(r, "boat_name", None)
+        sn = getattr(r, "sail_number", None)
+        if bname and "boat_name" not in rd:
+            rd["boat_name"] = bname
+        if sn and "sail_number" not in rd:
+            rd["sail_number"] = sn
+        return rd
+
     if source == "sailsys":
         from irc_data.scrapers.sailsys import CLUBS as _CLUB_MAP
         from irc_data.scrapers.sailsys import scrape_club_irc_results
+        from irc_data.db.operations import log_ingestion_start, log_ingestion_end
 
         # Determine which clubs to scrape
         if all_clubs:
             clubs_to_scrape = [pair for pair in _CLUB_MAP.items()]
         else:
             clubs_to_scrape = [(club.upper(), _CLUB_MAP.get(club.upper(), 3))]
+
+        # Heartbeat row for the whole run — so "ran, found nothing" is
+        # observable (otherwise import_scraper_results only logs when there
+        # were results to import).
+        run_log_id = log_ingestion_start(
+            engine, "sailsys",
+            metadata={"all_clubs": bool(all_clubs), "n_clubs": len(clubs_to_scrape), "incremental": bool(incremental)},
+        )
 
         # Determine incremental cutoff
         since = None
@@ -352,28 +423,41 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
                     console.print(f"[dim]Incremental mode: only races after {since}[/dim]")
 
         all_results = []
-        for club_name, club_id in clubs_to_scrape:
-            console.print(f"\nScraping SailSys results for [bold]{club_name}[/bold] (club {club_id})...")
-            try:
-                club_results = asyncio.run(scrape_club_irc_results(
-                    club_id, max_series=max_series, since=since,
-                ))
-                all_results.extend(club_results)
-                console.print(f"  [green]{len(club_results)} results[/green]")
+        total_imported = 0
+        run_error: str | None = None
+        try:
+            for club_name, club_id in clubs_to_scrape:
+                console.print(f"\nScraping SailSys results for [bold]{club_name}[/bold] (club {club_id})...")
+                try:
+                    club_results = asyncio.run(scrape_club_irc_results(
+                        club_id, max_series=max_series, since=since,
+                    ))
+                    all_results.extend(club_results)
+                    console.print(f"  [green]{len(club_results)} results[/green]")
 
-                # Store incrementally per club (avoids memory buildup)
-                if store and club_results:
-                    from irc_data.scrapers.result_import import import_scraper_results
+                    # Store incrementally per club (avoids memory buildup)
+                    if store and club_results:
+                        from irc_data.scrapers.result_import import import_scraper_results
 
-                    stats = import_scraper_results(
-                        engine, club_results, source="sailsys",
-                        organizing_club=club_name,
-                    )
-                    console.print(f"  Imported: {stats['imported']}, Matched: {stats['matched']}")
-            except Exception as e:
-                console.print(f"  [red]Error scraping {club_name}: {e}[/red]")
+                        stats = import_scraper_results(
+                            engine, club_results, source="sailsys",
+                            organizing_club=club_name,
+                        )
+                        total_imported += stats.get("imported", 0)
+                        console.print(f"  Imported: {stats['imported']}, Matched: {stats['matched']}")
+                except Exception as e:
+                    console.print(f"  [red]Error scraping {club_name}: {e}[/red]")
+                    run_error = (run_error + " | " if run_error else "") + f"{club_name}: {e}"
 
-        console.print(f"\n[green]Total: {len(all_results)} results across {len(clubs_to_scrape)} clubs[/green]")
+            console.print(f"\n[green]Total: {len(all_results)} results across {len(clubs_to_scrape)} clubs[/green]")
+        finally:
+            log_ingestion_end(
+                engine, run_log_id,
+                status="failed" if run_error else "completed",
+                records_found=len(all_results),
+                records_new=total_imported,
+                error_message=(run_error[:1000] if run_error else None),
+            )
         return
 
     elif source == "cyca":
@@ -403,15 +487,6 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
             from irc_data.scrapers.result_import import _find_boat_by_name
             from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
             from irc_data.matching.identity import normalize_sail
-
-            def _enrich_raw_data(r):
-                """Inject boat_name/sail_number into raw_data for rematching."""
-                rd = dict(r.raw_data) if r.raw_data else {}
-                if r.boat_name and "boat_name" not in rd:
-                    rd["boat_name"] = r.boat_name
-                if r.sail_number and "sail_number" not in rd:
-                    rd["sail_number"] = r.sail_number
-                return rd
 
             log_id = log_ingestion_start(engine, "rorc")
             imported = matched = 0
@@ -749,44 +824,66 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
         return
     elif source == "topyacht":
         from irc_data.scrapers.topyacht import TOPYACHT_CLUBS, scrape_all_clubs, scrape_club
+        from irc_data.db.operations import log_ingestion_start, log_ingestion_end
 
-        # Determine incremental cutoff
-        since = None
-        if incremental:
-            with engine.connect() as conn:
-                row = conn.execute(
-                    text("""
-                        SELECT max(created_at)::date - interval '1 day'
-                        FROM race_results WHERE source = 'topyacht'
-                    """)
-                ).first()
-                if row and row[0]:
-                    since = row[0].date() if hasattr(row[0], 'date') else row[0]
-                    console.print(f"[dim]Incremental mode: only races after {since}[/dim]")
+        run_log_id = log_ingestion_start(
+            engine, "topyacht",
+            metadata={"all_clubs": bool(all_clubs or club.upper() not in TOPYACHT_CLUBS), "incremental": bool(incremental)},
+        )
 
-        # Determine which clubs to scrape
-        if all_clubs or club.upper() not in TOPYACHT_CLUBS:
-            console.print(f"Scraping TopYacht IRC results for all {len(TOPYACHT_CLUBS)} clubs...")
-            all_results = asyncio.run(scrape_all_clubs(since=since, max_series=max_series))
-        else:
-            club_key = club.upper()
-            club_name = TOPYACHT_CLUBS[club_key]["club_name"]
-            console.print(f"Scraping TopYacht IRC results for [bold]{club_name}[/bold]...")
-            all_results = asyncio.run(scrape_club(club_key, since=since, max_series=max_series))
+        run_error: str | None = None
+        all_results = []
+        imported = 0
+        try:
+            # Determine incremental cutoff
+            since = None
+            if incremental:
+                with engine.connect() as conn:
+                    row = conn.execute(
+                        text("""
+                            SELECT max(created_at)::date - interval '1 day'
+                            FROM race_results WHERE source = 'topyacht'
+                        """)
+                    ).first()
+                    if row and row[0]:
+                        since = row[0].date() if hasattr(row[0], 'date') else row[0]
+                        console.print(f"[dim]Incremental mode: only races after {since}[/dim]")
 
-        if store and all_results:
-            from irc_data.scrapers.result_import import import_scraper_results
+            # Determine which clubs to scrape
+            if all_clubs or club.upper() not in TOPYACHT_CLUBS:
+                console.print(f"Scraping TopYacht IRC results for all {len(TOPYACHT_CLUBS)} clubs...")
+                all_results = asyncio.run(scrape_all_clubs(since=since, max_series=max_series))
+            else:
+                club_key = club.upper()
+                club_name = TOPYACHT_CLUBS[club_key]["club_name"]
+                console.print(f"Scraping TopYacht IRC results for [bold]{club_name}[/bold]...")
+                all_results = asyncio.run(scrape_club(club_key, since=since, max_series=max_series))
 
-            stats = import_scraper_results(
-                engine, all_results, source="topyacht",
-                organizing_club=TOPYACHT_CLUBS.get(club.upper(), {}).get("club_name"),
+            if store and all_results:
+                from irc_data.scrapers.result_import import import_scraper_results
+
+                stats = import_scraper_results(
+                    engine, all_results, source="topyacht",
+                    organizing_club=TOPYACHT_CLUBS.get(club.upper(), {}).get("club_name"),
+                )
+                imported = stats.get("imported", 0)
+                console.print(f"\n[green]TopYacht: {imported} results stored ({stats['matched']} matched to boats)[/green]")
+            elif all_results:
+                irc_count = sum(1 for r in all_results if r.tcc_at_race)
+                console.print(f"\n[green]Found {len(all_results)} TopYacht results ({irc_count} with IRC TCC)[/green]")
+            else:
+                console.print("[yellow]No TopYacht results found.[/yellow]")
+        except Exception as e:
+            run_error = str(e)[:1000]
+            console.print(f"[red]TopYacht run failed: {e}[/red]")
+        finally:
+            log_ingestion_end(
+                engine, run_log_id,
+                status="failed" if run_error else "completed",
+                records_found=len(all_results),
+                records_new=imported,
+                error_message=run_error,
             )
-            console.print(f"\n[green]TopYacht: {stats['imported']} results stored ({stats['matched']} matched to boats)[/green]")
-        elif all_results:
-            irc_count = sum(1 for r in all_results if r.tcc_at_race)
-            console.print(f"\n[green]Found {len(all_results)} TopYacht results ({irc_count} with IRC TCC)[/green]")
-        else:
-            console.print("[yellow]No TopYacht results found.[/yellow]")
         return
     elif source == "sailwave":
         from irc_data.scrapers.race_results import scrape_sailwave_results
@@ -1052,6 +1149,265 @@ def scrape_snapshot(ctx):
         console.print(f"  Grabbed {grabbed} disappeared certificates")
 
     console.print(f"[green]Snapshot complete for {today}[/green]")
+
+
+@cli.command(name="ingest-event")
+@click.option("--url", required=True, help="Race results page URL to scrape")
+@click.option(
+    "--source",
+    type=click.Choice(["cowesweek", "sydneyhobart", "rhkyc", "isora",
+                       "sailracehq", "sailwave", "firecrawl"]),
+    default="firecrawl",
+    help="Value written to race_results.source. Use the legacy source name "
+         "when cutting over; 'firecrawl' for parallel-run mode.",
+)
+@click.option("--dry-run", is_flag=True,
+              help="Scrape + extract + print results, do NOT write to DB")
+@click.pass_context
+def ingest_event(ctx, url, source, dry_run):
+    """Scrape one event URL via Firecrawl, extract via Claude, import to race_results.
+
+    This is the crawler-path replacement for `scrape results --source X`
+    for sources without a structured API. The same pipeline handles every
+    target site — Firecrawl normalises HTML/PDF to markdown and Claude
+    pulls a typed RaceResult[] out via tool_use.
+    """
+    from decimal import Decimal
+
+    from irc_data.discovery.firecrawl_client import scrape_url
+    from irc_data.discovery.extractor import extract_results
+    from irc_data.parsers.schemas import RaceResult
+    from irc_data.scrapers.result_import import import_scraper_results
+
+    engine = ctx.obj["engine"]
+    console.print(f"[cyan]Scraping[/cyan] {url}")
+
+    scraped = scrape_url(url, caller="cli.ingest-event")
+    if not scraped.markdown.strip():
+        console.print("[red]Firecrawl returned no content — aborting[/red]")
+        raise SystemExit(2)
+    console.print(f"  scraped {len(scraped.markdown):,} chars  title={scraped.title!r}")
+
+    extraction = extract_results(url, scraped.markdown)
+    if extraction.get("_error"):
+        console.print(f"[red]Extractor failed: {extraction['_error']}[/red]")
+        raise SystemExit(2)
+
+    rows = extraction.get("results", [])
+    console.print(
+        f"  event={extraction.get('event_name')!r}  "
+        f"class={extraction.get('class_name')!r}  "
+        f"confidence={extraction.get('confidence')}  "
+        f"rows={len(rows)}"
+    )
+    if not rows:
+        console.print("[yellow]Extractor returned 0 rows — nothing to import[/yellow]")
+        return
+
+    event_name = extraction.get("event_name") or scraped.title or "Unknown Event"
+    event_date = None
+    if extraction.get("event_date"):
+        from datetime import datetime as _dt
+        try:
+            event_date = _dt.fromisoformat(extraction["event_date"]).date()
+        except Exception:
+            event_date = None
+    race_name = extraction.get("race_name")
+    class_name = extraction.get("class_name")
+
+    def _dec(v):
+        if v is None:
+            return None
+        try:
+            return Decimal(str(v))
+        except Exception:
+            return None
+
+    race_results: list[RaceResult] = []
+    for r in rows:
+        rating = _dec(r.get("rating_value"))
+        rd = {
+            "boat_name": r.get("boat_name"),
+            "sail_number": r.get("sail_number"),
+            "fleet_size": len(rows),
+            "division": class_name,
+            "race_name": race_name,
+            "rating_type": "irc_tcc" if rating else None,
+            "rating_value": float(rating) if rating else None,
+            "status": r.get("status"),
+            "elapsed_time": r.get("elapsed_time"),
+            "corrected_time": r.get("corrected_time"),
+            "confidence": extraction.get("confidence"),
+        }
+        race_results.append(RaceResult(
+            event_name=event_name,
+            event_date=event_date,
+            source_url=url,
+            tcc_at_race=rating,
+            place=r.get("place"),
+            division=class_name,
+            elapsed_time=r.get("elapsed_time"),
+            corrected_time=r.get("corrected_time"),
+            raw_data=rd,
+        ))
+
+    if dry_run:
+        console.print("[yellow]--dry-run: not writing to DB[/yellow]")
+        for r in race_results[:5]:
+            console.print(f"  {r.place}  {r.raw_data.get('boat_name')!r}  TCC={r.tcc_at_race}")
+        if len(race_results) > 5:
+            console.print(f"  ... and {len(race_results) - 5} more")
+        return
+
+    stats = import_scraper_results(engine, race_results, source=source)
+    console.print(
+        f"[green]Imported[/green] {stats['imported']}/{stats['total']} rows  "
+        f"({stats['matched']} matched to boats, {stats['errors']} errors)"
+    )
+
+
+@cli.command(name="firecrawl-diff")
+@click.option(
+    "--source",
+    type=click.Choice(["cowesweek", "sydneyhobart", "rhkyc", "isora",
+                       "sailracehq", "sailwave"]),
+    required=True,
+    help="Legacy source to compare against",
+)
+@click.option("--limit", type=int, default=5,
+              help="Number of source_urls to replay (newest first)")
+@click.option("--days", type=int, default=365,
+              help="Only consider source_urls with event_date in the last N days")
+@click.pass_context
+def firecrawl_diff(ctx, source, limit, days):
+    """Replay recent event URLs through the Firecrawl extractor and log
+    a row-level comparison against the legacy rows in race_results.
+
+    Writes one row per event to firecrawl_diffs. Surfaced on
+    /justin/firecrawl so we can watch the gap shrink (or not) across the
+    parallel-run window before retiring the bespoke scraper.
+    """
+    import json as _json
+    import re
+
+    from irc_data.discovery.firecrawl_client import scrape_url
+    from irc_data.discovery.extractor import extract_results
+
+    engine = ctx.obj["engine"]
+
+    def _norm(s):
+        if not s:
+            return ""
+        s = s.upper()
+        s = re.sub(r"\s*\((DH|TH|DOUBLE.?HANDED|TWO.?HANDED)\)\s*", "", s)
+        s = re.sub(r"[^A-Z0-9]+", "", s)
+        return s
+
+    def _name_match(a, b):
+        if not a or not b:
+            return False
+        if a == b:
+            return True
+        return (a in b or b in a) and min(len(a), len(b)) >= 3
+
+    with engine.connect() as conn:
+        urls = conn.execute(text("""
+            SELECT source_url,
+                   MIN(event_name) AS event_name,
+                   MIN(event_date) AS event_date,
+                   COUNT(*) AS rows
+            FROM race_results
+            WHERE source = :source
+              AND source_url IS NOT NULL
+              AND (event_date IS NULL OR event_date > now() - make_interval(days => :days))
+            GROUP BY source_url
+            HAVING COUNT(*) >= 5
+            ORDER BY MAX(event_date) DESC NULLS LAST, MIN(id) DESC
+            LIMIT :limit
+        """), {"source": source, "days": days, "limit": limit}).fetchall()
+
+    if not urls:
+        console.print(f"[yellow]No source_urls found for source={source!r}[/yellow]")
+        return
+
+    console.print(f"[cyan]firecrawl-diff[/cyan] {source}: comparing {len(urls)} URL(s)")
+
+    for u in urls:
+        url = u.source_url
+        with engine.connect() as conn:
+            db_rows = conn.execute(text("""
+                SELECT raw_data->>'boat_name' AS boat_name
+                FROM race_results
+                WHERE source_url = :url
+            """), {"url": url}).fetchall()
+        db_names = {_norm(r.boat_name) for r in db_rows if r.boat_name}
+        db_names.discard("")
+
+        try:
+            scraped = scrape_url(url, caller="cli.firecrawl-diff")
+        except Exception as e:
+            console.print(f"  [red]scrape failed:[/red] {url[:90]}  ({e})")
+            continue
+
+        extraction = extract_results(url, scraped.markdown)
+        new_names_raw = [r.get("boat_name") for r in extraction.get("results", [])]
+        new_names = {_norm(n) for n in new_names_raw if n}
+        new_names.discard("")
+
+        # Tolerant matching (containment)
+        matched: set[str] = set()
+        used: set[str] = set()
+        for n in db_names:
+            if n in new_names:
+                matched.add(n)
+                used.add(n)
+                continue
+            for m in new_names:
+                if m in used:
+                    continue
+                if _name_match(n, m):
+                    matched.add(n)
+                    used.add(m)
+                    break
+
+        missing = sorted(db_names - matched - used)[:25]
+        extra = sorted(new_names - used)[:25]
+        rate = len(matched) / len(db_names) if db_names else 0.0
+        confidence = extraction.get("confidence") or 0.0
+
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO firecrawl_diffs
+                  (source, source_url, event_name, event_date, legacy_rows,
+                   firecrawl_rows, matched, match_rate, confidence,
+                   missing_names, extra_names, notes)
+                VALUES
+                  (:source, :url, :event_name, :event_date, :legacy, :fc,
+                   :matched, :rate, :conf, CAST(:miss AS jsonb),
+                   CAST(:extra AS jsonb), :notes)
+            """), {
+                "source": source,
+                "url": url,
+                "event_name": extraction.get("event_name") or u.event_name,
+                "event_date": u.event_date,
+                "legacy": len(db_rows),
+                "fc": len(new_names_raw),
+                "matched": len(matched),
+                "rate": round(rate, 3),
+                "conf": round(confidence, 3),
+                "miss": _json.dumps(missing),
+                "extra": _json.dumps(extra),
+                "notes": extraction.get("_error"),
+            })
+
+        verdict = "[green]GREEN[/green]" if rate >= 0.95 else "[yellow]AMBER[/yellow]" if rate >= 0.85 else "[red]RED[/red]"
+        console.print(
+            f"  {verdict} {rate*100:5.1f}%  "
+            f"legacy={len(db_rows):>3} fc={len(new_names_raw):>3} "
+            f"matched={len(matched):>3}  {url[:80]}"
+        )
+
+    console.print(f"[cyan]Done[/cyan] — view results at /justin/firecrawl (Diffs panel)")
 
 
 @cli.command(name="parse-certs")
@@ -2194,3 +2550,230 @@ def serve(host, port, workers, do_reload):
         workers=1 if do_reload else workers,
         reload=do_reload,
     )
+
+
+@cli.command(name="discover-events")
+@click.option("--url", help="Single URL to crawl + extract (mutually exclusive with --seed-url)")
+@click.option("--seed-url", help="Seed URL — Firecrawl maps it then crawls each sub-URL")
+@click.option("--limit", type=int, default=30, help="Max sub-URLs per seed (default 30)")
+@click.option("--auto-ingest/--no-auto-ingest", default=False,
+              help="When confidence ≥ 0.85 and platform is sailsys, ingest immediately")
+@click.pass_context
+def discover_events(ctx, url, seed_url, limit, auto_ingest):
+    """Discover sailing-event scoring URLs via Firecrawl + Claude.
+
+    Either --url (one page) or --seed-url (one page + everything mapped
+    from it). Results land in `event_discovery` with status='pending'
+    for Justin to review at /justin/discovery.
+    """
+    from irc_data.discovery.service import discover_url, discover_seed, ingest_confirmed
+
+    engine = ctx.obj["engine"]
+    if (url is None) == (seed_url is None):
+        console.print("[red]Specify exactly one of --url or --seed-url.[/red]")
+        return
+
+    if url:
+        rows = [discover_url(engine, url)]
+        console.print(f"[green]1 URL processed.[/green]")
+    else:
+        rows = discover_seed(engine, seed_url, limit=limit)
+        console.print(f"[green]{len(rows)} URLs processed from seed.[/green]")
+
+    pending = [r for r in rows if r.get("status") == "pending"]
+    failed = [r for r in rows if r.get("status") == "failed"]
+    console.print(f"  pending={len(pending)}  failed={len(failed)}")
+
+    if auto_ingest:
+        confident = [
+            r for r in pending
+            if r.get("scoring_platform") == "sailsys"
+            and (r.get("confidence") or 0) >= 0.85
+            and r.get("platform_ids", {}).get("series_id")
+        ]
+        for r in confident:
+            try:
+                out = ingest_confirmed(engine, r["id"])
+                console.print(f"  → ingested #{r['id']}: {out}")
+            except Exception as e:
+                console.print(f"  [red]ingest #{r['id']} failed: {e}[/red]")
+
+
+@cli.command(name="scrape-watchdog")
+@click.option("--cooldown-hours", type=int, default=4,
+              help="Minimum hours between repeat alerts for the same source.")
+@click.option("--dry-run", is_flag=True, help="Print what would alert; don't send email.")
+@click.pass_context
+def scrape_watchdog(ctx, cooldown_hours, dry_run):
+    """Check that every configured scraper has run recently. Email on breach.
+
+    Reads `scrape_supervision.SOURCES` for expected cadences and queries
+    `ingestion_log` for last success per source. If any non-optional source is
+    stale beyond its budget, send a single consolidated email via Resend
+    (cooldown prevents spam within COOLDOWN_HOURS).
+    """
+    import json
+    import os
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from irc_data.scrape_supervision import SOURCES
+
+    engine = ctx.obj["engine"]
+    now = datetime.now(timezone.utc)
+
+    # Pull last-success per source + last new race-row landed (the data tap)
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT source,
+                   MAX(started_at) AS last_started,
+                   MAX(completed_at) FILTER (WHERE status='completed') AS last_success
+            FROM ingestion_log
+            GROUP BY source
+        """)).fetchall()
+        data_rows = conn.execute(text("""
+            SELECT source, MAX(created_at) AS last_new_data
+            FROM race_results
+            GROUP BY source
+        """)).fetchall()
+    by_src = {r.source: r for r in rows}
+    by_src_data = {r.source: r for r in data_rows}
+
+    breaches = []
+    for cfg in SOURCES:
+        if cfg.optional:
+            continue
+        r = by_src.get(cfg.source)
+        last_success = r.last_success if r else None
+        # Run-cadence check — the cron-health signal
+        if last_success is None:
+            breaches.append({
+                "source": cfg.source, "label": cfg.label,
+                "cadence": cfg.cadence_human, "age_hours": None,
+                "budget_hours": cfg.run_within.total_seconds() / 3600,
+                "reason": "no successful run on record",
+            })
+        else:
+            run_age = now - last_success
+            if run_age > cfg.run_within:
+                breaches.append({
+                    "source": cfg.source, "label": cfg.label,
+                    "cadence": cfg.cadence_human,
+                    "age_hours": run_age.total_seconds() / 3600,
+                    "budget_hours": cfg.run_within.total_seconds() / 3600,
+                    "reason": "cron stopped (no successful run)",
+                })
+
+        # Data-tap check — only when configured (long budget that survives lulls)
+        if cfg.data_within is not None:
+            dr = by_src_data.get(cfg.source)
+            last_new = dr.last_new_data if dr else None
+            if last_new is not None:
+                data_age = now - last_new
+                if data_age > cfg.data_within:
+                    breaches.append({
+                        "source": cfg.source + ":data",
+                        "label": cfg.label + " (no new data)",
+                        "cadence": cfg.cadence_human,
+                        "age_hours": data_age.total_seconds() / 3600,
+                        "budget_hours": cfg.data_within.total_seconds() / 3600,
+                        "reason": "no new race rows beyond seasonal lull",
+                    })
+
+    if not breaches:
+        console.print("[green]All scrapers within budget.[/green]")
+        return
+
+    console.print(f"[yellow]{len(breaches)} scraper(s) stale:[/yellow]")
+    for b in breaches:
+        age_s = "never" if b["age_hours"] is None else f"{b['age_hours']:.1f}h"
+        console.print(f"  - {b['label']} ({b['source']}): {age_s} since last success "
+                      f"(budget {b['budget_hours']:.1f}h, {b['cadence']})")
+
+    # Cooldown: a small JSON file remembers when each source last alerted.
+    cooldown_path = Path(os.environ.get("WATCHDOG_STATE",
+                                        "/home/irc-data/.cache/sr_watchdog.json"))
+    cooldown_path.parent.mkdir(parents=True, exist_ok=True)
+    state: dict = {}
+    if cooldown_path.exists():
+        try:
+            state = json.loads(cooldown_path.read_text())
+        except Exception:
+            state = {}
+
+    cooldown_seconds = cooldown_hours * 3600
+    breaches_to_send: list[dict] = []
+    for b in breaches:
+        last_sent = state.get(b["source"])
+        if last_sent:
+            try:
+                last_dt = datetime.fromisoformat(last_sent)
+                if (now - last_dt).total_seconds() < cooldown_seconds:
+                    console.print(f"  [dim]  (cooldown active for {b['source']}, skipping)[/dim]")
+                    continue
+            except Exception:
+                pass
+        breaches_to_send.append(b)
+
+    if not breaches_to_send:
+        console.print("[dim]All breaches within cooldown — no email sent.[/dim]")
+        return
+
+    if dry_run:
+        console.print("[dim]--dry-run: not sending email.[/dim]")
+        return
+
+    alert_email = os.environ.get("ALERT_EMAIL", "stuart@stuartmcleod.me")
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        console.print("[red]RESEND_API_KEY not configured — cannot send alert.[/red]")
+        return
+
+    import resend
+    resend.api_key = api_key
+
+    # Build the email — plain, factual, with an actionable link
+    def _age_str(b):
+        return "never" if b["age_hours"] is None else f"{b['age_hours']:.1f}h"
+
+    rows_html = "\n".join(
+        f"<tr><td style='padding:6px 12px;border-bottom:1px solid #eee'>"
+        f"<strong>{b['label']}</strong><br/>"
+        f"<span style='color:#777;font-size:12px'>{b['source']} · {b['cadence']}</span></td>"
+        f"<td style='padding:6px 12px;border-bottom:1px solid #eee;color:#a00;font-family:monospace'>"
+        f"{_age_str(b)} / {b['budget_hours']:.0f}h</td></tr>"
+        for b in breaches_to_send
+    )
+    subject = f"SailRatings watchdog — {len(breaches_to_send)} scraper(s) stale"
+    html = f"""
+    <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:auto;color:#222">
+      <h2 style="color:#0A2240">SailRatings scraper alert</h2>
+      <p>The watchdog noticed {len(breaches_to_send)} scraper{'s' if len(breaches_to_send)!=1 else ''}
+         outside their freshness budget.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0">
+        <thead><tr style="background:#F4F1E8;text-align:left">
+          <th style="padding:8px 12px">Source</th><th style="padding:8px 12px">Stale for / budget</th>
+        </tr></thead>
+        <tbody>{rows_html}</tbody>
+      </table>
+      <p style="color:#777;font-size:12px">Open the dashboard:
+        <a href="https://dev.sailratings.com/justin/scrapers">/justin/scrapers</a></p>
+      <p style="color:#777;font-size:12px">Cooldown: same source won't alert again for {cooldown_hours}h.</p>
+    </div>
+    """
+    try:
+        resend.Emails.send({
+            "from": "SailRatings Watchdog <reports@sailratings.com>",
+            "to": [alert_email],
+            "subject": subject,
+            "html": html,
+        })
+        console.print(f"[green]Alert email sent to {alert_email}.[/green]")
+    except Exception as e:
+        console.print(f"[red]Failed to send alert email: {e}[/red]")
+        return
+
+    # Record the send time per source to enforce cooldown
+    for b in breaches_to_send:
+        state[b["source"]] = now.isoformat()
+    cooldown_path.write_text(json.dumps(state, indent=2))

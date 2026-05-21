@@ -21,6 +21,11 @@ def generate_report_content(engine: Engine, order_id: int) -> None:
     2. Fetch structured analytics → store as report_analytics JSONB
     3. Update order status to 'generated'
     """
+    # V2 is the default; set REPORT_V2=false to fall back to the legacy single-Claude-call path.
+    if os.environ.get("REPORT_V2", "true").lower() != "false":
+        _generate_report_v2(engine, order_id)
+        return
+
     with engine.connect() as conn:
         order = conn.execute(
             text("SELECT * FROM orders WHERE id = :id"), {"id": order_id}
@@ -134,14 +139,54 @@ def _fetch_structured_analytics(engine: Engine, boat_id: int) -> dict:
 
 
 def _json_dumps(obj: dict) -> str:
-    """JSON serialize with Decimal handling."""
+    """JSON serialize with Decimal + date/datetime handling."""
     import json
+    from datetime import date, datetime
     from decimal import Decimal
 
     class DecimalEncoder(json.JSONEncoder):
         def default(self, o):
             if isinstance(o, Decimal):
                 return float(o)
+            if isinstance(o, (date, datetime)):
+                return o.isoformat()
             return super().default(o)
 
     return json.dumps(obj, cls=DecimalEncoder)
+
+
+def _generate_report_v2(engine: Engine, order_id: int) -> None:
+    """V2 path: run the 11-section orchestrator, store the aggregated
+    payload in report_analytics, and a concatenated markdown for the
+    legacy /v1/reports/{token} HTML view."""
+    from irc_data.api.services.report.orchestrator import build_report
+
+    with engine.connect() as conn:
+        order = conn.execute(
+            text("SELECT * FROM orders WHERE id = :id"), {"id": order_id}
+        ).first()
+    if not order:
+        logger.error(f"Order {order_id} not found")
+        return
+
+    payload = build_report(engine, order.boat_id)
+
+    markdown_concat = "\n\n".join(
+        f"## {s['title']}\n\n{s['markdown']}" for s in payload["sections"]
+        if s["markdown"]
+    )
+    with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE orders
+            SET report_markdown = :md,
+                report_analytics = CAST(:analytics AS jsonb),
+                status = 'generated',
+                report_generated_at = :now
+            WHERE id = :id
+        """), {
+            "md": markdown_concat,
+            "analytics": _json_dumps(payload),
+            "now": datetime.now(timezone.utc),
+            "id": order_id,
+        })
+    logger.info(f"Report V2 generated for order {order_id}, boat {order.boat_id}")

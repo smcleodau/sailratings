@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>IRC Rating Report — {{ boat_name }}</title>
+  <style>
+    @page { size: A4; margin: 18mm 14mm 22mm 14mm;
+      @bottom-center { content: counter(page) " / " counter(pages); font-size: 9px; color: #94a3b8; } }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+           font-size: 11px; line-height: 1.55; color: #1e293b; }
+    h1.section-title { font-size: 18px; color: #0A2240; margin-top: 18mm; margin-bottom: 6mm;
+                       border-bottom: 1px solid #C29B61; padding-bottom: 4mm; }
+    h2 { font-size: 13px; color: #0A2240; margin-top: 5mm; margin-bottom: 2mm; }
+    p { margin-bottom: 3mm; }
+    img.chart { width: 100%; max-width: 170mm; margin: 4mm 0; display: block; }
+    .cover { text-align: center; padding-top: 60mm; page-break-after: always; }
+    .cover h1 { font-size: 34px; color: #0A2240; margin-bottom: 4mm; }
+    .cover .meta { font-size: 14px; color: #64748b; }
+    .toc { page-break-after: always; }
+    .toc li { font-size: 12px; margin-bottom: 2mm; }
+    .section { page-break-before: always; }
+    .error-note { color: #B85450; font-style: italic; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <div class="cover">
+    <p style="color:#C29B61;font-size:10px;letter-spacing:3px;">SAILRATINGS PREMIUM REPORT</p>
+    <h1>{{ boat_name }}</h1>
+    <p class="meta">{{ design }} · {{ sail_number }} · TCC {{ tcc }}</p>
+    <p class="meta" style="margin-top:12mm;">{{ report_date }}</p>
+  </div>
+  <div class="toc">
+    <h1 class="section-title">Contents</h1>
+    <ol>
+    {% for section in sections %}
+      <li>{{ section.title }}</li>
+    {% endfor %}
+    </ol>
+  </div>
+  {% for section in sections %}
+  <div class="section">
+    <h1 class="section-title">{{ loop.index }}. {{ section.title }}</h1>
+    {% if section.error %}
+      <p class="error-note">{{ section.error }}</p>
+    {% else %}
+      {{ section.markdown_html|safe }}
+      {% for chart_key, chart_b64 in section.chart_pngs_b64.items() %}
+        <img class="chart" src="data:image/png;base64,{{ chart_b64 }}" alt="{{ chart_key }}">
+      {% endfor %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</body>
+</html>

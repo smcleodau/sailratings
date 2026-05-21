@@ -153,10 +153,43 @@ def load_all_known_certs() -> list[dict]:
     return list(all_certs.values())
 
 
+_SEC_SUFFIX_RE = re.compile(r"\s*-\s*SEC\s*$", re.IGNORECASE)
+_SH_SUFFIX_RE = re.compile(r"\s*\(\s*SH\s*\)\s*$", re.IGNORECASE)
+
+
+def _detect_secondary(boat_name: str, secondary_col: str | None) -> tuple[str, bool]:
+    """Return (cleaned_boat_name, is_secondary).
+
+    A row is "secondary" when:
+      - boat_name ends with " - SEC" (re-issued IRC cert), OR
+      - boat_name ends with " (SH)" (short-handed cert), OR
+      - the CSV "Secondary" / "Short Handed" column is non-empty.
+
+    The cleaned boat_name has any " - SEC" / " (SH)" suffix stripped, so
+    the boat's canonical name is consistent across primary and secondary
+    certs.
+    """
+    name = boat_name or ""
+    sec_match = _SEC_SUFFIX_RE.search(name)
+    if sec_match:
+        name = _SEC_SUFFIX_RE.sub("", name).strip()
+    sh_match = _SH_SUFFIX_RE.search(name)
+    if sh_match:
+        name = _SH_SUFFIX_RE.sub("", name).strip()
+    flag_set = bool(secondary_col and secondary_col.strip())
+    return name, bool(sec_match) or bool(sh_match) or flag_set
+
+
 def parse_tcc_csv(path: Path) -> list[TCCListingRow]:
     """Parse a TCC listing CSV file into structured rows.
 
     Handles both 2026 format (utf-8-sig) and 2009 Wayback format (latin-1).
+
+    Marks secondary-cert rows (the "- SEC" / Short-Handed entries IRC
+    publishes alongside the primary cert) with `is_secondary=True` and
+    strips the " - SEC" suffix from `boat_name`. The importer downstream
+    must not create separate boats rows for secondary rows — that's the
+    bug that produced 230+ "BOAT - SEC" duplicate boat rows.
     """
     rows = []
     # Detect encoding: try utf-8 first, fall back to latin-1
@@ -182,8 +215,12 @@ def parse_tcc_csv(path: Path) -> list[TCCListingRow]:
             if tcc is None:
                 continue  # Skip rows without a valid TCC
 
+            cleaned_name, is_secondary = _detect_secondary(
+                mapped["boat_name"], mapped.get("secondary")
+            )
+
             row = TCCListingRow(
-                boat_name=mapped["boat_name"],
+                boat_name=cleaned_name,
                 sail_number=mapped["sail_number"],
                 cert_number=mapped["cert_number"],
                 issue_date=mapped.get("issue_date"),
@@ -191,6 +228,7 @@ def parse_tcc_csv(path: Path) -> list[TCCListingRow]:
                 tcc=tcc,
                 endorsed=mapped.get("endorsed") or None,
                 secondary=mapped.get("secondary") or None,
+                is_secondary=is_secondary,
                 non_spi_tcc=_safe_decimal(mapped.get("non_spi_tcc", "")),
                 crew=_safe_int(mapped.get("crew", "")),
                 dlr=_safe_int(mapped.get("dlr", "")),

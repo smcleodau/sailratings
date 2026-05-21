@@ -274,6 +274,69 @@ body {
   letter-spacing: -0.02em;
 }
 
+/* ── Report Modal ─────────────────────────────────────────────────────────
+   The dossier is opened over the landing page. Backdrop fades, modal lifts
+   from below. The thinking pane reads as marginalia (italic, ruled left
+   edge); the brief reads as the typeset article. */
+@keyframes dossierBackdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.dossier-backdrop { animation: dossierBackdropIn 280ms ease-out both; }
+
+@keyframes dossierIn {
+  from { opacity: 0; transform: translateY(24px) scale(0.986); }
+  to   { opacity: 1; transform: translateY(0)     scale(1); }
+}
+.dossier-in { animation: dossierIn 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes dossierBrassDraw {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.dossier-brass-draw {
+  transform-origin: left center;
+  animation: dossierBrassDraw 780ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+@keyframes dossierLabelIn {
+  from { opacity: 0; letter-spacing: 0.22em; }
+  to   { opacity: 1; letter-spacing: 0.18em; }
+}
+.dossier-label-in { animation: dossierLabelIn 520ms 480ms ease-out both; }
+
+/* Subtle paper grain on the dossier panel — keeps the cream from feeling
+   like flat CSS color. Lower opacity than print so it never reads as noise. */
+.dossier-paper {
+  background-image:
+    radial-gradient(rgba(20, 16, 8, 0.018) 1px, transparent 1px),
+    radial-gradient(rgba(20, 16, 8, 0.012) 1px, transparent 1px);
+  background-size: 3px 3px, 7px 7px;
+  background-position: 0 0, 1px 2px;
+}
+
+/* Streaming caret used in both thinking and brief panes. */
+@keyframes dossierCaret {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.dossier-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  background: var(--color-brass);
+  vertical-align: text-bottom;
+  animation: dossierCaret 1.05s steps(1, end) infinite;
+}
+
+/* Marginalia rule on the thinking pane — a soft brass hairline running
+   down the left of the prose, evoking notebook ruling. */
+.dossier-marginalia {
+  border-left: 1px solid rgba(194, 155, 97, 0.45);
+  padding-left: 1.5rem;
+}
+
 /* ── Misc ────────────────────────────────────────────────────────────── */
 ::selection { background: var(--color-brass); color: white; }
 ::-webkit-scrollbar { width: 5px; }

@@ -29,5 +29,5 @@ export PYTHONPATH=src
 # silently fall back to a release that lacks `--environment` support.
 exec /home/irc-data/.local/bin/op run \
     --environment vzhxzxt7mgb4tolyepo5wqzcz4 \
-    -- /usr/bin/python3 -m uvicorn irc_data.api.app:app \
+    -- /home/irc-data/code/sailratings/api/.venv/bin/python -m uvicorn irc_data.api.app:app \
         --host 0.0.0.0 --port 4100 --reload
