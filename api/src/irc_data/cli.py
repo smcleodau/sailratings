@@ -1158,10 +1158,18 @@ def scrape_snapshot(ctx):
 
 @cli.command(name="parse-certs")
 @click.option("--dir", "cert_dir", type=click.Path(path_type=Path), default=None)
+@click.option(
+    "--include-historical",
+    is_flag=True,
+    help=(
+        "Also sweep HISTORICAL_CERTS_DIR (PDFs harvested by "
+        "`backfill-irc-certs`)."
+    ),
+)
 @click.pass_context
-def parse_certs(ctx, cert_dir):
+def parse_certs(ctx, cert_dir, include_historical):
     """Parse downloaded certificate PDFs and insert into database."""
-    from irc_data.config import CERTIFICATES_DIR
+    from irc_data.config import CERTIFICATES_DIR, HISTORICAL_CERTS_DIR
     from irc_data.db.operations import (
         find_boat_by_cert_number,
         find_boat_by_sail_number,
@@ -1173,9 +1181,17 @@ def parse_certs(ctx, cert_dir):
     )
 
     engine = ctx.obj["engine"]
-    cert_dir = cert_dir or CERTIFICATES_DIR
-    console.print(f"Parsing PDFs in {cert_dir}...")
-    results = parse_all_certificates(cert_dir)
+    dirs: list[Path] = [Path(cert_dir) if cert_dir else CERTIFICATES_DIR]
+    if include_historical and HISTORICAL_CERTS_DIR not in dirs:
+        dirs.append(HISTORICAL_CERTS_DIR)
+
+    results: list = []
+    for d in dirs:
+        console.print(f"Parsing PDFs in {d}...")
+        if not d.exists():
+            console.print(f"  [yellow]{d} does not exist; skipping[/yellow]")
+            continue
+        results.extend(parse_all_certificates(d))
     console.print(f"Parsed {len(results)} certificates")
 
     inserted = 0
