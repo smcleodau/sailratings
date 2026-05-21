@@ -14,10 +14,10 @@ from sqlalchemy.engine import Engine
 
 from irc_data.analysis.regression import get_boat_sensitivity_context
 from irc_data.api.services.report.facts import (
-    ClassContextFacts, ExecutiveSummaryFacts, FormulaDriftFacts, Identity,
-    IdentityFacts, MeasurementContribution, OptimisationFacts, PerformanceFacts,
-    RaceResultLite, RatingAnatomyFacts, RatingEvolutionFacts, RatingSnapshot,
-    Recommendation, RivalsFacts, RivalSummary, SensitivityFacts,
+    AppendixFacts, ClassContextFacts, ExecutiveSummaryFacts, FormulaDriftFacts,
+    Identity, IdentityFacts, MeasurementContribution, OptimisationFacts,
+    PerformanceFacts, RaceResultLite, RatingAnatomyFacts, RatingEvolutionFacts,
+    RatingSnapshot, Recommendation, RivalsFacts, RivalSummary, SensitivityFacts,
 )
 
 logger = logging.getLogger(__name__)
@@ -727,3 +727,58 @@ def build_rivals(engine: Engine, boat_id: int) -> RivalsFacts:
     ]
 
     return RivalsFacts(boat_name=boat.boat_name, rivals=rivals)
+
+
+# ── Appendix ───────────────────────────────────────────────────────────
+
+
+def build_appendix(engine: Engine | None = None, boat_id: int | None = None) -> AppendixFacts:
+    """Deterministic appendix Facts. engine + boat_id are accepted for
+    signature consistency with other builders but not used — the
+    appendix is the same across every report."""
+    methodology = (
+        "This report combines five quantitative engines: (1) a Ridge "
+        "regression model that fits TCC against per-boat measurements "
+        "within a design class; (2) a per-boat decomposition that "
+        "translates the regression coefficients into the rating delta "
+        "between this boat and the class median; (3) a Rating Advantage "
+        "Index (RAI) that compares actual race finishes against the "
+        "finish percentile a boat's TCC would predict; (4) a fleet-wide "
+        "drift analysis that flags measurements whose relationship to TCC "
+        "has moved over the sample window; (5) an optimisation engine "
+        "that ranks measurement changes by estimated TCC impact and "
+        "feasibility. All numerical claims in the body are grounded in "
+        "the same data set; the truth-discipline auditor scans the "
+        "generated prose for numbers outside the source payload and "
+        "flags any that appear suspicious."
+    )
+
+    data_sources = [
+        "IRC TCC daily listings (RORC / ircrating.org)",
+        "IRC certificate PDFs (ircrating.org)",
+        "ORC certificates (data.orc.org)",
+        "SailSys race results (Australian + global SailSys clubs)",
+        "TopYacht race results (Australian regional series)",
+        "RHKYC + ISORA + SailRaceHQ + Sailwave + Cowes Week + Sydney–Hobart (specialised race result feeds)",
+    ]
+
+    glossary: list[tuple[str, str]] = [
+        ("TCC", "Time Correction Coefficient — the IRC handicap multiplier applied to elapsed time. Higher TCC = rated faster = bigger time correction owed."),
+        ("IRC", "International Rating Certificate — the secret-formula handicap administered by the RORC."),
+        ("ORC", "Offshore Racing Congress — a separate, open-formula handicap system used alongside or instead of IRC."),
+        ("RAI", "Rating Advantage Index — the gap between actual finish percentile and the percentile predicted by TCC. Positive = beating the rating; negative = underperforming."),
+        ("Tier A / B / C", "Regression model tier. A = full IRC certificate measurements (15 features). B = snapshot fields only (7 features). C = cross-design fleet-wide fallback."),
+        ("R²", "Coefficient of determination — fraction of TCC variance the regression model explains. 0.9 means 90% of the boat-to-boat variation in TCC is captured by the chosen measurements."),
+        ("β (beta)", "Regression coefficient — the marginal change in TCC associated with a one-unit change in a given measurement, holding other measurements constant."),
+        ("Standardised β", "Coefficient on the standardised (z-scored) measurement scale — used to compare which levers move TCC most regardless of unit."),
+        ("Class median", "The median TCC across all boats of this design class with a current TCC on file."),
+        ("Percentile rank", "Where this boat's TCC sits within the class distribution. 50th percentile = median; 95th = top 5% by rating."),
+        ("Head-to-head", "Two boats finishing the same race. Counted only when both have finishing positions and shared event_date."),
+        ("Drift", "Change in the relationship between a measurement and TCC across the analysis window. Drift signals a shift in how the IRC formula treats that measurement, but the formula itself is not observable."),
+    ]
+
+    return AppendixFacts(
+        methodology_blurb=methodology,
+        data_sources=data_sources,
+        glossary=glossary,
+    )
