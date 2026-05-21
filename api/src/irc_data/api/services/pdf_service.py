@@ -43,14 +43,22 @@ def render_pdf(engine: Engine, order_id: int) -> str | None:
         logger.error(f"Order {order_id} not found or has no report content")
         return None
 
-    # Load template
-    template_path = TEMPLATE_DIR / "report.html"
+    # V2 detection: analytics blob contains a 'sections' array
+    is_v2 = bool(
+        order.report_analytics
+        and isinstance(order.report_analytics, dict)
+        and "sections" in order.report_analytics
+    )
+    template_name = "report_v2.html" if is_v2 else "report.html"
+    template_path = TEMPLATE_DIR / template_name
     if not template_path.exists():
         logger.error(f"PDF template not found at {template_path}")
         return None
 
-    # Render HTML from template
-    html = _render_template(template_path, order)
+    if is_v2:
+        html = _render_template_v2(template_path, order)
+    else:
+        html = _render_template(template_path, order)
 
     # Convert to PDF via Playwright
     pdf_path = REPORTS_DIR / f"{order.order_token}.pdf"
@@ -101,6 +109,32 @@ def _render_template(template_path: Path, order) -> str:
         recommendations=recommendations,
         rai=rai,
         rivals=rivals,
+        order_token=str(order.order_token),
+    )
+
+
+def _render_template_v2(template_path: Path, order) -> str:
+    """V2 path: read sections from report_analytics, render each markdown→HTML."""
+    from datetime import date
+    from jinja2 import Environment, FileSystemLoader
+
+    env = Environment(loader=FileSystemLoader(str(template_path.parent)))
+    template = env.get_template(template_path.name)
+    payload = order.report_analytics
+    sections = []
+    for s in payload.get("sections", []):
+        sections.append({
+            **s,
+            "markdown_html": _markdown_to_html(s.get("markdown", "")),
+        })
+    return template.render(
+        boat_name=order.boat_name,
+        sail_number=order.sail_number,
+        design=order.design or "Unknown",
+        tcc=order.tcc,
+        country=order.country or "",
+        report_date=date.today().strftime("%d %B %Y"),
+        sections=sections,
         order_token=str(order.order_token),
     )
 
