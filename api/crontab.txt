@@ -72,7 +72,13 @@ LOG_DIR=/home/irc-data/logs
 0 6 5 9 *    cd $IRC_DATA_DIR && irc-data ingest-event --source cowesweek --year $(date +\%Y) >> $LOG_DIR/cowesweek_$(date +\%F).log 2>&1
 
 # Sydney–Hobart — race start 26 December; results finalised by 30 December.
-0 6 30 12 *  cd $IRC_DATA_DIR && irc-data ingest-event --source sydneyhobart --year $(date +\%Y) >> $LOG_DIR/sydneyhobart_$(date +\%F).log 2>&1
+# DISABLED: there is no stable year-derivable URL — cyca.com.au/results/{year}-rolex-sydney-hobart
+# redirects to a marketing page and the real results live on bwps.cycaracing.com
+# at per-race URLs that vary year to year. Each December, find the canonical
+# bwps URL and run by hand, e.g.:
+#   irc-data ingest-event --source sydneyhobart --url https://bwps.cycaracing.com/?race=N
+# Once the URL pattern stabilises, re-enable a cron entry here.
+# 0 6 30 12 *  cd $IRC_DATA_DIR && irc-data ingest-event --source sydneyhobart --year $(date +\%Y) >> $LOG_DIR/sydneyhobart_$(date +\%F).log 2>&1
 
 # --- Decommissioned / on-demand sources (intentionally NOT scheduled) ---
 # rorc:        static HTML only covers 2007-2022. Use sailracehq for post-2023.

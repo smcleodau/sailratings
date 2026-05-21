@@ -1309,16 +1309,26 @@ def ingest_event(ctx, url, source, year, dry_run):
     from irc_data.parsers.schemas import RaceResult
     from irc_data.scrapers.result_import import import_scraper_results
 
-    # Resolve --url from --source + --year for annual events.
+    # Resolve --url from --source + --year for annual events whose archive
+    # URL pattern is stable. Sydney-Hobart's pattern on cyca.com.au points to
+    # the entries-closed marketing page rather than the results, and the real
+    # results live on bwps.cycaracing.com (year-specific URLs vary), so we
+    # require --url explicitly for that source.
     if not url and year:
         if source == "cowesweek":
             url = f"https://www.cowesweek.co.uk/results/{year}"
         elif source == "sydneyhobart":
-            url = f"https://www.cyca.com.au/results/{year}-rolex-sydney-hobart"
+            console.print(
+                "[yellow]--year alone isn't enough for sydneyhobart — the "
+                "results URL pattern on cyca.com.au is unreliable. Pass "
+                "--url pointing at the BWPS race page on "
+                "bwps.cycaracing.com (e.g. .../results or "
+                ".../?race=N).[/yellow]"
+            )
+            raise SystemExit(2)
     if not url:
         console.print(
-            "[red]--url is required (or pass --source cowesweek|sydneyhobart "
-            "with --year)[/red]"
+            "[red]--url is required (or pass --source cowesweek with --year)[/red]"
         )
         raise SystemExit(2)
 
@@ -1393,6 +1403,46 @@ def ingest_event(ctx, url, source, year, dry_run):
             corrected_time=r.get("corrected_time"),
             raw_data=rd,
         ))
+
+    # Confidence gate. Extractor returns its own self-assessed confidence;
+    # anything below CONFIDENCE_FLOOR is treated as untrusted and logged to
+    # ingest_events as 'quarantined' rather than written to race_results.
+    from irc_data.discovery.extractor import CONFIDENCE_FLOOR
+    from irc_data.db.ingest_log import log_event
+
+    conf = float(extraction.get("confidence") or 0.0)
+    if conf < CONFIDENCE_FLOOR:
+        console.print(
+            f"[yellow]Quarantined[/yellow]: extractor confidence "
+            f"{conf:.2f} < floor {CONFIDENCE_FLOOR:.2f}. "
+            f"{len(race_results)} rows NOT imported."
+        )
+        if not dry_run:
+            log_event(
+                engine,
+                source=source,
+                event_type="extract",
+                status="quarantined",
+                reference=url,
+                reason=(
+                    f"confidence={conf:.2f} below floor "
+                    f"{CONFIDENCE_FLOOR:.2f}; {len(race_results)} rows skipped"
+                ),
+                meta={
+                    "event_name": event_name,
+                    "class_name": class_name,
+                    "row_count": len(race_results),
+                    "confidence": conf,
+                },
+            )
+        for r in race_results[:5]:
+            console.print(
+                f"  (quarantined) {r.place}  "
+                f"{r.raw_data.get('boat_name')!r}  TCC={r.tcc_at_race}"
+            )
+        if len(race_results) > 5:
+            console.print(f"  ... and {len(race_results) - 5} more")
+        return
 
     if dry_run:
         console.print("[yellow]--dry-run: not writing to DB[/yellow]")

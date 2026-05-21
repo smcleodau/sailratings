@@ -152,6 +152,13 @@ def extract_event(url: str, markdown: str) -> dict[str, Any]:
     return _failed("no tool_use in response", url)
 
 
+# Confidence floor for auto-import. Extractions below this are routed to
+# ingest_events as 'quarantined' and NOT written to race_results. The 14-day
+# parallel-run scaffolding and any human-review tooling pulls quarantined
+# events from ingest_events for re-extraction or manual override.
+CONFIDENCE_FLOOR = 0.70
+
+
 RESULTS_SYSTEM_PROMPT = """You extract sailing race results from a single
 scraped race page (HTML rendered to markdown, or a PDF rendered to
 markdown by Firecrawl). The page is the result table itself — not a
@@ -184,9 +191,44 @@ You will be given the URL and clean markdown. Return:
    - status (string): one of "finished", "DNF", "DNS", "DNC", "DSQ",
      "RET", "OCS". Default "finished" if a place is present.
 
-CRITICAL:
-- Do NOT invent boats. Only return rows you can clearly see in the
-  markdown table.
+TEXT FIDELITY (this is the most important rule):
+
+- Boat names and sail numbers MUST be copied **verbatim** from the
+  markdown. Character-for-character. Preserve all-caps (RAMPAGE 88,
+  SEAWOLF), spaces, punctuation, accents, mixed case. Do NOT
+  normalise, transliterate, expand, or "correct" anything.
+- If the markdown is garbled (PDF OCR artefacts: 'Rampage' → 'Ramage',
+  'Phoenix' → 'Phonex'), return what you see in the markdown anyway —
+  it's better to capture the raw text than to invent a guess. But if
+  more than ~20% of names look corrupted (mid-word vowel drops,
+  consonant swaps, made-up words), the PDF/HTML extraction is
+  unreliable: lower your confidence accordingly (see below).
+- Numbers are numbers. Copy TCCs and times exactly — do not round, do
+  not "fix" what looks like a typo. 1.866 stays 1.866 even if you
+  expect 1.366.
+
+CONFIDENCE CALIBRATION (be honest — this gates whether rows get
+imported):
+
+- 0.95–1.00: markdown is clean tabular data; every column maps
+  unambiguously to a field; you're highly confident every row is
+  accurate as printed.
+- 0.80–0.94: clean HTML/CSV-like markdown, but with one or two
+  ambiguous columns (e.g. sail-number column missing, two classes
+  interleaved). Some judgement applied but no invention.
+- 0.50–0.79: messy source — PDF with shaky OCR, table boundaries
+  unclear, some rows you had to guess at. A reasonable fraction of
+  rows are probably right; some may be wrong.
+- 0.20–0.49: degraded PDF text, hallucinated-looking names, ambiguous
+  table structure. Output should be treated as untrustworthy unless
+  human-reviewed.
+- 0.00–0.19: this is not a results page, or content is unparseable.
+  Return an empty results list.
+
+OTHER RULES:
+
+- Do NOT invent boats. Only return rows that appear in the markdown.
+  If the markdown only shows 30 rows, return 30, never 35.
 - Do NOT guess sail numbers. If the page omits one, return null.
 - Preserve the order the page lists boats — that's the finishing order.
 - If the page lists a TCH (time-corrected handicap), that's also TCC.
