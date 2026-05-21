@@ -1570,6 +1570,18 @@ def firecrawl_diff(ctx, source, limit, days):
         rate = len(matched) / len(db_names) if db_names else 0.0
         confidence = extraction.get("confidence") or 0.0
 
+        # Many legacy scrapers emit placeholder rows with no boat_name
+        # (e.g. ISORA series pages where most cells are "(0.0 DNC)"). The
+        # recall denominator (db_names) is the *named* legacy set; the raw
+        # row count is informational. We persist both so the dashboard can
+        # disambiguate honest under-extraction from legacy-side hollowness.
+        legacy_total = len(db_rows)
+        legacy_named = len(db_names)
+        hollow_pct = (
+            (legacy_total - legacy_named) * 100 // legacy_total
+            if legacy_total else 0
+        )
+
         with engine.begin() as conn:
             conn.execute(text("""
                 INSERT INTO firecrawl_diffs
@@ -1585,21 +1597,29 @@ def firecrawl_diff(ctx, source, limit, days):
                 "url": url,
                 "event_name": extraction.get("event_name") or u.event_name,
                 "event_date": u.event_date,
-                "legacy": len(db_rows),
+                "legacy": legacy_named,  # recall denominator, not raw count
                 "fc": len(new_names_raw),
                 "matched": len(matched),
                 "rate": round(rate, 3),
                 "conf": round(confidence, 3),
                 "miss": _json.dumps(missing),
                 "extra": _json.dumps(extra),
-                "notes": extraction.get("_error"),
+                "notes": (
+                    extraction.get("_error")
+                    or (
+                        f"legacy_total={legacy_total} of which "
+                        f"{hollow_pct}% were hollow (no boat_name)"
+                        if hollow_pct >= 25 else None
+                    )
+                ),
             })
 
         verdict = "[green]GREEN[/green]" if rate >= 0.95 else "[yellow]AMBER[/yellow]" if rate >= 0.85 else "[red]RED[/red]"
+        hollow_tag = f" (legacy raw={legacy_total} hollow={hollow_pct}%)" if hollow_pct >= 25 else ""
         console.print(
             f"  {verdict} {rate*100:5.1f}%  "
-            f"legacy={len(db_rows):>3} fc={len(new_names_raw):>3} "
-            f"matched={len(matched):>3}  {url[:80]}"
+            f"legacy_named={legacy_named:>3} fc={len(new_names_raw):>3} "
+            f"matched={len(matched):>3}{hollow_tag}  {url[:80]}"
         )
 
     console.print(f"[cyan]Done[/cyan] — view results at /justin/firecrawl (Diffs panel)")
