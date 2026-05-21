@@ -306,6 +306,55 @@ def scrape_wayback(ctx, boat):
     console.print(f"[green]Downloaded {len(downloaded)} historical PDFs.[/green]")
 
 
+@cli.command(name="wayback-tcc")
+@click.option("--start-year", type=int, default=2010, show_default=True)
+@click.option("--end-year", type=int, default=2025, show_default=True)
+@click.option(
+    "--out-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Where to write harvested CSVs. Default: "
+        "TCC_LISTINGS_DIR/historical."
+    ),
+)
+@click.option(
+    "--max-per-pattern",
+    type=int,
+    default=None,
+    help="Cap snapshots per CDX pattern (for smoke testing).",
+)
+@click.pass_context
+def wayback_tcc(ctx, start_year, end_year, out_dir, max_per_pattern):
+    """Harvest historical IRC TCC listings from the Wayback Machine."""
+    import asyncio
+
+    from irc_data.config import TCC_LISTINGS_DIR
+    from irc_data.scrapers.wayback import harvest_tcc_archives
+
+    target = Path(out_dir) if out_dir else (TCC_LISTINGS_DIR / "historical")
+    console.print(
+        f"Harvesting Wayback TCC snapshots {start_year}-{end_year} -> {target}"
+    )
+    archives = asyncio.run(
+        harvest_tcc_archives(
+            start_year=start_year,
+            end_year=end_year,
+            out_dir=target,
+            max_per_pattern=max_per_pattern,
+        )
+    )
+    by_year: dict[int, int] = {}
+    for a in archives:
+        by_year[a["year"]] = by_year.get(a["year"], 0) + 1
+    console.print(
+        f"[green]Harvested {len(archives)} CSVs across "
+        f"{len(by_year)} year(s).[/green]"
+    )
+    for yr in sorted(by_year):
+        console.print(f"  {yr}: {by_year[yr]}")
+
+
 @scrape.command(name="results")
 @click.option(
     "--source",
