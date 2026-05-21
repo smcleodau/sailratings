@@ -92,19 +92,36 @@ FACTS:
 
 
 IDENTITY_PROMPT = """SECTION: s02_identity
-GOAL: Describe who this boat is — design lineage, build metadata, and
-any historical name/sail observations that hint at re-rates or change
-of hands.
+GOAL: Make this section feel personal. The owner is reading their own
+boat's file — they want to see their name (or their skipper's name),
+their home club, and the people who've campaigned this hull.
 
-Cover:
-- Designer and builder (if known) and the design class.
-- Build year, principal dimensions (LOA, LWL, beam, displacement).
-- If FACTS.identities contains rows from multiple sources or with
-  different names/flags, narrate them as the boat's footprint across
-  our data sources. DO NOT speculate about owner changes unless the
-  identities list explicitly contains different owner names.
+Lead with the PEOPLE, then the boat:
 
-~200-300 words. No bullets unless listing >3 historical identities.
+1. OPEN with the current skipper and home club. If FACTS.current_skipper
+   is set, name them in the first sentence: "Currently campaigned by
+   {{current_skipper}} out of {{home_club}}." If FACTS.home_club is null,
+   omit the club; if FACTS.current_skipper is null, lead with the boat
+   instead.
+
+2. NEXT paragraph: walk FACTS.skipper_stints. Each stint has a name,
+   races count, first_date/last_date, wins, podiums. Narrate the boat's
+   campaign history — "She's been driven by N skippers in our data:
+   {{name1}} ({{races}} races since {{first_date.year}}, X wins / Y podiums),
+   {{name2}} (...)". Order by recency. This is the personal-history
+   paragraph the owner cares about most.
+
+3. THEN the boat: designer, builder, design class, build year, and
+   principal dimensions (LOA, LWL, beam, displacement) in 2-3 sentences.
+
+4. If FACTS.identities contains rows from multiple sources or different
+   flags, ONE sentence noting the boat's footprint across data sources.
+   DO NOT speculate about owner changes unless the identities list
+   explicitly contains different owner names.
+
+~300-400 words. NEVER invent names — only cite names from
+FACTS.current_skipper, FACTS.home_club, FACTS.skipper_stints[*].name,
+and FACTS.identities[*].owner.
 
 FACTS:
 {facts_json}
@@ -159,8 +176,8 @@ FACTS:
 
 PERFORMANCE_PROMPT = """SECTION: s06_performance
 GOAL: Analyse how this boat is actually racing — not just how she's rated.
-The Rating Advantage Index (RAI) tells us whether she's outperforming
-her TCC; the head-to-head record names her real rivals.
+Use the helm's name when you describe specific recent results so the
+owner can locate themselves in the data.
 
 Cover:
 - Headline: total finishes / wins / podiums (from FACTS).
@@ -168,14 +185,18 @@ Cover:
   RAI means she's beating boats with similar TCCs more often than
   the rating predicts; negative means she's underperforming her rating.
 - The recent_results timeline (from FACTS.recent_results). Cite the
-  most recent 2-3 events by name+place. NEVER invent regatta names.
+  most recent 2-3 events by name+place, AND name the skipper
+  (recent_results[i].skipper) for each — e.g. "Justin Johnson took
+  her to 8th of 10 at the December Summer Passage Race 4." This is
+  what makes the report feel like it's about THIS boat, not a generic
+  Sunfast 3300. NEVER invent regatta names or skipper names.
 - Event-type breakdown (FACTS.by_event_type — series, offshore, twilight).
   If she's strong in one bucket and weak in another, say so.
 - Head-to-head: name 2-3 named rivals from FACTS.head_to_head
   (with sail numbers) and the W-L record against each. NEVER invent
   rivals — they MUST be in FACTS.head_to_head.
 
-~400-500 words. Use the FACTS values exactly; no estimates.
+~450-550 words. Use the FACTS values exactly; no estimates.
 
 FACTS:
 {facts_json}

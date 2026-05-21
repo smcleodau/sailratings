@@ -7,6 +7,7 @@ the resulting Facts as input.
 from __future__ import annotations
 
 import logging
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import text
@@ -119,7 +120,16 @@ def build_rating_anatomy(engine: Engine, boat_id: int) -> RatingAnatomyFacts:
 
 
 def build_identity(engine: Engine, boat_id: int) -> IdentityFacts:
-    """Identity facts: build metadata + historical name/sail observations."""
+    """Identity facts: build metadata + historical name/sail observations
+    + personal context (skippers, home club) from race_results.raw_data.
+
+    Skipper and club aren't in any first-class column — they live inside
+    race_results.raw_data, populated by the sailsys + topyacht scrapers.
+    The report needs them because "who's been driving" is the single most
+    grounding fact for the owner reading their report.
+    """
+    from irc_data.api.services.report.facts import SkipperStint
+
     with engine.connect() as conn:
         boat = conn.execute(text("""
             SELECT b.boat_name, b.sail_number,
@@ -140,6 +150,47 @@ def build_identity(engine: Engine, boat_id: int) -> IdentityFacts:
             ORDER BY observed_date NULLS LAST
         """), {"id": boat_id}).fetchall()
 
+        # Skipper stints: aggregate by name across race_results.raw_data
+        skipper_rows = conn.execute(text("""
+            SELECT raw_data->>'skipper' AS skipper,
+                   COUNT(*)                                            AS races,
+                   MIN(event_date)                                     AS first_date,
+                   MAX(event_date)                                     AS last_date,
+                   COUNT(*) FILTER (WHERE place = 1)                   AS wins,
+                   COUNT(*) FILTER (WHERE place BETWEEN 1 AND 3)       AS podiums
+            FROM race_results
+            WHERE boat_id = :id
+              AND raw_data->>'skipper' IS NOT NULL
+              AND raw_data->>'skipper' <> ''
+            GROUP BY raw_data->>'skipper'
+            ORDER BY MAX(event_date) DESC NULLS LAST, races DESC
+        """), {"id": boat_id}).fetchall()
+
+        # Home club: most-frequent club from race raw_data
+        club_row = conn.execute(text("""
+            SELECT raw_data->>'boat_club' AS club, COUNT(*) AS n
+            FROM race_results
+            WHERE boat_id = :id
+              AND raw_data->>'boat_club' IS NOT NULL
+              AND raw_data->>'boat_club' <> ''
+            GROUP BY raw_data->>'boat_club'
+            ORDER BY n DESC LIMIT 1
+        """), {"id": boat_id}).first()
+
+    skipper_stints = [
+        SkipperStint(
+            name=r.skipper, races=r.races,
+            first_date=r.first_date, last_date=r.last_date,
+            wins=r.wins or 0, podiums=r.podiums or 0,
+        )
+        for r in skipper_rows
+    ]
+    # Current skipper = the one with the most recent race.
+    current_skipper = (
+        max(skipper_stints, key=lambda s: s.last_date or date.min).name
+        if skipper_stints else None
+    )
+
     def _f(v):
         return float(v) if v is not None else None
     return IdentityFacts(
@@ -159,6 +210,9 @@ def build_identity(engine: Engine, boat_id: int) -> IdentityFacts:
             )
             for r in identities
         ],
+        skipper_stints=skipper_stints,
+        home_club=(club_row.club if club_row else None),
+        current_skipper=current_skipper,
     )
 
 
@@ -381,10 +435,13 @@ def build_performance(engine: Engine, boat_id: int) -> PerformanceFacts:
             FROM race_results WHERE boat_id = :id
         """), {"id": boat_id}).first()
 
-        # Last 20 results with a finishing place
+        # Last 20 results with a finishing place — include skipper + club
+        # from raw_data so the report can cite who was driving each race.
         recent = conn.execute(text("""
             SELECT event_date, event_name, race_name, place, fleet_size,
-                   class_name, status
+                   class_name, status,
+                   raw_data->>'skipper'   AS skipper,
+                   raw_data->>'boat_club' AS club
             FROM race_results
             WHERE boat_id = :id AND place IS NOT NULL
             ORDER BY event_date DESC NULLS LAST, id DESC
@@ -469,6 +526,8 @@ def build_performance(engine: Engine, boat_id: int) -> PerformanceFacts:
                 fleet_size=r.fleet_size,
                 class_name=r.class_name,
                 status=r.status or "finished",
+                skipper=r.skipper,
+                club=r.club,
             ) for r in recent
         ],
         by_event_type=by_event_type,

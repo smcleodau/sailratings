@@ -46,6 +46,19 @@ class RaceResultLite:
     fleet_size: int | None
     class_name: str | None
     status: str
+    skipper: str | None = None       # from raw_data.skipper, names the helm
+    club: str | None = None          # from raw_data.boat_club
+
+
+@dataclass
+class SkipperStint:
+    """Aggregated count of races a named skipper has helmed this boat."""
+    name: str
+    races: int
+    first_date: date | None
+    last_date: date | None
+    wins: int = 0
+    podiums: int = 0
 
 
 @dataclass
@@ -117,6 +130,10 @@ class IdentityFacts:
     beam_max: float | None
     displacement_kg: float | None
     identities: list[Identity] = field(default_factory=list)
+    # Personal context — who's been driving the boat and where she sails from
+    skipper_stints: list[SkipperStint] = field(default_factory=list)
+    home_club: str | None = None       # most-frequent club from race_results.raw_data.boat_club
+    current_skipper: str | None = None # most recent skipper name from race_results
 
 
 @dataclass
