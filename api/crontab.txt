@@ -40,9 +40,11 @@ LOG_DIR=/home/irc-data/logs
 # ISORA — Irish Sea Offshore Racing Association. Weekly Tuesday 11:00.
 0 11 * * 2   cd $IRC_DATA_DIR && irc-data scrape results --source isora >> $LOG_DIR/isora_$(date +\%F).log 2>&1
 
-# RHKYC — Royal Hong Kong Yacht Club fleet. Weekly Wednesday 10:00 (timezone
-# offset: Wednesday morning UTC is a sensible quiet time for the Asia fleet).
-0 10 * * 3   cd $IRC_DATA_DIR && irc-data scrape results --source rhkyc >> $LOG_DIR/rhkyc_$(date +\%F).log 2>&1
+# RHKYC — Royal Hong Kong Yacht Club fleet. Weekly Wednesday 10:00 UTC.
+# Cut over to Firecrawl discover-and-ingest against the public results index
+# (see Task A5/A7). The bespoke scraper at irc_data.scrapers.rhkyc is retained
+# during the parallel-run window and retired in a follow-up commit.
+0 10 * * 3   cd $IRC_DATA_DIR && irc-data discover-and-ingest --seed-url "https://www.rhkyc.org.hk/sailing-results" --source rhkyc >> $LOG_DIR/rhkyc_$(date +\%F).log 2>&1
 
 # TopYacht — Southport YC + major AU regattas (HIRW, ABRW, FoS, ORWA, CYCSA…).
 # Daily 02:30 UTC. RQYS/SYC publish race-by-race; an annual cron pass would
