@@ -33,6 +33,30 @@ def _parse_date(date_str: str | None) -> date | None:
     return None
 
 
+_EXPLICIT_STATUS_CODES = {"DNF", "DNS", "DNC", "DSQ", "RET", "OCS", "RAF", "RDG", "ZFP"}
+
+
+def _derive_status(raw_data: dict | None, place: int | None) -> str:
+    """Decide race_results.status from a scraper's raw_data payload.
+
+    SailSys and other scrapers populate raw_data['finish_time'] = None when a
+    boat did not finish. A hardcoded 'finished' here mislabels every DNF in
+    the database (e.g. SUN FISH B2G 2026, boat_id 12330).
+    """
+    raw = raw_data or {}
+    explicit = (raw.get("status") or "").strip().upper()
+    if explicit in _EXPLICIT_STATUS_CODES:
+        return explicit
+    if "finish_time" in raw:
+        if raw["finish_time"]:
+            return "finished"
+        # SailSys sometimes returns a handicap place without a raw finish_time
+        # for boats that did finish (corrected time present, raw time omitted).
+        # Only treat as DNF when there is no place either.
+        return "DNF" if place is None else "finished"
+    return "finished"
+
+
 def _safe_decimal(val) -> Decimal | None:
     if val is None:
         return None
@@ -145,7 +169,7 @@ def import_sailsys_json(engine: Engine, json_path: Path) -> dict:
                 rating_type="irc_tcc",
                 rating_value=tcc,
                 tcc_at_race=tcc,
-                status="finished",
+                status=_derive_status(rec, place=None),
                 raw_data={
                     "boat_name": boat_name,
                     "hull_id": hull_id,
@@ -243,7 +267,7 @@ def import_scraper_results(
                 fleet_size=fleet_size,
                 class_name=class_name,
                 division=result.division,
-                status="finished",
+                status=_derive_status(result.raw_data, place=result.place),
                 transport=transport,
                 raw_data=result.raw_data,
             )
