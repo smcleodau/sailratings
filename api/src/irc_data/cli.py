@@ -1051,15 +1051,32 @@ def scrape_orc(ctx, country, snapshot_date, no_archive):
 
 
 @scrape.command(name="orc-detail")
-@click.option("--limit", "-l", type=int, default=None, help="Max certs to fetch (for testing)")
+@click.option("--limit", "-l", type=int, default=None, help="Max certs to fetch (rate-limit-friendly).")
+@click.option(
+    "--backlog",
+    is_flag=True,
+    help=(
+        "Backlog mode: process only certs missing GPH/CDL/allowances. "
+        "When omitted, the command behaves identically (the underlying "
+        "implementation already filters to NULL-GPH rows on the latest "
+        "snapshot); the flag exists to make cron intent explicit and to "
+        "default --limit to 500 for nightly runs."
+    ),
+)
 @click.pass_context
-def scrape_orc_detail(ctx, limit):
+def scrape_orc_detail(ctx, limit, backlog):
     """Backfill ORC certificate detail data (GPH, CDL, polars) from DownBoatRMS API."""
     import asyncio
 
     from irc_data.scrapers.orc import backfill_orc_details
 
+    # In --backlog mode, default to 500 certs/run unless the operator overrides.
+    if backlog and limit is None:
+        limit = 500
+
     console.print("Backfilling ORC certificate details (GPH, CDL, dimensions, polars)...")
+    if backlog:
+        console.print(f"  Mode: backlog (limit={limit})")
     stats = asyncio.run(backfill_orc_details(limit=limit))
 
     console.print(f"\n[green]ORC detail backfill complete:[/green]")
@@ -2113,6 +2130,60 @@ def dedup_orc_snapshots(ctx, batch_size):
     console.print(f"  Rows deleted:   {stats['rows_deleted']}")
 
 
+@cli.group("report")
+def report_group():
+    """Diagnostic reports (orphans, coverage)."""
+
+
+@report_group.command("orc-orphans")
+@click.pass_context
+def report_orc_orphans(ctx):
+    """ORC certs that haven't matched to an IRC boat, by country + reason."""
+    from irc_data.diagnostics.orc_reports import orphans_report
+
+    engine = ctx.obj["engine"]
+    by_country, reasons = orphans_report(engine)
+
+    console.print("[bold]=== ORC orphans by country ===[/bold]")
+    if not by_country:
+        console.print("  [green]No orphans.[/green]")
+    else:
+        for row in by_country:
+            console.print(f"  {row.country_id or '(no country)':6}  {row.orphans}")
+
+    console.print("\n[bold]=== Top match-failure reasons (last 7 days) ===[/bold]")
+    if not reasons:
+        console.print(
+            "  [yellow](no rows — match-boats hasn't logged any orphans yet)[/yellow]"
+        )
+    else:
+        for row in reasons:
+            console.print(f"  {row.n:4d}  {row.reason}")
+
+
+@report_group.command("orc-detail-coverage")
+@click.pass_context
+def report_orc_detail_coverage(ctx):
+    """How many ORC certs still lack GPH/CDL/allowances, by country."""
+    from irc_data.diagnostics.orc_reports import detail_coverage_report
+
+    engine = ctx.obj["engine"]
+    rows = detail_coverage_report(engine)
+    console.print(
+        f"{'country':10}  {'total':>6}  {'with detail':>12}  {'missing':>8}"
+    )
+    if not rows:
+        console.print("  [yellow](no ORC certs in DB)[/yellow]")
+        return
+    for row in rows:
+        console.print(
+            f"{(row.country_id or '(none)'):10}  "
+            f"{row.total:6d}  "
+            f"{row.with_detail:12d}  "
+            f"{row.missing_detail:8d}"
+        )
+
+
 @cli.command(name="refresh-views")
 @click.pass_context
 def refresh_views(ctx):
@@ -2130,8 +2201,17 @@ def refresh_views(ctx):
 
 @cli.command(name="match-boats")
 @click.option("--dry-run", is_flag=True, help="Show matches without writing to DB")
+@click.option(
+    "--orc-only",
+    is_flag=True,
+    help=(
+        "Fast path for daily cron: match ORC certs to boats and record ORC "
+        "identities only. Skips IRC-side identity recording and design "
+        "backfills (which are slower and don't change between ORC scrapes)."
+    ),
+)
 @click.pass_context
-def match_boats(ctx, dry_run):
+def match_boats(ctx, dry_run, orc_only):
     """Match ORC certificates to IRC boats by sail number and name."""
     from irc_data.matching.identity import (
         backfill_boat_details_from_orc,
@@ -2160,14 +2240,21 @@ def match_boats(ctx, dry_run):
         return
 
     console.print("\n[bold]Step 2:[/bold] Recording identity observations...")
-    irc_ids = record_identities_from_irc(engine)
-    console.print(f"  IRC identities recorded: {irc_ids}")
+    if not orc_only:
+        irc_ids = record_identities_from_irc(engine)
+        console.print(f"  IRC identities recorded: {irc_ids}")
     orc_ids = record_identities_from_orc(engine)
     console.print(f"  ORC identities recorded: {orc_ids}")
 
     console.print("\n[bold]Step 3:[/bold] Backfilling boat details from ORC...")
     backfilled = backfill_boat_details_from_orc(engine)
     console.print(f"  Boats updated with ORC data: {backfilled}")
+
+    if orc_only:
+        console.print(
+            "\n[yellow]--orc-only: skipping IRC cert + SailSys design backfill.[/yellow]"
+        )
+        return
 
     console.print("\n[bold]Step 4:[/bold] Backfilling design from IRC certificates...")
     irc_design_count = backfill_design_from_irc_certs(engine)

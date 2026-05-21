@@ -26,8 +26,9 @@ def normalize_sail(sail_no: str | None) -> str:
 def normalize_sail_tokens(sail_no: str | None) -> set[str]:
     """Return the set of plausible tokens a sail string identifies.
 
-    Handles scraper concatenations (`2561&011&192561`), comma lists, and
-    class-prefix variants (`EAUS1213` → `{EAUS1213, AUS1213, 1213}`).
+    Handles scraper concatenations (`2561&011&192561`), comma lists,
+    class-prefix variants (`EAUS1213` → `{EAUS1213, AUS1213, 1213}`),
+    and bare ISO country prefixes (`AUS1213` → `{AUS1213, 1213}`).
     Two boats whose token sets intersect are sail-identifier matches.
     """
     if not sail_no:
@@ -43,7 +44,37 @@ def normalize_sail_tokens(sail_no: str | None) -> set[str]:
         norm = normalize_sail(chunk)
         if norm:
             tokens.add(norm)
+            bare = _strip_country_prefix(norm)
+            if bare:
+                tokens.add(bare)
     return tokens
+
+
+# Three-letter ISO sail-number country prefixes (ORC + IRC use these).
+# Single-letter European prefixes (D, F, I, E, ...) are deliberately omitted
+# here because they collide with the class-letter prefixes in
+# ``_SAILSYS_CLASS_PREFIXES`` and would over-match — those are handled via
+# ``normalize_sailsys_sail`` instead.
+_ISO_SAIL_COUNTRY_PREFIXES = (
+    "AUS", "GBR", "NZL", "USA", "FRA", "GER", "IRL", "NED",
+    "ITA", "ESP", "BEL", "SWE", "NOR", "DEN", "FIN", "POL",
+    "CRO", "SLO", "RUS", "HKG", "JPN", "KOR", "SIN", "RSA",
+    "ARG", "BRA", "CAN", "CHI", "POR", "CZE", "HUN", "TUR",
+    "ISR", "GRE", "SUI", "MLT", "CYP", "MON", "LUX", "EST",
+    "LAT", "LTU", "ROU", "BUL", "UKR", "MAS", "PHI", "THA",
+)
+
+
+def _strip_country_prefix(s: str) -> str | None:
+    """If ``s`` starts with a known ISO country code followed by a digit,
+    return the bare numeric/alphanumeric remainder; otherwise None.
+    """
+    if not s:
+        return None
+    for prefix in _ISO_SAIL_COUNTRY_PREFIXES:
+        if s.startswith(prefix) and len(s) > len(prefix) and s[len(prefix)].isdigit():
+            return s[len(prefix):]
+    return None
 
 
 # SailSys class-area prefixes: class letter(s) + country code + number.
@@ -143,10 +174,14 @@ def match_orc_to_irc(engine: Engine, dry_run: bool = False) -> dict:
         "unmatched": 0,
     }
 
+    # Cache the orphan-event payloads; we log them after committing the
+    # UPDATE so a write-side failure can't poison the transaction.
+    orphan_events: list[dict] = []
+
     with engine.begin() as conn:
         # Get all unmatched ORC certificates
         orc_certs = conn.execute(text("""
-            SELECT id, sail_no, yacht_name, country_id, class_name
+            SELECT id, sail_no, yacht_name, country_id, class_name, ref_no
             FROM orc_certificates
             WHERE boat_id IS NULL
             ORDER BY country_id, yacht_name
@@ -166,17 +201,22 @@ def match_orc_to_irc(engine: Engine, dry_run: bool = False) -> dict:
             FROM boats
         """)).fetchall()
 
-        # Index by normalized sail number
+        # Index by every sail-token variant (`EAUS1213`, `AUS1213`, `1213`)
+        # so an ORC cert tagged with any of those finds the boat. Dedup on
+        # lookup by boat id.
         sail_index: dict[str, list[dict]] = {}
         for boat in irc_boats:
-            norm = normalize_sail(boat.sail_number)
-            if norm:
-                sail_index.setdefault(norm, []).append({
-                    "id": boat.id,
-                    "sail_number": boat.sail_number,
-                    "boat_name": boat.boat_name,
-                    "country": boat.country,
-                })
+            tokens = normalize_sail_tokens(boat.sail_number)
+            if not tokens:
+                continue
+            entry = {
+                "id": boat.id,
+                "sail_number": boat.sail_number,
+                "boat_name": boat.boat_name,
+                "country": boat.country,
+            }
+            for tok in tokens:
+                sail_index.setdefault(tok, []).append(entry)
 
         # Also index by normalized name + country for fallback matching
         name_country_index: dict[str, list[dict]] = {}
@@ -199,8 +239,18 @@ def match_orc_to_irc(engine: Engine, dry_run: bool = False) -> dict:
             irc_country = _orc_country_to_irc_country(orc.country_id)
             matched_boat_id = None
 
-            # Strategy 1: Exact sail number match
-            candidates = sail_index.get(orc_sail_norm, [])
+            # Strategy 1: Token-intersection sail match. Union the entries
+            # at every token derived from the ORC sail string, deduped by
+            # boat id (same boat may appear under several tokens).
+            orc_tokens = normalize_sail_tokens(orc.sail_no)
+            seen_ids: set = set()
+            candidates: list[dict] = []
+            for tok in orc_tokens:
+                for entry in sail_index.get(tok, []):
+                    if entry["id"] in seen_ids:
+                        continue
+                    seen_ids.add(entry["id"])
+                    candidates.append(entry)
 
             if len(candidates) == 1:
                 # Unique match — but if sail is ambiguous, verify name too
@@ -243,6 +293,17 @@ def match_orc_to_irc(engine: Engine, dry_run: bool = False) -> dict:
                 updates.append((matched_boat_id, orc.id))
             else:
                 stats["unmatched"] += 1
+                orphan_events.append({
+                    "reference": orc.ref_no,
+                    "reason": (
+                        f"no boat match for sail={orc.sail_no!r} "
+                        f"name={orc.yacht_name!r}"
+                    ),
+                    "meta": {
+                        "country_id": orc.country_id,
+                        "class_name": orc.class_name,
+                    },
+                })
 
         # Apply updates
         if not dry_run and updates:
@@ -251,6 +312,17 @@ def match_orc_to_irc(engine: Engine, dry_run: bool = False) -> dict:
                     text("UPDATE orc_certificates SET boat_id = :boat_id WHERE id = :orc_id"),
                     {"boat_id": boat_id, "orc_id": orc_id},
                 )
+
+    # Log orphans after the matching transaction commits, so a logging
+    # hiccup never rolls back the boat-id assignments.
+    if not dry_run and orphan_events:
+        from irc_data.db.ingest_log import log_event
+
+        for ev in orphan_events:
+            log_event(
+                engine, "orc", "match", "orphan",
+                ev["reference"], ev["reason"], meta=ev["meta"],
+            )
 
     stats["matched_total"] = stats["matched_sail_exact"] + stats["matched_sail_name"] + stats["matched_name_country"]
     return stats
