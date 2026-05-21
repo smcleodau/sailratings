@@ -92,6 +92,12 @@ LOG_DIR=/home/irc-data/logs
 # is enforced inside the command. Reads RESEND_API_KEY + ALERT_EMAIL from env.
 */15 * * * * cd $IRC_DATA_DIR && irc-data scrape-watchdog >> $LOG_DIR/watchdog_$(date +\%F).log 2>&1
 
+# === Discovery seed-crawl (Task A7) ===
+# Nightly 22:30 UTC: walk the aggregator/fixture sites listed in
+# DEFAULT_AGGREGATORS (see cli.py) and queue every discovered URL into
+# event_discovery for Justin to confirm at /justin/discovery.
+30 22 * * *  cd $IRC_DATA_DIR && irc-data seed-crawl --aggregators >> $LOG_DIR/seedcrawl_$(date +\%F).log 2>&1
+
 # === Cleanup ===
 # Delete logs older than 30 days (midnight)
 0 0 * * *    find /home/irc-data/logs -name "*.log" -mtime +30 -delete

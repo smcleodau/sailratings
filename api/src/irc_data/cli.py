@@ -2625,6 +2625,112 @@ def discover_events(ctx, url, seed_url, limit, auto_ingest):
                 console.print(f"  [red]ingest #{r['id']} failed: {e}[/red]")
 
 
+@cli.command(name="discover-and-ingest")
+@click.option("--seed-url", required=True,
+              help="Seed URL — Firecrawl maps it, then race results are "
+                   "extracted + imported from every reachable sub-URL.")
+@click.option(
+    "--source",
+    type=click.Choice(["cowesweek", "sydneyhobart", "rhkyc", "isora",
+                       "sailracehq", "sailwave", "yachtscoring", "rpayc",
+                       "firecrawl"]),
+    required=True,
+    help="Value written to race_results.source.",
+)
+@click.option("--max-pages", type=int, default=20,
+              help="Cap on how many mapped URLs to crawl per run.")
+@click.option("--tag-as", default="firecrawl",
+              help="Value written to race_results.transport (typically "
+                   "'firecrawl' during parallel-run; can be 'legacy' to "
+                   "replay an old scraper through the same pipeline).")
+@click.pass_context
+def discover_and_ingest(ctx, seed_url, source, max_pages, tag_as):
+    """Map a seed URL, extract race results from every page, import them.
+
+    The Firecrawl-based replacement for the bespoke ``scrape results
+    --source X`` crons. Each mapped URL is scraped, the markdown is sent
+    to Claude's ``extract_results``, and structured rows are inserted via
+    ``import_scraper_results`` with the supplied source + transport tag.
+
+    Fails soft per-URL: a single bad page doesn't poison the batch.
+    """
+    from irc_data.discovery.orchestrator import seed_crawl_and_ingest
+
+    engine = ctx.obj["engine"]
+    console.print(
+        f"[cyan]discover-and-ingest[/cyan] seed={seed_url} source={source} "
+        f"max_pages={max_pages} tag_as={tag_as}"
+    )
+
+    stats = seed_crawl_and_ingest(
+        engine,
+        seed_url=seed_url,
+        source=source,
+        max_pages=max_pages,
+        transport_tag=tag_as,
+    )
+    console.print(
+        f"[green]urls_mapped={stats['urls_mapped']}[/green]  "
+        f"with_results={stats['urls_with_results']}  "
+        f"failed={stats['urls_failed']}  "
+        f"rows_imported={stats['rows_imported']}  "
+        f"rows_matched={stats['rows_matched']}"
+    )
+
+
+# Default aggregator seed URLs used by `irc-data seed-crawl --aggregators`.
+# Edit here to add/remove top-level sources for the nightly discovery loop.
+DEFAULT_AGGREGATORS = [
+    "https://www.rya.org.uk/racing/fixtures",
+    "https://www.australiansailing.org/events",
+    "https://www.rorc.org/events",
+]
+
+
+@cli.command(name="seed-crawl")
+@click.option("--aggregators", is_flag=True,
+              help="Crawl the built-in list of aggregator/fixture sites and "
+                   "queue every discovered URL into event_discovery.")
+@click.option("--seed-url", default=None,
+              help="Optional override — crawl just this one seed URL.")
+@click.option("--limit", type=int, default=50,
+              help="Max URLs to map per seed (default 50).")
+@click.pass_context
+def seed_crawl(ctx, aggregators, seed_url, limit):
+    """Nightly seed-crawl. Map aggregator sites → queue URLs in event_discovery.
+
+    Aggregator pages are calendars/fixture lists — not results pages
+    themselves — so we use the discovery service (extract_event, not
+    extract_results). Rows land in ``event_discovery`` with status='pending'
+    for Justin to confirm at /justin/discovery before ingestion.
+    """
+    from irc_data.discovery.service import discover_seed
+
+    engine = ctx.obj["engine"]
+    seeds: list[str] = []
+    if aggregators:
+        seeds.extend(DEFAULT_AGGREGATORS)
+    if seed_url:
+        seeds.append(seed_url)
+    if not seeds:
+        console.print(
+            "[red]Pass --aggregators and/or --seed-url URL.[/red]"
+        )
+        raise SystemExit(2)
+
+    total = 0
+    for seed in seeds:
+        console.print(f"[cyan]mapping[/cyan] {seed}")
+        try:
+            rows = discover_seed(engine, seed, limit=limit)
+            console.print(f"  {len(rows)} URLs queued / refreshed")
+            total += len(rows)
+        except Exception as e:
+            console.print(f"  [red]failed: {e}[/red]")
+
+    console.print(f"[green]done — {total} URLs total[/green]")
+
+
 @cli.command(name="scrape-watchdog")
 @click.option("--cooldown-hours", type=int, default=4,
               help="Minimum hours between repeat alerts for the same source.")
