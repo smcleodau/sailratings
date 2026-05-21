@@ -14,7 +14,8 @@ from sqlalchemy.engine import Engine
 
 from irc_data.analysis.regression import get_boat_sensitivity_context
 from irc_data.api.services.report.facts import (
-    ExecutiveSummaryFacts, MeasurementContribution, RatingAnatomyFacts,
+    ExecutiveSummaryFacts, Identity, IdentityFacts,
+    MeasurementContribution, RatingAnatomyFacts,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,53 @@ def build_rating_anatomy(engine: Engine, boat_id: int) -> RatingAnatomyFacts:
         explained_variance_pct=round((sens.get("r_squared") or 0) * 100, 1),
         model_tier=sens.get("model_tier", ""),
         n_boats_in_class=sens.get("n_boats") or 0,
+    )
+
+
+# ── Identity & History ────────────────────────────────────────────────
+
+
+def build_identity(engine: Engine, boat_id: int) -> IdentityFacts:
+    """Identity facts: build metadata + historical name/sail observations."""
+    with engine.connect() as conn:
+        boat = conn.execute(text("""
+            SELECT b.boat_name, b.sail_number,
+                   COALESCE(b.design_canonical, b.design) AS design,
+                   b.designer, b.builder, b.year_built,
+                   b.loa, b.lwl, b.beam_max, b.displacement_kg
+            FROM boats b WHERE b.id = :id
+        """), {"id": boat_id}).first()
+        if not boat:
+            return IdentityFacts(
+                boat_name=f"boat #{boat_id}", sail_number="", design="",
+                designer=None, builder=None, year_built=None,
+                loa=None, lwl=None, beam_max=None, displacement_kg=None,
+            )
+        identities = conn.execute(text("""
+            SELECT boat_name, sail_number, owner, flag, source, observed_date
+            FROM boat_identities WHERE boat_id = :id
+            ORDER BY observed_date NULLS LAST
+        """), {"id": boat_id}).fetchall()
+
+    def _f(v):
+        return float(v) if v is not None else None
+    return IdentityFacts(
+        boat_name=boat.boat_name,
+        sail_number=boat.sail_number or "",
+        design=boat.design or "",
+        designer=boat.designer,
+        builder=boat.builder,
+        year_built=boat.year_built,
+        loa=_f(boat.loa), lwl=_f(boat.lwl), beam_max=_f(boat.beam_max),
+        displacement_kg=_f(boat.displacement_kg),
+        identities=[
+            Identity(
+                boat_name=r.boat_name or "", sail_number=r.sail_number,
+                owner=r.owner, flag=r.flag, source=r.source,
+                observed_date=r.observed_date,
+            )
+            for r in identities
+        ],
     )
 
 

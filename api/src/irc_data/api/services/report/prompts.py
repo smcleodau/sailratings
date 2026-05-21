@@ -91,4 +91,24 @@ FACTS:
 """
 
 
+IDENTITY_PROMPT = """SECTION: s02_identity
+GOAL: Describe who this boat is — design lineage, build metadata, and
+any historical name/sail observations that hint at re-rates or change
+of hands.
+
+Cover:
+- Designer and builder (if known) and the design class.
+- Build year, principal dimensions (LOA, LWL, beam, displacement).
+- If FACTS.identities contains rows from multiple sources or with
+  different names/flags, narrate them as the boat's footprint across
+  our data sources. DO NOT speculate about owner changes unless the
+  identities list explicitly contains different owner names.
+
+~200-300 words. No bullets unless listing >3 historical identities.
+
+FACTS:
+{facts_json}
+"""
+
+
 # More section prompts added per-task as each section is built.
