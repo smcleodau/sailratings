@@ -16,6 +16,7 @@ from irc_data.analysis.regression import get_boat_sensitivity_context
 from irc_data.api.services.report.facts import (
     ExecutiveSummaryFacts, Identity, IdentityFacts,
     MeasurementContribution, RatingAnatomyFacts,
+    RatingEvolutionFacts, RatingSnapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,51 @@ def build_identity(engine: Engine, boat_id: int) -> IdentityFacts:
             )
             for r in identities
         ],
+    )
+
+
+# ── Rating Evolution ───────────────────────────────────────────────────
+
+
+def build_rating_evolution(engine: Engine, boat_id: int) -> RatingEvolutionFacts:
+    """Trace the boat's TCC over time + cert re-issue dates."""
+    with engine.connect() as conn:
+        boat = conn.execute(text(
+            "SELECT boat_name FROM boats WHERE id = :id"
+        ), {"id": boat_id}).first()
+        snaps = conn.execute(text("""
+            SELECT snapshot_date AS date, tcc, cert_year, 'irc_tcc' AS source
+            FROM tcc_snapshots WHERE boat_id = :id
+            ORDER BY snapshot_date
+        """), {"id": boat_id}).fetchall()
+        certs = conn.execute(text("""
+            SELECT issue_date FROM irc_certificates
+            WHERE boat_id = :id AND issue_date IS NOT NULL
+            ORDER BY issue_date
+        """), {"id": boat_id}).fetchall()
+
+    snapshots = [
+        RatingSnapshot(date=s.date, tcc=s.tcc, cert_year=s.cert_year, source=s.source)
+        for s in snaps
+    ]
+    largest_jump = 0.0
+    largest_jump_date = None
+    for i in range(1, len(snapshots)):
+        diff = float(snapshots[i].tcc) - float(snapshots[i - 1].tcc)
+        if abs(diff) > abs(largest_jump):
+            largest_jump = diff
+            largest_jump_date = snapshots[i].date
+    first = snapshots[0].tcc if snapshots else None
+    latest = snapshots[-1].tcc if snapshots else None
+    return RatingEvolutionFacts(
+        boat_name=(boat.boat_name if boat else f"boat #{boat_id}"),
+        snapshots=snapshots,
+        cert_reissue_dates=[c.issue_date for c in certs],
+        first_snapshot_tcc=first,
+        latest_snapshot_tcc=latest,
+        total_movement=(float(latest) - float(first)) if (first and latest) else 0.0,
+        largest_jump_tcc=largest_jump,
+        largest_jump_date=largest_jump_date,
     )
 
 

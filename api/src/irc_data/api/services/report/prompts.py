@@ -111,4 +111,27 @@ FACTS:
 """
 
 
+RATING_EVOLUTION_PROMPT = """SECTION: s04_rating_evolution
+GOAL: Trace how this boat's TCC has moved over time. The chart shows
+the time series; the prose explains what the chart is showing.
+
+Cover:
+- Lead with the total movement: "Her rating has moved from {first_tcc} to
+  {latest_tcc}, a {total_movement} swing across {n_snapshots} certificates."
+- If FACTS.largest_jump_tcc has absolute value >= 0.003, call out
+  the specific jump (which date, what changed).
+- One sentence on the relationship between cert re-issues (FACTS.
+  cert_reissue_dates) and TCC steps. Re-issues with no TCC change
+  are administrative; re-issues that coincide with TCC steps are
+  the interesting ones.
+
+Refer to "the chart above" once when discussing the time series.
+
+~250-350 words.
+
+FACTS:
+{facts_json}
+"""
+
+
 # More section prompts added per-task as each section is built.
