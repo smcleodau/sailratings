@@ -356,6 +356,55 @@ def scrape_wayback(ctx, boat):
     console.print(f"[green]Downloaded {len(downloaded)} historical PDFs.[/green]")
 
 
+@cli.command(name="wayback-tcc")
+@click.option("--start-year", type=int, default=2010, show_default=True)
+@click.option("--end-year", type=int, default=2025, show_default=True)
+@click.option(
+    "--out-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Where to write harvested CSVs. Default: "
+        "TCC_LISTINGS_DIR/historical."
+    ),
+)
+@click.option(
+    "--max-per-pattern",
+    type=int,
+    default=None,
+    help="Cap snapshots per CDX pattern (for smoke testing).",
+)
+@click.pass_context
+def wayback_tcc(ctx, start_year, end_year, out_dir, max_per_pattern):
+    """Harvest historical IRC TCC listings from the Wayback Machine."""
+    import asyncio
+
+    from irc_data.config import TCC_LISTINGS_DIR
+    from irc_data.scrapers.wayback import harvest_tcc_archives
+
+    target = Path(out_dir) if out_dir else (TCC_LISTINGS_DIR / "historical")
+    console.print(
+        f"Harvesting Wayback TCC snapshots {start_year}-{end_year} -> {target}"
+    )
+    archives = asyncio.run(
+        harvest_tcc_archives(
+            start_year=start_year,
+            end_year=end_year,
+            out_dir=target,
+            max_per_pattern=max_per_pattern,
+        )
+    )
+    by_year: dict[int, int] = {}
+    for a in archives:
+        by_year[a["year"]] = by_year.get(a["year"], 0) + 1
+    console.print(
+        f"[green]Harvested {len(archives)} CSVs across "
+        f"{len(by_year)} year(s).[/green]"
+    )
+    for yr in sorted(by_year):
+        console.print(f"  {yr}: {by_year[yr]}")
+
+
 @scrape.command(name="results")
 @click.option(
     "--source",
@@ -964,6 +1013,59 @@ def scrape_historical_certs(ctx, dry_run, no_offset):
         )
 
 
+@cli.command(name="backfill-irc-certs")
+@click.option(
+    "--tcc-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Directory of harvested TCC CSV snapshots. "
+        "Default: TCC_LISTINGS_DIR/historical."
+    ),
+)
+@click.option(
+    "--strategy",
+    type=click.Choice(["all", "live", "wayback", "csv"]),
+    default="all",
+    show_default=True,
+)
+@click.option("--no-resume", is_flag=True, help="Ignore .irc_backfill_state.json")
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    help="Cap number of certs probed (for testing).",
+)
+@click.pass_context
+def backfill_irc_certs(ctx, tcc_dir, strategy, no_resume, limit):
+    """Multi-strategy historical IRC certificate backfill (Plan B orchestrator)."""
+    import asyncio
+
+    from irc_data.config import TCC_LISTINGS_DIR
+    from irc_data.scrapers.cert_index import build_index_from_tcc_dir
+    from irc_data.scrapers.irc_backfill import backfill_from_index
+
+    src = Path(tcc_dir) if tcc_dir else (TCC_LISTINGS_DIR / "historical")
+    console.print(f"Building cert-number index from {src}...")
+    idx = build_index_from_tcc_dir(src)
+    console.print(f"  {len(idx)} unique cert numbers")
+
+    if limit:
+        idx = idx[:limit]
+        console.print(f"  --limit applied: probing first {len(idx)} entries")
+
+    if not idx:
+        console.print("[yellow]Index is empty; run `irc-data wayback-tcc` first.[/yellow]")
+        return
+
+    stats = asyncio.run(backfill_from_index(idx, resume=not no_resume))
+    console.print(
+        f"[green]Found live: {stats['found_live']}, "
+        f"wayback: {stats['found_wayback']}, "
+        f"missing: {stats['not_found']}[/green]"
+    )
+
+
 @scrape.command(name="cert-probe")
 @click.option("--design", "-d", default="Sunfast 3300", help="Boat design to probe")
 @click.option("--range", "scan_range", type=int, default=5000, help="How far back to scan")
@@ -1455,10 +1557,18 @@ def firecrawl_diff(ctx, source, limit, days):
 
 @cli.command(name="parse-certs")
 @click.option("--dir", "cert_dir", type=click.Path(path_type=Path), default=None)
+@click.option(
+    "--include-historical",
+    is_flag=True,
+    help=(
+        "Also sweep HISTORICAL_CERTS_DIR (PDFs harvested by "
+        "`backfill-irc-certs`)."
+    ),
+)
 @click.pass_context
-def parse_certs(ctx, cert_dir):
+def parse_certs(ctx, cert_dir, include_historical):
     """Parse downloaded certificate PDFs and insert into database."""
-    from irc_data.config import CERTIFICATES_DIR
+    from irc_data.config import CERTIFICATES_DIR, HISTORICAL_CERTS_DIR
     from irc_data.db.operations import (
         find_boat_by_cert_number,
         find_boat_by_sail_number,
@@ -1470,9 +1580,17 @@ def parse_certs(ctx, cert_dir):
     )
 
     engine = ctx.obj["engine"]
-    cert_dir = cert_dir or CERTIFICATES_DIR
-    console.print(f"Parsing PDFs in {cert_dir}...")
-    results = parse_all_certificates(cert_dir)
+    dirs: list[Path] = [Path(cert_dir) if cert_dir else CERTIFICATES_DIR]
+    if include_historical and HISTORICAL_CERTS_DIR not in dirs:
+        dirs.append(HISTORICAL_CERTS_DIR)
+
+    results: list = []
+    for d in dirs:
+        console.print(f"Parsing PDFs in {d}...")
+        if not d.exists():
+            console.print(f"  [yellow]{d} does not exist; skipping[/yellow]")
+            continue
+        results.extend(parse_all_certificates(d))
     console.print(f"Parsed {len(results)} certificates")
 
     inserted = 0
