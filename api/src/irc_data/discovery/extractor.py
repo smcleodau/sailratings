@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -240,28 +241,56 @@ OTHER RULES:
 """
 
 
-def extract_results(url: str, markdown: str) -> dict[str, Any]:
-    """Extract a structured list of race results from a results page.
+# Multi-class chunking helpers -----------------------------------------------
+# Matches markdown section headings that delimit separate IRC class result
+# blocks. Two common Sailwave formats:
+#   "### IRC Class 1 Fleet"              (class name leads the heading)
+#   "### RaceName - IRC Class 2 Fleet"   (race name prefixes the heading)
+_CLASS_HEADER_RE = re.compile(
+    r"^#{1,6}\s*(?:"
+    r"IRC\s+(?:Class\s+)?(?:Zero|One|Two-Handed|\d+[A-Z]?)\b"  # "### IRC Class 1 Fleet"
+    r"|(?:IRC\s+)?Division\s+\w+"                               # "### Division A"
+    r"|Class\s+\d+[A-Z]?"                                       # "### Class 3"
+    r"|[^|\n]*\bIRC\s+Class\s+\d+[A-Z]?\b"                    # "### RaceName - IRC Class 2 Fleet"
+    r").*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_ROW_LINE_RE = re.compile(r"^\|.*\|.*\|.*$", re.MULTILINE)
 
-    Returns:
-        {
-            "event_name": str,
-            "event_date": "YYYY-MM-DD" | None,
-            "race_name": str | None,
-            "class_name": str | None,
-            "results": [
-                {"place": int|None, "boat_name": str, "sail_number": str|None,
-                 "rating_value": float|None, "elapsed_time": str|None,
-                 "corrected_time": str|None, "status": str},
-                ...
-            ],
-            "confidence": float,
-            "_error": str | None
-        }
 
-    Fails soft — returns an empty results list with `_error` set rather
-    than raising, so a single bad page doesn't poison a batch.
+def _should_chunk(md: str) -> bool:
+    """True only for large multi-class pages that need per-class extraction."""
+    if len(md) < 10_000:
+        return False
+    if len(_CLASS_HEADER_RE.findall(md)) < 2:
+        return False
+    if len(_ROW_LINE_RE.findall(md)) < 40:
+        return False
+    return True
+
+
+def _split_markdown_by_class(md: str) -> list[tuple[str | None, str]]:
+    """Split markdown at class-header boundaries.
+
+    Returns [(header_text_or_None, chunk_markdown), ...]. If fewer than two
+    headers are found, returns [(None, md)] so callers can treat it uniformly.
     """
+    headers = list(_CLASS_HEADER_RE.finditer(md))
+    if len(headers) < 2:
+        return [(None, md)]
+
+    chunks: list[tuple[str | None, str]] = []
+    preamble = md[: headers[0].start()].strip()
+    if preamble:
+        chunks.append((None, preamble))
+    for i, m in enumerate(headers):
+        end = headers[i + 1].start() if i + 1 < len(headers) else len(md)
+        chunks.append((m.group(0).strip(), md[m.start() : end]))
+    return chunks
+
+
+def _extract_single(url: str, markdown: str) -> dict[str, Any]:
+    """One Anthropic call for a single-class or single-chunk markdown block."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         return _failed_results("ANTHROPIC_API_KEY not set", url)
@@ -313,9 +342,7 @@ def extract_results(url: str, markdown: str) -> dict[str, Any]:
         },
     }
 
-    # 30k char budget — enough for ~150 boats with all columns. Above that,
-    # an event probably has its own per-class pages we should extract
-    # separately.
+    # 30k char budget — enough for ~150 boats with all columns.
     user_message = (
         f"URL: {url}\n\n"
         f"PAGE MARKDOWN (truncated to 30k chars):\n\n"
@@ -342,9 +369,74 @@ def extract_results(url: str, markdown: str) -> dict[str, Any]:
             data.setdefault("class_name", None)
             data.setdefault("results", [])
             data["url"] = url
+            data.setdefault("_error", None)
             return data
 
     return _failed_results("no tool_use in response", url)
+
+
+def extract_results(url: str, markdown: str) -> dict[str, Any]:
+    """Extract a structured list of race results from a results page.
+
+    For simple single-class pages, makes one Anthropic call. For large
+    multi-class pages (≥10k chars, ≥2 class headers, ≥40 table rows),
+    splits the markdown at class-header boundaries and calls _extract_single
+    once per chunk, then merges the results.
+
+    Returns:
+        {
+            "event_name": str,
+            "event_date": "YYYY-MM-DD" | None,
+            "race_name": str | None,
+            "class_name": str | None,   # None for multi-class pages
+            "results": [...],
+            "confidence": float,
+            "_error": str | None
+        }
+
+    Fails soft — returns an empty results list with `_error` set rather
+    than raising, so a single bad page doesn't poison a batch.
+    """
+    if not _should_chunk(markdown):
+        return _extract_single(url, markdown)
+
+    chunks = _split_markdown_by_class(markdown)
+    merged: list[dict] = []
+    confidences: list[float] = []
+    event_name: str | None = None
+    event_date: str | None = None
+    race_name: str | None = None
+
+    for header, chunk_md in chunks:
+        if not chunk_md or len(chunk_md.strip()) < 200:
+            continue
+        scoped = f"CLASS HEADER FOR THIS CHUNK: {header}\n\n{chunk_md}" if header else chunk_md
+        sub = _extract_single(url, scoped[:30_000])
+        if sub.get("_error"):
+            continue
+        event_name = event_name or sub.get("event_name")
+        event_date = event_date or sub.get("event_date")
+        race_name = race_name or sub.get("race_name")
+        for r in sub.get("results", []):
+            r["class_name"] = header or r.get("class_name") or sub.get("class_name")
+            merged.append(r)
+        if sub.get("confidence") is not None:
+            confidences.append(float(sub["confidence"]))
+
+    if not merged:
+        return _failed_results("all chunks failed or returned no results", url)
+
+    avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
+    return {
+        "event_name": event_name or "",
+        "event_date": event_date,
+        "race_name": race_name,
+        "class_name": None,
+        "results": merged,
+        "confidence": round(avg_conf, 3),
+        "url": url,
+        "_error": None,
+    }
 
 
 def _failed_results(reason: str, url: str) -> dict[str, Any]:
