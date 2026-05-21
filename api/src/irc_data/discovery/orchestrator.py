@@ -98,8 +98,17 @@ def seed_crawl_and_ingest(
     *,
     max_pages: int = 20,
     transport_tag: str = "firecrawl",
+    year: int | None = None,
+    mode: str = "map-site",
 ) -> dict[str, int]:
     """Crawl ``seed_url``, extract race results from each sub-URL, import.
+
+    ``mode`` controls how the URL list is built:
+    - ``"map-site"`` (default): Firecrawl maps the seed URL and discovers
+      sub-URLs automatically (slow; can over-discover).
+    - ``"per-source-expand"``: calls the registered expander for ``source``
+      (see ``url_expanders.py``), producing a fixed list of leaf URLs. Faster
+      and more reliable for sources with a known per-class URL pattern.
 
     Returns a per-batch stats dict::
 
@@ -113,6 +122,7 @@ def seed_crawl_and_ingest(
     from irc_data.discovery.firecrawl_client import (
         FirecrawlUnavailable, map_site, scrape_url,
     )
+    from irc_data.discovery.url_expanders import expand_for_source
     from irc_data.scrapers.result_import import import_scraper_results
 
     stats = {
@@ -123,16 +133,19 @@ def seed_crawl_and_ingest(
         "rows_matched": 0,
     }
 
-    try:
-        urls = map_site(seed_url, limit=max_pages, caller="discover-and-ingest")
-    except FirecrawlUnavailable as e:
-        logger.error("firecrawl unavailable: %s", e)
-        return stats
+    if mode == "per-source-expand":
+        urls = expand_for_source(source, seed_url, year)
+    else:
+        try:
+            urls = map_site(seed_url, limit=max_pages, caller="discover-and-ingest")
+        except FirecrawlUnavailable as e:
+            logger.error("firecrawl unavailable: %s", e)
+            return stats
+        # Always include the seed itself (some sites publish the index page
+        # results directly).
+        if seed_url not in urls:
+            urls = [seed_url, *urls]
 
-    # Always include the seed itself (some sites publish the index page
-    # results directly).
-    if seed_url not in urls:
-        urls = [seed_url, *urls]
     stats["urls_mapped"] = len(urls)
 
     for url in urls[:max_pages]:

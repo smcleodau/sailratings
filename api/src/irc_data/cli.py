@@ -2971,8 +2971,18 @@ def discover_events(ctx, url, seed_url, limit, auto_ingest):
               help="Value written to race_results.transport (typically "
                    "'firecrawl' during parallel-run; can be 'legacy' to "
                    "replay an old scraper through the same pipeline).")
+@click.option("--year", type=int, default=None,
+              help="Event year — used by per-source expanders (e.g. cowesweek).")
+@click.option(
+    "--mode",
+    type=click.Choice(["map-site", "per-source-expand"]),
+    default="map-site",
+    help="URL-discovery strategy. 'map-site': Firecrawl maps the seed URL. "
+         "'per-source-expand': use the source's registered URL expander "
+         "(requires --year for sources like cowesweek).",
+)
 @click.pass_context
-def discover_and_ingest(ctx, seed_url, source, max_pages, tag_as):
+def discover_and_ingest(ctx, seed_url, source, max_pages, tag_as, year, mode):
     """Map a seed URL, extract race results from every page, import them.
 
     The Firecrawl-based replacement for the bespoke ``scrape results
@@ -2987,7 +2997,8 @@ def discover_and_ingest(ctx, seed_url, source, max_pages, tag_as):
     engine = ctx.obj["engine"]
     console.print(
         f"[cyan]discover-and-ingest[/cyan] seed={seed_url} source={source} "
-        f"max_pages={max_pages} tag_as={tag_as}"
+        f"max_pages={max_pages} tag_as={tag_as} mode={mode}"
+        + (f" year={year}" if year else "")
     )
 
     stats = seed_crawl_and_ingest(
@@ -2996,6 +3007,8 @@ def discover_and_ingest(ctx, seed_url, source, max_pages, tag_as):
         source=source,
         max_pages=max_pages,
         transport_tag=tag_as,
+        year=year,
+        mode=mode,
     )
     console.print(
         f"[green]urls_mapped={stats['urls_mapped']}[/green]  "
