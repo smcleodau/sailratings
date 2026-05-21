@@ -1473,8 +1473,10 @@ def ingest_event(ctx, url, source, year, dry_run):
               help="Number of source_urls to replay (newest first)")
 @click.option("--days", type=int, default=365,
               help="Only consider source_urls with event_date in the last N days")
+@click.option("--url", "explicit_url", default=None,
+              help="Spot-check a single URL instead of sampling from the DB.")
 @click.pass_context
-def firecrawl_diff(ctx, source, limit, days):
+def firecrawl_diff(ctx, source, limit, days, explicit_url):
     """Replay recent event URLs through the Firecrawl extractor and log
     a row-level comparison against the legacy rows in race_results.
 
@@ -1505,21 +1507,35 @@ def firecrawl_diff(ctx, source, limit, days):
             return True
         return (a in b or b in a) and min(len(a), len(b)) >= 3
 
-    with engine.connect() as conn:
-        urls = conn.execute(text("""
-            SELECT source_url,
-                   MIN(event_name) AS event_name,
-                   MIN(event_date) AS event_date,
-                   COUNT(*) AS rows
-            FROM race_results
-            WHERE source = :source
-              AND source_url IS NOT NULL
-              AND (event_date IS NULL OR event_date > now() - make_interval(days => :days))
-            GROUP BY source_url
-            HAVING COUNT(*) >= 5
-            ORDER BY MAX(event_date) DESC NULLS LAST, MIN(id) DESC
-            LIMIT :limit
-        """), {"source": source, "days": days, "limit": limit}).fetchall()
+    if explicit_url:
+        from types import SimpleNamespace
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT MIN(event_name) AS event_name, MIN(event_date) AS event_date
+                FROM race_results
+                WHERE source = :source AND source_url = :url
+            """), {"source": source, "url": explicit_url}).fetchone()
+        urls = [SimpleNamespace(
+            source_url=explicit_url,
+            event_name=row.event_name if row else None,
+            event_date=row.event_date if row else None,
+        )]
+    else:
+        with engine.connect() as conn:
+            urls = conn.execute(text("""
+                SELECT source_url,
+                       MIN(event_name) AS event_name,
+                       MIN(event_date) AS event_date,
+                       COUNT(*) AS rows
+                FROM race_results
+                WHERE source = :source
+                  AND source_url IS NOT NULL
+                  AND (event_date IS NULL OR event_date > now() - make_interval(days => :days))
+                GROUP BY source_url
+                HAVING COUNT(*) >= 5
+                ORDER BY MAX(event_date) DESC NULLS LAST, MIN(id) DESC
+                LIMIT :limit
+            """), {"source": source, "days": days, "limit": limit}).fetchall()
 
     if not urls:
         console.print(f"[yellow]No source_urls found for source={source!r}[/yellow]")
