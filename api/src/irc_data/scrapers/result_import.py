@@ -177,12 +177,19 @@ def import_scraper_results(
     results: list,
     source: str,
     organizing_club: str | None = None,
+    transport: str | None = None,
 ) -> dict:
     """Import RaceResult objects from any scraper into the database.
 
     Works with the RaceResult pydantic model from parsers/schemas.py.
     Extracts fleet_size, class_name, event_date, and race_name from raw_data
     when available (SailSys populates these).
+
+    ``transport`` is the ingestion-path tag persisted to ``race_results.transport``.
+    Pass ``'legacy'`` for bespoke per-source scrapers and ``'firecrawl'`` for
+    rows coming through the Firecrawl + Claude extractor pipeline. NULL is
+    fine on pre-cutover rows.
+
     Returns stats dict.
     """
     stats = {"total": len(results), "imported": 0, "matched": 0, "errors": 0}
@@ -237,6 +244,7 @@ def import_scraper_results(
                 class_name=class_name,
                 division=result.division,
                 status="finished",
+                transport=transport,
                 raw_data=result.raw_data,
             )
             stats["imported"] += 1

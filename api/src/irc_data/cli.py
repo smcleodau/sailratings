@@ -1283,7 +1283,9 @@ def ingest_event(ctx, url, source, year, dry_run):
             console.print(f"  ... and {len(race_results) - 5} more")
         return
 
-    stats = import_scraper_results(engine, race_results, source=source)
+    stats = import_scraper_results(
+        engine, race_results, source=source, transport="firecrawl"
+    )
     console.print(
         f"[green]Imported[/green] {stats['imported']}/{stats['total']} rows  "
         f"({stats['matched']} matched to boats, {stats['errors']} errors)"
@@ -2801,3 +2803,15 @@ def scrape_watchdog(ctx, cooldown_hours, dry_run):
     for b in breaches_to_send:
         state[b["source"]] = now.isoformat()
     cooldown_path.write_text(json.dumps(state, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Externally-defined sub-commands.
+#
+# Diagnostics + discovery commands live in their own modules; we attach them
+# to the top-level `cli` group here so they appear in `irc-data --help`.
+# ---------------------------------------------------------------------------
+
+from irc_data.diagnostics.scraper_parity import parity_report as _parity_report  # noqa: E402
+
+cli.add_command(_parity_report)

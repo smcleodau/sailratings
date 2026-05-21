@@ -40,6 +40,13 @@ LOG_DIR=/home/irc-data/logs
 # ISORA — Irish Sea Offshore Racing Association. Weekly Tuesday 11:00.
 0 11 * * 2   cd $IRC_DATA_DIR && irc-data scrape results --source isora >> $LOG_DIR/isora_$(date +\%F).log 2>&1
 
+# --- Firecrawl parallel-run entries (Task A6) -------------------------------
+# These run alongside the bespoke scrapers above for ~14 days. After parity
+# is green per `irc-data parity-report`, the legacy entries are retired and
+# only the Firecrawl entries remain.
+0 11 * * 2   cd $IRC_DATA_DIR && irc-data discover-and-ingest --seed-url "https://sailracehq.com/" --source sailracehq --tag-as firecrawl >> $LOG_DIR/sailracehq-firecrawl_$(date +\%F).log 2>&1
+0 12 * * 2   cd $IRC_DATA_DIR && irc-data discover-and-ingest --seed-url "https://www.isora.org/index.php/notice-board/results2" --source isora --tag-as firecrawl >> $LOG_DIR/isora-firecrawl_$(date +\%F).log 2>&1
+
 # RHKYC — Royal Hong Kong Yacht Club fleet. Weekly Wednesday 10:00 UTC.
 # Cut over to Firecrawl discover-and-ingest against the public results index
 # (see Task A5/A7). The bespoke scraper at irc_data.scrapers.rhkyc is retained

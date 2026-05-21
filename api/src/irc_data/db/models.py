@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     Interval,
     Numeric,
+    String,
     Text,
     UniqueConstraint,
     Uuid,
@@ -239,6 +240,10 @@ class RaceResultModel(Base):
     # Source
     source: Mapped[str | None] = mapped_column(Text)
     source_url: Mapped[str | None] = mapped_column(Text)
+    # Which ingestion path produced this row. 'legacy' = bespoke per-source
+    # scraper; 'firecrawl' = Firecrawl + Claude extractor pipeline. NULL on
+    # pre-migration rows. See alembic 0019.
+    transport: Mapped[str | None] = mapped_column(String(32))
     raw_data: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
