@@ -14,7 +14,7 @@ from sqlalchemy.engine import Engine
 
 from irc_data.analysis.regression import get_boat_sensitivity_context
 from irc_data.api.services.report.facts import (
-    ExecutiveSummaryFacts, Identity, IdentityFacts,
+    ClassContextFacts, ExecutiveSummaryFacts, Identity, IdentityFacts,
     MeasurementContribution, RatingAnatomyFacts,
     RatingEvolutionFacts, RatingSnapshot,
 )
@@ -203,6 +203,67 @@ def build_rating_evolution(engine: Engine, boat_id: int) -> RatingEvolutionFacts
         total_movement=(float(latest) - float(first)) if (first and latest) else 0.0,
         largest_jump_tcc=largest_jump,
         largest_jump_date=largest_jump_date,
+    )
+
+
+# ── Class Context ──────────────────────────────────────────────────────
+
+
+def build_class_context(engine: Engine, boat_id: int) -> ClassContextFacts:
+    """Place this boat in the context of her design class.
+
+    Returns class TCC distribution stats, this boat's percentile, the
+    top 5 boats in the class by wins, and the raw TCC list (for the
+    histogram chart).
+    """
+    with engine.connect() as conn:
+        boat = conn.execute(text("""
+            SELECT COALESCE(design_canonical, design) AS design FROM boats WHERE id = :id
+        """), {"id": boat_id}).first()
+        if not boat or not boat.design:
+            return ClassContextFacts(
+                design="", class_n=0, class_tcc_min=0.0, class_tcc_max=0.0,
+                class_tcc_median=0.0, class_tcc_mean=0.0,
+                this_boat_tcc=0.0, this_boat_percentile=None,
+            )
+    sens = get_boat_sensitivity_context(engine, boat_id, boat.design)
+    baseline = (sens or {}).get("class_baseline") or {}
+    with engine.connect() as conn:
+        top5 = conn.execute(text("""
+            WITH latest AS (
+                SELECT DISTINCT ON (b.id) b.id, b.boat_name, b.sail_number,
+                       b.country, t.tcc,
+                       (SELECT COUNT(*) FROM race_results r
+                        WHERE r.boat_id = b.id AND r.place = 1) AS wins
+                FROM boats b JOIN tcc_snapshots t ON t.boat_id = b.id
+                WHERE COALESCE(b.design_canonical, b.design) = :design
+                  AND t.tcc IS NOT NULL
+                ORDER BY b.id, t.snapshot_date DESC
+            )
+            SELECT boat_name, sail_number, country, tcc, wins FROM latest
+            ORDER BY wins DESC, tcc DESC LIMIT 5
+        """), {"design": boat.design}).fetchall()
+        all_tccs = [float(r.tcc) for r in conn.execute(text("""
+            SELECT DISTINCT ON (b.id) t.tcc FROM boats b JOIN tcc_snapshots t ON t.boat_id = b.id
+            WHERE COALESCE(b.design_canonical, b.design) = :design
+              AND t.tcc IS NOT NULL
+            ORDER BY b.id, t.snapshot_date DESC
+        """), {"design": boat.design}).fetchall()]
+    return ClassContextFacts(
+        design=boat.design,
+        class_n=baseline.get("n_boats") or len(all_tccs),
+        class_tcc_min=baseline.get("min_tcc") or 0.0,
+        class_tcc_max=baseline.get("max_tcc") or 0.0,
+        class_tcc_median=baseline.get("median_tcc") or 0.0,
+        class_tcc_mean=baseline.get("mean_tcc") or 0.0,
+        this_boat_tcc=baseline.get("this_boat_tcc") or 0.0,
+        this_boat_percentile=baseline.get("this_boat_percentile"),
+        top_5_boats=[
+            {"name": r.boat_name, "sail": r.sail_number,
+             "tcc": float(r.tcc), "country": r.country, "wins": r.wins}
+            for r in top5
+        ],
+        class_tcc_list=all_tccs,
     )
 
 

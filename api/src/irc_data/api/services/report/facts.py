@@ -155,6 +155,7 @@ class ClassContextFacts:
     this_boat_tcc: float
     this_boat_percentile: float | None
     top_5_boats: list[dict] = field(default_factory=list)  # {name, sail, tcc, country}
+    class_tcc_list: list[float] = field(default_factory=list)
 
 
 @dataclass

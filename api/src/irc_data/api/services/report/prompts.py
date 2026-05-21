@@ -134,4 +134,27 @@ FACTS:
 """
 
 
+CLASS_CONTEXT_PROMPT = """SECTION: s05_class_context
+GOAL: Place this boat in context against her design class. The chart
+above shows the distribution; the prose describes where she sits and
+who the dominant boats in the class are.
+
+Cover:
+- The headline: "She's the Nth percentile of the {{class_n}}-boat
+  {{design}} fleet on the system" (use FACTS.this_boat_percentile and
+  FACTS.class_n).
+- The TCC band: spread from {{class_tcc_min}} to {{class_tcc_max}},
+  median {{class_tcc_median}}.
+- The top 5 boats in the class by wins (FACTS.top_5_boats — cite
+  them by name + sail number where present; do NOT invent rivals).
+- One sentence on what the percentile means: high percentile = high TCC
+  = rated faster, but "rated faster" doesn't mean "winning more".
+
+~250-350 words. No bullets unless listing >3 names.
+
+FACTS:
+{facts_json}
+"""
+
+
 # More section prompts added per-task as each section is built.
