@@ -234,6 +234,8 @@ async def backfill_orc_details(
     stats["total_missing"] = len(rows)
     print(f"  {len(rows)} certs missing detail data")
 
+    from irc_data.db.ingest_log import log_event
+
     async with get_http_client(timeout=httpx.Timeout(60.0, connect=15.0)) as client:
         for i, row in enumerate(rows):
             cert_id, ref_no = row[0], row[1]
@@ -264,12 +266,18 @@ async def backfill_orc_details(
                                 params,
                             )
                     stats["fetched"] += 1
+                    log_event(engine, "orc", "parse", "ok", ref_no, None)
                 else:
                     stats["errors"] += 1
+                    log_event(
+                        engine, "orc", "parse", "error", ref_no,
+                        "fetch_certificate_rms returned empty payload",
+                    )
             except Exception as e:
                 stats["errors"] += 1
                 if stats["errors"] <= 3:
                     print(f"    Error on {ref_no}: {e}")
+                log_event(engine, "orc", "parse", "error", ref_no, str(e))
 
             if (i + 1) % 100 == 0:
                 print(f"    {i + 1}/{len(rows)} processed ({stats['fetched']} fetched, {stats['errors']} errors)")

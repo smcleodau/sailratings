@@ -174,10 +174,14 @@ def match_orc_to_irc(engine: Engine, dry_run: bool = False) -> dict:
         "unmatched": 0,
     }
 
+    # Cache the orphan-event payloads; we log them after committing the
+    # UPDATE so a write-side failure can't poison the transaction.
+    orphan_events: list[dict] = []
+
     with engine.begin() as conn:
         # Get all unmatched ORC certificates
         orc_certs = conn.execute(text("""
-            SELECT id, sail_no, yacht_name, country_id, class_name
+            SELECT id, sail_no, yacht_name, country_id, class_name, ref_no
             FROM orc_certificates
             WHERE boat_id IS NULL
             ORDER BY country_id, yacht_name
@@ -289,6 +293,17 @@ def match_orc_to_irc(engine: Engine, dry_run: bool = False) -> dict:
                 updates.append((matched_boat_id, orc.id))
             else:
                 stats["unmatched"] += 1
+                orphan_events.append({
+                    "reference": orc.ref_no,
+                    "reason": (
+                        f"no boat match for sail={orc.sail_no!r} "
+                        f"name={orc.yacht_name!r}"
+                    ),
+                    "meta": {
+                        "country_id": orc.country_id,
+                        "class_name": orc.class_name,
+                    },
+                })
 
         # Apply updates
         if not dry_run and updates:
@@ -297,6 +312,17 @@ def match_orc_to_irc(engine: Engine, dry_run: bool = False) -> dict:
                     text("UPDATE orc_certificates SET boat_id = :boat_id WHERE id = :orc_id"),
                     {"boat_id": boat_id, "orc_id": orc_id},
                 )
+
+    # Log orphans after the matching transaction commits, so a logging
+    # hiccup never rolls back the boat-id assignments.
+    if not dry_run and orphan_events:
+        from irc_data.db.ingest_log import log_event
+
+        for ev in orphan_events:
+            log_event(
+                engine, "orc", "match", "orphan",
+                ev["reference"], ev["reason"], meta=ev["meta"],
+            )
 
     stats["matched_total"] = stats["matched_sail_exact"] + stats["matched_sail_name"] + stats["matched_name_country"]
     return stats
