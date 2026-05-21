@@ -36,6 +36,26 @@ def _parse_date(date_str: str | None) -> date | None:
 _EXPLICIT_STATUS_CODES = {"DNF", "DNS", "DNC", "DSQ", "RET", "OCS", "RAF", "RDG", "ZFP"}
 
 
+def named_legacy_count(engine: Engine, source: str, source_url: str) -> int:
+    """Count distinct named boats in legacy rows for a URL.
+
+    Used as the recall denominator in the ingest-event recall gate. Returns 0
+    when there are no legacy rows (new URL — gate is skipped by the caller).
+    """
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT COUNT(DISTINCT lower(regexp_replace(
+                       coalesce(raw_data->>'boat_name', ''), '\\s+', '', 'g'
+                   ))) AS n
+            FROM race_results
+            WHERE source = :source
+              AND source_url = :url
+              AND transport = 'legacy'
+              AND coalesce(raw_data->>'boat_name', '') <> ''
+        """), {"source": source, "url": source_url}).fetchone()
+    return int(row.n or 0)
+
+
 def _derive_status(raw_data: dict | None, place: int | None) -> str:
     """Decide race_results.status from a scraper's raw_data payload.
 

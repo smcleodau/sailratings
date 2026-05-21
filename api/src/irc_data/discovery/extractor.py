@@ -159,6 +159,12 @@ def extract_event(url: str, markdown: str) -> dict[str, Any]:
 # events from ingest_events for re-extraction or manual override.
 CONFIDENCE_FLOOR = 0.70
 
+# Minimum fraction of named legacy boats that must appear in a Firecrawl
+# extraction before we allow the import. Applied in ingest-event when a
+# legacy baseline of ≥5 named boats exists for the URL. Count-based
+# estimate — cheaper than full name-matching but catches obvious under-extraction.
+RECALL_FLOOR = 0.75
+
 
 RESULTS_SYSTEM_PROMPT = """You extract sailing race results from a single
 scraped race page (HTML rendered to markdown, or a PDF rendered to

@@ -1444,6 +1444,43 @@ def ingest_event(ctx, url, source, year, dry_run):
             console.print(f"  ... and {len(race_results) - 5} more")
         return
 
+    # Recall gate. Compare named-boat count against the legacy baseline for this
+    # URL. Only applied when ≥5 named legacy boats exist (i.e. we have a real
+    # baseline to compare against). Count-based estimate — not full name-matching.
+    from irc_data.discovery.extractor import RECALL_FLOOR
+    from irc_data.scrapers.result_import import named_legacy_count
+
+    baseline = named_legacy_count(engine, source, url)
+    if baseline >= 5:
+        fc_named = sum(1 for r in race_results if r.raw_data.get("boat_name"))
+        recall_est = fc_named / baseline
+        if recall_est < RECALL_FLOOR:
+            console.print(
+                f"[yellow]Recall gate[/yellow]: estimated recall "
+                f"{recall_est:.2f} ({fc_named}/{baseline}) < floor "
+                f"{RECALL_FLOOR:.2f}. {len(race_results)} rows NOT imported."
+            )
+            if not dry_run:
+                log_event(
+                    engine,
+                    source=source,
+                    event_type="extract",
+                    status="quarantined",
+                    reference=url,
+                    reason=(
+                        f"recall_est={recall_est:.2f} below floor "
+                        f"{RECALL_FLOOR:.2f}; legacy_named={baseline} "
+                        f"firecrawl_named={fc_named}"
+                    ),
+                    meta={
+                        "fc_named": fc_named,
+                        "legacy_named": baseline,
+                        "row_count": len(race_results),
+                        "confidence": conf,
+                    },
+                )
+            return
+
     if dry_run:
         console.print("[yellow]--dry-run: not writing to DB[/yellow]")
         for r in race_results[:5]:
