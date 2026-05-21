@@ -166,15 +166,26 @@ def build_identity(engine: Engine, boat_id: int) -> IdentityFacts:
             ORDER BY MAX(event_date) DESC NULLS LAST, races DESC
         """), {"id": boat_id}).fetchall()
 
-        # Home club: most-frequent club from race raw_data
+        # Home club — current, not all-time. The boat may have moved
+        # clubs; the report should reflect where she races NOW. Take the
+        # most common club across the last 15 races, using whichever club
+        # field is populated (TopYacht puts it in club_name, SailSys in
+        # boat_club, both fall back to organizing_club).
         club_row = conn.execute(text("""
-            SELECT raw_data->>'boat_club' AS club, COUNT(*) AS n
-            FROM race_results
-            WHERE boat_id = :id
-              AND raw_data->>'boat_club' IS NOT NULL
-              AND raw_data->>'boat_club' <> ''
-            GROUP BY raw_data->>'boat_club'
-            ORDER BY n DESC LIMIT 1
+            WITH recent AS (
+                SELECT COALESCE(
+                         NULLIF(raw_data->>'club_name', ''),
+                         NULLIF(organizing_club, ''),
+                         NULLIF(raw_data->>'boat_club', '')
+                       ) AS club
+                FROM race_results
+                WHERE boat_id = :id AND event_date IS NOT NULL
+                ORDER BY event_date DESC NULLS LAST, id DESC
+                LIMIT 15
+            )
+            SELECT club, COUNT(*) AS n
+            FROM recent WHERE club IS NOT NULL
+            GROUP BY club ORDER BY n DESC LIMIT 1
         """), {"id": boat_id}).first()
 
     skipper_stints = [
