@@ -2121,8 +2121,17 @@ def refresh_views(ctx):
 
 @cli.command(name="match-boats")
 @click.option("--dry-run", is_flag=True, help="Show matches without writing to DB")
+@click.option(
+    "--orc-only",
+    is_flag=True,
+    help=(
+        "Fast path for daily cron: match ORC certs to boats and record ORC "
+        "identities only. Skips IRC-side identity recording and design "
+        "backfills (which are slower and don't change between ORC scrapes)."
+    ),
+)
 @click.pass_context
-def match_boats(ctx, dry_run):
+def match_boats(ctx, dry_run, orc_only):
     """Match ORC certificates to IRC boats by sail number and name."""
     from irc_data.matching.identity import (
         backfill_boat_details_from_orc,
@@ -2151,14 +2160,21 @@ def match_boats(ctx, dry_run):
         return
 
     console.print("\n[bold]Step 2:[/bold] Recording identity observations...")
-    irc_ids = record_identities_from_irc(engine)
-    console.print(f"  IRC identities recorded: {irc_ids}")
+    if not orc_only:
+        irc_ids = record_identities_from_irc(engine)
+        console.print(f"  IRC identities recorded: {irc_ids}")
     orc_ids = record_identities_from_orc(engine)
     console.print(f"  ORC identities recorded: {orc_ids}")
 
     console.print("\n[bold]Step 3:[/bold] Backfilling boat details from ORC...")
     backfilled = backfill_boat_details_from_orc(engine)
     console.print(f"  Boats updated with ORC data: {backfilled}")
+
+    if orc_only:
+        console.print(
+            "\n[yellow]--orc-only: skipping IRC cert + SailSys design backfill.[/yellow]"
+        )
+        return
 
     console.print("\n[bold]Step 4:[/bold] Backfilling design from IRC certificates...")
     irc_design_count = backfill_design_from_irc_certs(engine)
