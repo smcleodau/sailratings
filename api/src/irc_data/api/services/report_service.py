@@ -21,7 +21,8 @@ def generate_report_content(engine: Engine, order_id: int) -> None:
     2. Fetch structured analytics → store as report_analytics JSONB
     3. Update order status to 'generated'
     """
-    if os.environ.get("REPORT_V2", "").lower() == "true":
+    # V2 is the default; set REPORT_V2=false to fall back to the legacy single-Claude-call path.
+    if os.environ.get("REPORT_V2", "true").lower() != "false":
         _generate_report_v2(engine, order_id)
         return
 
