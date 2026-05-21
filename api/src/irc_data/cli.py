@@ -916,6 +916,59 @@ def scrape_historical_certs(ctx, dry_run, no_offset):
         )
 
 
+@cli.command(name="backfill-irc-certs")
+@click.option(
+    "--tcc-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Directory of harvested TCC CSV snapshots. "
+        "Default: TCC_LISTINGS_DIR/historical."
+    ),
+)
+@click.option(
+    "--strategy",
+    type=click.Choice(["all", "live", "wayback", "csv"]),
+    default="all",
+    show_default=True,
+)
+@click.option("--no-resume", is_flag=True, help="Ignore .irc_backfill_state.json")
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    help="Cap number of certs probed (for testing).",
+)
+@click.pass_context
+def backfill_irc_certs(ctx, tcc_dir, strategy, no_resume, limit):
+    """Multi-strategy historical IRC certificate backfill (Plan B orchestrator)."""
+    import asyncio
+
+    from irc_data.config import TCC_LISTINGS_DIR
+    from irc_data.scrapers.cert_index import build_index_from_tcc_dir
+    from irc_data.scrapers.irc_backfill import backfill_from_index
+
+    src = Path(tcc_dir) if tcc_dir else (TCC_LISTINGS_DIR / "historical")
+    console.print(f"Building cert-number index from {src}...")
+    idx = build_index_from_tcc_dir(src)
+    console.print(f"  {len(idx)} unique cert numbers")
+
+    if limit:
+        idx = idx[:limit]
+        console.print(f"  --limit applied: probing first {len(idx)} entries")
+
+    if not idx:
+        console.print("[yellow]Index is empty; run `irc-data wayback-tcc` first.[/yellow]")
+        return
+
+    stats = asyncio.run(backfill_from_index(idx, resume=not no_resume))
+    console.print(
+        f"[green]Found live: {stats['found_live']}, "
+        f"wayback: {stats['found_wayback']}, "
+        f"missing: {stats['not_found']}[/green]"
+    )
+
+
 @scrape.command(name="cert-probe")
 @click.option("--design", "-d", default="Sunfast 3300", help="Boat design to probe")
 @click.option("--range", "scan_range", type=int, default=5000, help="How far back to scan")

@@ -199,6 +199,63 @@ async def harvest_tcc_archives(
     return results
 
 
+async def lookup_pdf_in_wayback(url: str, *, client=None) -> dict | None:
+    """Look up a single archived snapshot for ``url`` in the Wayback Machine.
+
+    Asks the CDX index for any snapshot matching ``url`` exactly. If at
+    least one exists, downloads the *most recent* one via the ``id_/`` raw
+    passthrough and returns ``{timestamp, original_url, content}``.
+
+    Returns ``None`` when there is no snapshot, the snapshot fetch fails,
+    or the bytes do not begin with the PDF magic header.
+    """
+    own_client = client is None
+
+    async def _do(client_) -> dict | None:
+        params = {
+            "url": url,
+            "output": "json",
+            "fl": "timestamp,original",
+            # Use the most recent snapshot first.
+            "limit": "-1",
+        }
+        await rate_limiter.wait()
+        try:
+            cdx = await client_.get(WAYBACK_CDX_URL, params=params)
+        except Exception as exc:
+            print(f"  Wayback CDX lookup failed for {url}: {exc}")
+            return None
+        if cdx.status_code != 200:
+            return None
+        try:
+            payload = cdx.json()
+        except ValueError:
+            return None
+        rows = payload[1:] if payload else []
+        if not rows:
+            return None
+        # `limit=-1` already returns the most recent; tolerate any order
+        # by sorting by timestamp descending.
+        rows.sort(key=lambda r: r[0], reverse=True)
+        ts, original = rows[0][0], rows[0][1]
+        snap_url = f"{WAYBACK_BASE_URL}/{ts}id_/{original}"
+        await rate_limiter.wait()
+        try:
+            snap = await client_.get(snap_url)
+        except Exception as exc:
+            print(f"  Wayback snapshot fetch failed for {snap_url}: {exc}")
+            return None
+        if snap.status_code != 200 or not snap.content[:5].startswith(b"%PDF"):
+            return None
+        return {"timestamp": ts, "original_url": original, "content": snap.content}
+
+    if own_client:
+        async with get_http_client() as c:
+            return await _do(c)
+    assert client is not None
+    return await _do(client)
+
+
 async def find_and_download_all(
     domains: list[str] | None = None,
     output_dir: Path | None = None,
