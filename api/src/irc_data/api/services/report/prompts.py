@@ -157,4 +157,29 @@ FACTS:
 """
 
 
+PERFORMANCE_PROMPT = """SECTION: s06_performance
+GOAL: Analyse how this boat is actually racing — not just how she's rated.
+The Rating Advantage Index (RAI) tells us whether she's outperforming
+her TCC; the head-to-head record names her real rivals.
+
+Cover:
+- Headline: total finishes / wins / podiums (from FACTS).
+- RAI interpretation (from FACTS.rai_interpretation if set). A positive
+  RAI means she's beating boats with similar TCCs more often than
+  the rating predicts; negative means she's underperforming her rating.
+- The recent_results timeline (from FACTS.recent_results). Cite the
+  most recent 2-3 events by name+place. NEVER invent regatta names.
+- Event-type breakdown (FACTS.by_event_type — series, offshore, twilight).
+  If she's strong in one bucket and weak in another, say so.
+- Head-to-head: name 2-3 named rivals from FACTS.head_to_head
+  (with sail numbers) and the W-L record against each. NEVER invent
+  rivals — they MUST be in FACTS.head_to_head.
+
+~400-500 words. Use the FACTS values exactly; no estimates.
+
+FACTS:
+{facts_json}
+"""
+
+
 # More section prompts added per-task as each section is built.

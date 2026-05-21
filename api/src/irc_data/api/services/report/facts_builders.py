@@ -15,8 +15,8 @@ from sqlalchemy.engine import Engine
 from irc_data.analysis.regression import get_boat_sensitivity_context
 from irc_data.api.services.report.facts import (
     ClassContextFacts, ExecutiveSummaryFacts, Identity, IdentityFacts,
-    MeasurementContribution, RatingAnatomyFacts,
-    RatingEvolutionFacts, RatingSnapshot,
+    MeasurementContribution, PerformanceFacts, RaceResultLite,
+    RatingAnatomyFacts, RatingEvolutionFacts, RatingSnapshot, RivalSummary,
 )
 
 logger = logging.getLogger(__name__)
@@ -348,4 +348,128 @@ def build_executive_summary(engine: Engine, boat_id: int) -> ExecutiveSummaryFac
         headline_finding_2=findings[1],
         headline_finding_3=findings[2],
         top_recommendation=None,  # filled by optimisation builder; default None
+    )
+
+
+# ── Racing Performance ─────────────────────────────────────────────────
+
+
+def build_performance(engine: Engine, boat_id: int) -> PerformanceFacts:
+    """Pulls overall race stats, last 20 results, by-event-type breakdown,
+    RAI percentile from analysis.performance, and head-to-head against rivals."""
+    from irc_data.analysis.performance import compute_head_to_head, compute_rai
+
+    with engine.connect() as conn:
+        boat = conn.execute(
+            text("SELECT boat_name FROM boats WHERE id = :id"),
+            {"id": boat_id},
+        ).first()
+        if not boat:
+            return PerformanceFacts(
+                boat_name=f"boat #{boat_id}",
+                finishes=0, wins=0, podiums=0, distinct_events=0,
+                rai_percentile=None, rai_interpretation=None,
+            )
+
+        # Overall stats
+        stats = conn.execute(text("""
+            SELECT COUNT(*) FILTER (WHERE status='finished' AND place IS NOT NULL) AS finishes,
+                   COUNT(*) FILTER (WHERE place = 1) AS wins,
+                   COUNT(*) FILTER (WHERE place BETWEEN 1 AND 3) AS podiums,
+                   COUNT(DISTINCT event_name) AS distinct_events
+            FROM race_results WHERE boat_id = :id
+        """), {"id": boat_id}).first()
+
+        # Last 20 results with a finishing place
+        recent = conn.execute(text("""
+            SELECT event_date, event_name, race_name, place, fleet_size,
+                   class_name, status
+            FROM race_results
+            WHERE boat_id = :id AND place IS NOT NULL
+            ORDER BY event_date DESC NULLS LAST, id DESC
+            LIMIT 20
+        """), {"id": boat_id}).fetchall()
+
+        # By-event-type bucket — classify event_name patterns.
+        # Twilight = casual; Offshore = passage/coastal; Series = regular pointscore.
+        type_rows = conn.execute(text("""
+            SELECT
+              CASE
+                WHEN LOWER(COALESCE(event_name,'')) ~ 'twilight' THEN 'twilight'
+                WHEN LOWER(COALESCE(event_name,'')) ~ 'offshore|coastal|passage|sydney.*hobart|gladstone' THEN 'offshore'
+                ELSE 'series'
+              END AS bucket,
+              COUNT(*) FILTER (WHERE status='finished' AND place IS NOT NULL) AS n,
+              COUNT(*) FILTER (WHERE place = 1) AS wins,
+              COUNT(*) FILTER (WHERE place BETWEEN 1 AND 3) AS podiums
+            FROM race_results
+            WHERE boat_id = :id
+            GROUP BY bucket
+        """), {"id": boat_id}).fetchall()
+
+    by_event_type = {
+        r.bucket: {"n": r.n or 0, "wins": r.wins or 0, "podiums": r.podiums or 0}
+        for r in type_rows
+    }
+
+    # RAI from the analysis engine
+    rai_pct: float | None = None
+    rai_interp: str | None = None
+    try:
+        rai = compute_rai(engine, boat_id)
+        if rai is not None:
+            rai_pct = float(rai.rai)
+            rai_interp = rai.interpretation
+    except Exception as e:
+        logger.warning("compute_rai failed for boat %s: %s", boat_id, e)
+
+    # Head-to-head against rivals (min 2 meetings)
+    h2h: list[RivalSummary] = []
+    try:
+        rivals = compute_head_to_head(engine, boat_id, min_meetings=2)
+        for rec in rivals[:10]:
+            with engine.connect() as conn:
+                rb = conn.execute(text("""
+                    SELECT b.country, t.tcc
+                    FROM boats b
+                    LEFT JOIN LATERAL (
+                        SELECT tcc FROM tcc_snapshots WHERE boat_id = b.id
+                        ORDER BY snapshot_date DESC LIMIT 1
+                    ) t ON true
+                    WHERE b.id = :id
+                """), {"id": rec.rival_boat_id}).first()
+            h2h.append(RivalSummary(
+                boat_id=rec.rival_boat_id,
+                name=rec.rival_name,
+                sail_number=rec.rival_sail_number,
+                country=(rb.country if rb else None),
+                tcc=(rb.tcc if rb and rb.tcc else Decimal("0")),
+                recent_finishes_count=rec.events_together,
+                head_to_head_wins=rec.wins,
+                head_to_head_losses=rec.losses,
+            ))
+    except Exception as e:
+        logger.warning("compute_head_to_head failed for boat %s: %s", boat_id, e)
+
+    return PerformanceFacts(
+        boat_name=boat.boat_name,
+        finishes=stats.finishes or 0,
+        wins=stats.wins or 0,
+        podiums=stats.podiums or 0,
+        distinct_events=stats.distinct_events or 0,
+        rai_percentile=rai_pct,
+        rai_interpretation=rai_interp,
+        recent_results=[
+            RaceResultLite(
+                event_date=r.event_date,
+                event_name=r.event_name,
+                race_name=r.race_name,
+                place=r.place,
+                fleet_size=r.fleet_size,
+                class_name=r.class_name,
+                status=r.status or "finished",
+            ) for r in recent
+        ],
+        by_event_type=by_event_type,
+        head_to_head=h2h,
     )
