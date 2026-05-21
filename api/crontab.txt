@@ -13,6 +13,10 @@ LOG_DIR=/home/irc-data/logs
 # Daily full ORC snapshot at 03:00 UTC
 0 3 * * *    cd $IRC_DATA_DIR && irc-data scrape orc >> $LOG_DIR/orc_$(date +\%F).log 2>&1
 
+# Daily ORC detail backfill — clears the ~73% missing-GPH backlog at
+# 500 certs/night, ~15 days to drain. Runs 30 min after the ORC scrape.
+30 3 * * *   cd $IRC_DATA_DIR && irc-data scrape orc-detail --backlog --limit 500 >> $LOG_DIR/orc-detail_$(date +\%F).log 2>&1
+
 # Refresh materialized views after ORC ingestion
 0 4 * * *    cd $IRC_DATA_DIR && irc-data refresh-views >> $LOG_DIR/views_$(date +\%F).log 2>&1
 

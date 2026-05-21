@@ -1051,15 +1051,32 @@ def scrape_orc(ctx, country, snapshot_date, no_archive):
 
 
 @scrape.command(name="orc-detail")
-@click.option("--limit", "-l", type=int, default=None, help="Max certs to fetch (for testing)")
+@click.option("--limit", "-l", type=int, default=None, help="Max certs to fetch (rate-limit-friendly).")
+@click.option(
+    "--backlog",
+    is_flag=True,
+    help=(
+        "Backlog mode: process only certs missing GPH/CDL/allowances. "
+        "When omitted, the command behaves identically (the underlying "
+        "implementation already filters to NULL-GPH rows on the latest "
+        "snapshot); the flag exists to make cron intent explicit and to "
+        "default --limit to 500 for nightly runs."
+    ),
+)
 @click.pass_context
-def scrape_orc_detail(ctx, limit):
+def scrape_orc_detail(ctx, limit, backlog):
     """Backfill ORC certificate detail data (GPH, CDL, polars) from DownBoatRMS API."""
     import asyncio
 
     from irc_data.scrapers.orc import backfill_orc_details
 
+    # In --backlog mode, default to 500 certs/run unless the operator overrides.
+    if backlog and limit is None:
+        limit = 500
+
     console.print("Backfilling ORC certificate details (GPH, CDL, dimensions, polars)...")
+    if backlog:
+        console.print(f"  Mode: backlog (limit={limit})")
     stats = asyncio.run(backfill_orc_details(limit=limit))
 
     console.print(f"\n[green]ORC detail backfill complete:[/green]")
