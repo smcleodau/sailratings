@@ -129,6 +129,11 @@ def upsert_race_result(
     **kwargs,
 ) -> int:
     """Insert or update a race result. Returns the row id."""
+    # Default ingestion-path tag. Firecrawl callers set transport='firecrawl'
+    # explicitly via import_scraper_results; bespoke scrapers and JSON imports
+    # call this directly and inherit 'legacy' so the parity diagnostic has
+    # both sides to compare.
+    kwargs.setdefault("transport", "legacy")
     values = dict(
         boat_id=boat_id,
         event_name=event_name,
