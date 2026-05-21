@@ -1152,25 +1152,36 @@ def scrape_snapshot(ctx):
 
 
 @cli.command(name="ingest-event")
-@click.option("--url", required=True, help="Race results page URL to scrape")
+@click.option("--url", default=None,
+              help="Race results page URL. Optional when --source + --year "
+                   "uniquely identifies the event (cowesweek, sydneyhobart).")
 @click.option(
     "--source",
     type=click.Choice(["cowesweek", "sydneyhobart", "rhkyc", "isora",
-                       "sailracehq", "sailwave", "firecrawl"]),
+                       "sailracehq", "sailwave", "yachtscoring", "rpayc",
+                       "firecrawl"]),
     default="firecrawl",
     help="Value written to race_results.source. Use the legacy source name "
          "when cutting over; 'firecrawl' for parallel-run mode.",
 )
+@click.option("--year", type=int, default=None,
+              help="Archive year for annual events (cowesweek, sydneyhobart). "
+                   "If --url is omitted, the canonical URL for the year is "
+                   "derived from --source.")
 @click.option("--dry-run", is_flag=True,
               help="Scrape + extract + print results, do NOT write to DB")
 @click.pass_context
-def ingest_event(ctx, url, source, dry_run):
+def ingest_event(ctx, url, source, year, dry_run):
     """Scrape one event URL via Firecrawl, extract via Claude, import to race_results.
 
     This is the crawler-path replacement for `scrape results --source X`
     for sources without a structured API. The same pipeline handles every
     target site — Firecrawl normalises HTML/PDF to markdown and Claude
     pulls a typed RaceResult[] out via tool_use.
+
+    Annual events accept --year and derive the URL:
+      irc-data ingest-event --source cowesweek --year 2024
+      irc-data ingest-event --source sydneyhobart --year 2024
     """
     from decimal import Decimal
 
@@ -1178,6 +1189,19 @@ def ingest_event(ctx, url, source, dry_run):
     from irc_data.discovery.extractor import extract_results
     from irc_data.parsers.schemas import RaceResult
     from irc_data.scrapers.result_import import import_scraper_results
+
+    # Resolve --url from --source + --year for annual events.
+    if not url and year:
+        if source == "cowesweek":
+            url = f"https://www.cowesweek.co.uk/results/{year}"
+        elif source == "sydneyhobart":
+            url = f"https://www.cyca.com.au/results/{year}-rolex-sydney-hobart"
+    if not url:
+        console.print(
+            "[red]--url is required (or pass --source cowesweek|sydneyhobart "
+            "with --year)[/red]"
+        )
+        raise SystemExit(2)
 
     engine = ctx.obj["engine"]
     console.print(f"[cyan]Scraping[/cyan] {url}")

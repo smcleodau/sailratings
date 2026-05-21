@@ -49,13 +49,19 @@ LOG_DIR=/home/irc-data/logs
 # miss the current sailing season for weeks at a time.
 30 2 * * *   cd $IRC_DATA_DIR && irc-data scrape results --source topyacht --incremental --store >> $LOG_DIR/topyacht_$(date +\%F).log 2>&1
 
+# --- Annual events via Firecrawl + Claude extractor ---
+# Cowes Week — runs in the first week of August. Scrape 5 September to catch
+# late-published amended results.
+0 6 5 9 *    cd $IRC_DATA_DIR && irc-data ingest-event --source cowesweek --year $(date +\%Y) >> $LOG_DIR/cowesweek_$(date +\%F).log 2>&1
+
+# Sydney–Hobart — race start 26 December; results finalised by 30 December.
+0 6 30 12 *  cd $IRC_DATA_DIR && irc-data ingest-event --source sydneyhobart --year $(date +\%Y) >> $LOG_DIR/sydneyhobart_$(date +\%F).log 2>&1
+
 # --- Decommissioned / on-demand sources (intentionally NOT scheduled) ---
 # rorc:        static HTML only covers 2007-2022. Use sailracehq for post-2023.
-# cowesweek:   annual event (early August). Run by hand during/after the event:
-#                irc-data scrape results --source cowesweek --year YYYY
-# sydneyhobart: annual event (26 December). Same pattern as Cowes Week.
 # sailwave:    used by scattered clubs, no canonical URL pattern. Run by hand
-#              against specific event URLs when needed.
+#              against specific event URLs when needed:
+#                irc-data ingest-event --url <URL> --source sailwave
 
 # === Identity & Design Maintenance ===
 # Weekly: match new ORC certs to IRC boats (Sunday 05:00 UTC)
