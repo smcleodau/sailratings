@@ -239,4 +239,27 @@ FACTS:
 """
 
 
+FORMULA_DRIFT_PROMPT = """SECTION: s09_formula_drift
+GOAL: Describe how the IRC formula has moved for this design class
+over the analysis window. The IRC formula is SECRET — we can't claim
+to know what changed. Frame everything as "consistent with" /
+"the data is suggesting" / "boats with characteristic X have seen
+their TCC drift in direction Y" — never "the rule penalises X".
+
+Cover:
+- If FACTS.drift_observed is False: state that the class has been
+  stable over the window — one short paragraph and stop.
+- If True: state the direction + magnitude (FACTS.this_boat_likely_impact),
+  then list the FACTS.affected_measurements as "the measurements
+  most correlated with the drift" — NOT as cause-and-effect.
+- Close with one sentence on what this means for the owner: drift
+  is operational signal, not a rule-change announcement.
+
+~200-300 words.
+
+FACTS:
+{facts_json}
+"""
+
+
 # More section prompts added per-task as each section is built.

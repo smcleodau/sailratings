@@ -14,8 +14,8 @@ from sqlalchemy.engine import Engine
 
 from irc_data.analysis.regression import get_boat_sensitivity_context
 from irc_data.api.services.report.facts import (
-    ClassContextFacts, ExecutiveSummaryFacts, Identity, IdentityFacts,
-    MeasurementContribution, OptimisationFacts, PerformanceFacts,
+    ClassContextFacts, ExecutiveSummaryFacts, FormulaDriftFacts, Identity,
+    IdentityFacts, MeasurementContribution, OptimisationFacts, PerformanceFacts,
     RaceResultLite, RatingAnatomyFacts, RatingEvolutionFacts, RatingSnapshot,
     Recommendation, RivalSummary, SensitivityFacts,
 )
@@ -591,4 +591,77 @@ def build_optimisation(engine: Engine, boat_id: int) -> OptimisationFacts:
         boat_name=boat_name,
         recommendations=recs,
         top_3_summary=top3_summary,
+    )
+
+
+# ── Formula Drift ──────────────────────────────────────────────────────
+
+
+def build_formula_drift(engine: Engine, boat_id: int) -> FormulaDriftFacts:
+    """Pulls fleet-wide drift analysis for this boat's design class."""
+    from irc_data.analysis.temporal import get_design_drift
+
+    with engine.connect() as conn:
+        boat = conn.execute(text("""
+            SELECT COALESCE(design_canonical, design) AS design
+            FROM boats WHERE id = :id
+        """), {"id": boat_id}).first()
+    if not boat or not boat.design:
+        return FormulaDriftFacts(
+            design="", window_years=0, drift_observed=False,
+        )
+
+    drift = None
+    try:
+        drift = get_design_drift(engine, boat.design)
+    except Exception as e:
+        logger.warning("get_design_drift failed for %s: %s", boat.design, e)
+
+    if not drift:
+        return FormulaDriftFacts(
+            design=boat.design, window_years=0, drift_observed=False,
+        )
+
+    # Window: parse the period "YYYY-MM-DD -> YYYY-MM-DD" string.
+    window_years = 0
+    period = drift.get("period", "")
+    if " -> " in period:
+        from datetime import date
+        try:
+            d1_s, d2_s = period.split(" -> ")
+            d1 = date.fromisoformat(d1_s)
+            d2 = date.fromisoformat(d2_s)
+            window_years = max(1, (d2 - d1).days // 365)
+        except Exception:
+            window_years = 0
+
+    fleet_wide = drift.get("fleet_wide") or {}
+    mean_drift = fleet_wide.get("mean_drift") or 0.0
+    drift_observed = abs(mean_drift) > 0.001
+
+    # Affected dimensions: those with |coefficient_change| > 0.2 (substantial
+    # movement in the fleet-wide regression coefficient).
+    affected: list[str] = []
+    for d in drift.get("by_dimension", []):
+        change = d.get("coefficient_change") or 0.0
+        if abs(change) > 0.2:
+            field_name = d.get("field") or ""
+            if field_name:
+                affected.append(field_name)
+
+    # Per-boat impact: keep v1 lightweight — narrate the fleet-wide signal.
+    impact = None
+    if drift_observed:
+        direction = "upward" if mean_drift > 0 else "downward"
+        impact = (
+            f"The {boat.design} fleet has drifted {direction} by "
+            f"{mean_drift:+.4f} TCC on average over the {window_years}-year window."
+        )
+
+    return FormulaDriftFacts(
+        design=boat.design,
+        window_years=window_years,
+        drift_observed=drift_observed,
+        affected_measurements=affected,
+        this_boat_likely_impact=impact,
     )
