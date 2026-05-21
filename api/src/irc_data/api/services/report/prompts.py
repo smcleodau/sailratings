@@ -211,4 +211,32 @@ FACTS:
 """
 
 
+OPTIMISATION_PROMPT = """SECTION: s08_optimisation
+GOAL: Tell the owner what to actually change to improve her rating.
+The recommendations come pre-ranked by impact × feasibility — your
+job is to present them as analysis, not as a bullet list dump.
+
+Cover (in prose, not bullets):
+1. Lead: a one-sentence orientation — how many leverable opportunities
+   exist (FACTS.recommendations length), and the magnitude range of
+   the top one (est_tcc_gain).
+2. Walk the top 3 recommendations in order. For each:
+   - Name the measurement and its current vs suggested value.
+   - State the est_tcc_gain (signed).
+   - Cite the confidence ('strong', 'moderate', 'limited') and the
+     feasibility from FACTS.recommendations[i].rationale (which
+     includes the feasibility label).
+3. ONE closing paragraph on the trade-offs: hardware changes are
+   permanent; sail-wardrobe changes are reversible; admin changes
+   (declarations) cost nothing. Tie this to the recommendations.
+
+Use exact numbers from FACTS. Never invent measurements or values.
+
+~400-600 words.
+
+FACTS:
+{facts_json}
+"""
+
+
 # More section prompts added per-task as each section is built.

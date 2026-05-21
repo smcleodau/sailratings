@@ -15,9 +15,9 @@ from sqlalchemy.engine import Engine
 from irc_data.analysis.regression import get_boat_sensitivity_context
 from irc_data.api.services.report.facts import (
     ClassContextFacts, ExecutiveSummaryFacts, Identity, IdentityFacts,
-    MeasurementContribution, PerformanceFacts, RaceResultLite,
-    RatingAnatomyFacts, RatingEvolutionFacts, RatingSnapshot, RivalSummary,
-    SensitivityFacts,
+    MeasurementContribution, OptimisationFacts, PerformanceFacts,
+    RaceResultLite, RatingAnatomyFacts, RatingEvolutionFacts, RatingSnapshot,
+    Recommendation, RivalSummary, SensitivityFacts,
 )
 
 logger = logging.getLogger(__name__)
@@ -524,4 +524,71 @@ def build_sensitivity(engine: Engine, boat_id: int) -> SensitivityFacts:
         n_boats_in_class=sens.get("n_boats") or 0,
         r_squared=float(sens.get("r_squared") or 0.0),
         coefficients=coefs,
+    )
+
+
+# ── Optimisation Recommendations ───────────────────────────────────────
+
+
+def build_optimisation(engine: Engine, boat_id: int) -> OptimisationFacts:
+    """Wraps analysis.optimizer.generate_optimisation_report into the
+    report's Facts shape. Recommendations come pre-ranked; we take
+    the top 5 and translate fields."""
+    from irc_data.analysis.optimizer import generate_optimisation_report
+
+    with engine.connect() as conn:
+        boat = conn.execute(
+            text("SELECT boat_name FROM boats WHERE id = :id"),
+            {"id": boat_id},
+        ).first()
+    boat_name = boat.boat_name if boat else f"boat #{boat_id}"
+
+    report = None
+    try:
+        report = generate_optimisation_report(engine, boat_id)
+    except Exception as e:
+        logger.warning(
+            "generate_optimisation_report failed for %s: %s", boat_id, e
+        )
+
+    if report is None or not report.recommendations:
+        return OptimisationFacts(boat_name=boat_name)
+
+    # Map evidence_strength → confidence; pick smart_boat_avg as the
+    # suggested target when present, else class_mean.
+    recs: list[Recommendation] = []
+    for r in report.recommendations[:5]:
+        suggested = (
+            r.smart_boat_avg if r.smart_boat_avg is not None else r.class_mean
+        )
+        rationale = (
+            f"Coefficient says {r.optimal_direction} this measurement "
+            f"by ~{abs(r.estimated_tcc_delta):.4f} TCC. "
+            f"Evidence: {r.evidence_strength}. "
+            f"Feasibility: {r.feasibility_label} ({r.feasibility}/8). "
+            f"{r.explanation}"
+        )
+        recs.append(Recommendation(
+            measurement=r.field,
+            current_value=r.current_value if r.current_value is not None else 0.0,
+            suggested_value=suggested if suggested is not None else 0.0,
+            est_tcc_gain=r.estimated_tcc_delta,
+            rationale=rationale,
+            confidence=r.evidence_strength,
+        ))
+
+    # Build a deterministic top-3 summary as a fallback for the executive
+    # section.
+    top3_lines = [
+        f"{r.measurement} ({r.est_tcc_gain:+.4f} TCC)"
+        for r in recs[:3]
+    ]
+    top3_summary = (
+        "Top opportunities: " + ", ".join(top3_lines) if top3_lines else ""
+    )
+
+    return OptimisationFacts(
+        boat_name=boat_name,
+        recommendations=recs,
+        top_3_summary=top3_summary,
     )
