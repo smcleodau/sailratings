@@ -6,7 +6,7 @@ from sqlalchemy import text
 from irc_data.db.connection import get_engine
 
 
-@pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="no API key")
+@pytest.mark.skipif(not os.environ.get("GEMINI_API_KEY"), reason="no API key")
 def test_report_v2_end_to_end_for_order_21():
     os.environ["REPORT_V2"] = "true"
     eng = get_engine()

@@ -15,7 +15,7 @@ import pytest
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_LIVE_EXTRACTOR_TESTS") != "1"
-    or not os.environ.get("ANTHROPIC_API_KEY")
+    or not os.environ.get("GEMINI_API_KEY")
     or not os.environ.get("FIRECRAWL_API_KEY"),
     reason="Live extractor tests: set RUN_LIVE_EXTRACTOR_TESTS=1 + API keys",
 )

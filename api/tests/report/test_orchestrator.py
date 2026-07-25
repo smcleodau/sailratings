@@ -4,7 +4,7 @@ from irc_data.db.connection import get_engine
 from irc_data.api.services.report.orchestrator import build_report
 
 
-@pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="no API key")
+@pytest.mark.skipif(not os.environ.get("GEMINI_API_KEY"), reason="no API key")
 def test_orchestrator_builds_11_sections_for_sun_fish():
     eng = get_engine()
     report = build_report(eng, boat_id=12330)

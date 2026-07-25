@@ -21,7 +21,7 @@ dependencies = [
     "alembic>=1.13",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
-    "anthropic>=0.40",
+    "google-genai",
     "numpy>=1.26",
     "scipy>=1.12",
     "scikit-learn>=1.4",

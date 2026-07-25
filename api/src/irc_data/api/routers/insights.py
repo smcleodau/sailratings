@@ -1,4 +1,4 @@
-"""AI insights endpoints — streaming boat analysis via Claude."""
+"""AI insights endpoints — streaming boat analysis via Gemini."""
 
 import json
 

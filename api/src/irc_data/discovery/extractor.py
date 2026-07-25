@@ -25,7 +25,9 @@ import json
 import logging
 import os
 import re
-from typing import Any
+from typing import Any, Literal, Optional
+
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -72,85 +74,61 @@ CRITICAL:
 """
 
 
+class EventExtraction(BaseModel):
+    is_sailing_event: bool
+    scoring_platform: Literal["sailsys", "topyacht", "sailwave", "yachtscoring", "pdf", "none", "unknown"]
+    platform_ids: dict[str, Any] = Field(default_factory=dict, description="Platform-specific identifiers extracted from URLs.")
+    title: Optional[str] = None
+    event_date: Optional[str] = Field(default=None, description="YYYY-MM-DD or null")
+    event_location: Optional[str] = None
+    confidence: float = Field(..., ge=0, le=1)
+    reasoning: str
+
+
 def extract_event(url: str, markdown: str) -> dict[str, Any]:
-    """Run extraction. Returns a dict matching the docstring schema.
+    """Run extraction. Returns a dict matching the schema.
 
     On any error, returns a best-effort fallback so the caller can still
     persist a row marked as failed.
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        return _failed("ANTHROPIC_API_KEY not set", url)
+        return _failed("GEMINI_API_KEY not set", url)
 
     try:
-        import anthropic
+        from google import genai
+        from google.genai import types
     except ImportError as e:
-        return _failed(f"anthropic SDK missing: {e}", url)
+        return _failed(f"google-genai SDK missing: {e}", url)
 
     if not markdown or len(markdown.strip()) < 80:
         return _failed("page content too short to extract", url)
 
-    client = anthropic.Anthropic(api_key=api_key)
-
-    tool = {
-        "name": "record_event",
-        "description": "Record what was found on the sailing-event page.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "is_sailing_event": {"type": "boolean"},
-                "scoring_platform": {
-                    "type": "string",
-                    "enum": ["sailsys", "topyacht", "sailwave",
-                             "yachtscoring", "pdf", "none", "unknown"],
-                },
-                "platform_ids": {
-                    "type": "object",
-                    "description": "Platform-specific identifiers extracted from URLs.",
-                    "additionalProperties": True,
-                },
-                "title": {"type": ["string", "null"]},
-                "event_date": {
-                    "type": ["string", "null"],
-                    "description": "YYYY-MM-DD or null",
-                },
-                "event_location": {"type": ["string", "null"]},
-                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                "reasoning": {"type": "string"},
-            },
-            "required": ["is_sailing_event", "scoring_platform",
-                         "platform_ids", "confidence", "reasoning"],
-        },
-    }
-
-    user_message = (
-        f"URL: {url}\n\n"
-        f"PAGE MARKDOWN (truncated to 12k chars):\n\n"
-        f"{markdown[:12000]}"
-    )
-
     try:
-        resp = client.messages.create(
-            model="claude-sonnet-4-5-20250929",
-            max_tokens=1500,
-            system=EXTRACTION_SYSTEM_PROMPT,
-            tools=[tool],
-            tool_choice={"type": "tool", "name": "record_event"},
-            messages=[{"role": "user", "content": user_message}],
+        client = genai.Client(api_key=api_key)
+
+        user_message = (
+            f"URL: {url}\n\n"
+            f"PAGE MARKDOWN (truncated to 12k chars):\n\n"
+            f"{markdown[:12000]}"
         )
+
+        resp = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=user_message,
+            config=types.GenerateContentConfig(
+                system_instruction=EXTRACTION_SYSTEM_PROMPT,
+                response_mime_type="application/json",
+                response_schema=EventExtraction,
+                max_output_tokens=1500,
+            )
+        )
+
+        data = EventExtraction.model_validate_json(resp.text).model_dump()
+        data["url"] = url
+        return data
     except Exception as e:
-        return _failed(f"Anthropic call failed: {e}", url)
-
-    for block in resp.content:
-        if getattr(block, "type", None) == "tool_use" and block.name == "record_event":
-            data = dict(block.input)
-            data.setdefault("title", None)
-            data.setdefault("event_date", None)
-            data.setdefault("event_location", None)
-            data["url"] = url
-            return data
-
-    return _failed("no tool_use in response", url)
+        return _failed(f"Gemini call failed: {e}", url)
 
 
 # Confidence floor for auto-import. Extractions below this are routed to
@@ -252,12 +230,13 @@ OTHER RULES:
 # blocks. Two common Sailwave formats:
 #   "### IRC Class 1 Fleet"              (class name leads the heading)
 #   "### RaceName - IRC Class 2 Fleet"   (race name prefixes the heading)
+_CLASS_NUMS = r"[\d/&,\s\-]*\d[\d/&,\s\-]*"
 _CLASS_HEADER_RE = re.compile(
-    r"^#{1,6}\s*(?:"
-    r"IRC\s+(?:Class\s+)?(?:Zero|One|Two-Handed|\d+[A-Z]?)\b"  # "### IRC Class 1 Fleet"
-    r"|(?:IRC\s+)?Division\s+\w+"                               # "### Division A"
-    r"|Class\s+\d+[A-Z]?"                                       # "### Class 3"
-    r"|[^|\n]*\bIRC\s+Class\s+\d+[A-Z]?\b"                    # "### RaceName - IRC Class 2 Fleet"
+    r"^#{0,6}\s*(?:"
+    f"IRC\\s+(?:Class\\s+)?(?:Zero|One|Two-Handed|{_CLASS_NUMS}[A-Z]?)\\b"  # "IRC Class 1 Fleet", "IRC Class 0/1/2"
+    r"|(?:[\w\s]+\s+)?Division\s+\w+"                                         # "Big Boat Division 1" or "Division A"
+    f"|Class\\s+{_CLASS_NUMS}[A-Z]?"                                          # "Class 3", "Class 0/1/2"
+    f"|[^#|\\n]*\\bIRC\\s+Class\\s+{_CLASS_NUMS}[A-Z]?\\b"                  # "RaceName - IRC Class 2 Fleet"
     r").*$",
     re.IGNORECASE | re.MULTILINE,
 )
@@ -295,96 +274,73 @@ def _split_markdown_by_class(md: str) -> list[tuple[str | None, str]]:
     return chunks
 
 
+class CompetitorResult(BaseModel):
+    place: Optional[int] = None
+    boat_name: str
+    sail_number: Optional[str] = None
+    rating_value: Optional[float] = None
+    elapsed_time: Optional[str] = None
+    corrected_time: Optional[str] = None
+    status: Literal["finished", "DNF", "DNS", "DNC", "DSQ", "RET", "OCS"]
+
+
+class RaceResultsExtraction(BaseModel):
+    event_name: str
+    event_date: Optional[str] = Field(default=None, description="YYYY-MM-DD or null")
+    race_name: Optional[str] = None
+    class_name: Optional[str] = None
+    results: list[CompetitorResult]
+    confidence: float = Field(..., ge=0, le=1)
+
+
 def _extract_single(url: str, markdown: str) -> dict[str, Any]:
-    """One Anthropic call for a single-class or single-chunk markdown block."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    """One Gemini call for a single-class or single-chunk markdown block."""
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        return _failed_results("ANTHROPIC_API_KEY not set", url)
+        return _failed_results("GEMINI_API_KEY not set", url)
 
     if not markdown or len(markdown.strip()) < 80:
         return _failed_results("page content too short", url)
 
     try:
-        import anthropic
+        from google import genai
+        from google.genai import types
     except ImportError as e:
-        return _failed_results(f"anthropic SDK missing: {e}", url)
-
-    client = anthropic.Anthropic(api_key=api_key)
-
-    tool = {
-        "name": "record_results",
-        "description": "Record the race results extracted from the page.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "event_name": {"type": "string"},
-                "event_date": {"type": ["string", "null"],
-                               "description": "YYYY-MM-DD or null"},
-                "race_name": {"type": ["string", "null"]},
-                "class_name": {"type": ["string", "null"]},
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "place": {"type": ["integer", "null"]},
-                            "boat_name": {"type": "string"},
-                            "sail_number": {"type": ["string", "null"]},
-                            "rating_value": {"type": ["number", "null"]},
-                            "elapsed_time": {"type": ["string", "null"]},
-                            "corrected_time": {"type": ["string", "null"]},
-                            "status": {
-                                "type": "string",
-                                "enum": ["finished", "DNF", "DNS", "DNC",
-                                         "DSQ", "RET", "OCS"],
-                            },
-                        },
-                        "required": ["boat_name", "status"],
-                    },
-                },
-                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-            },
-            "required": ["event_name", "results", "confidence"],
-        },
-    }
-
-    # 30k char budget — enough for ~150 boats with all columns.
-    user_message = (
-        f"URL: {url}\n\n"
-        f"PAGE MARKDOWN (truncated to 30k chars):\n\n"
-        f"{markdown[:30000]}"
-    )
+        return _failed_results(f"google-genai SDK missing: {e}", url)
 
     try:
-        resp = client.messages.create(
-            model="claude-sonnet-4-5-20250929",
-            max_tokens=8000,  # ~150 rows × 50 tokens
-            system=RESULTS_SYSTEM_PROMPT,
-            tools=[tool],
-            tool_choice={"type": "tool", "name": "record_results"},
-            messages=[{"role": "user", "content": user_message}],
+        client = genai.Client(api_key=api_key)
+
+        # 30k char budget — enough for ~150 boats with all columns.
+        user_message = (
+            f"URL: {url}\n\n"
+            f"PAGE MARKDOWN (truncated to 30k chars):\n\n"
+            f"{markdown[:30000]}"
         )
+
+        resp = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=user_message,
+            config=types.GenerateContentConfig(
+                system_instruction=RESULTS_SYSTEM_PROMPT,
+                response_mime_type="application/json",
+                response_schema=RaceResultsExtraction,
+                max_output_tokens=8000,
+            )
+        )
+
+        data = RaceResultsExtraction.model_validate_json(resp.text).model_dump()
+        data["url"] = url
+        data["_error"] = None
+        return data
     except Exception as e:
-        return _failed_results(f"Anthropic call failed: {e}", url)
-
-    for block in resp.content:
-        if getattr(block, "type", None) == "tool_use" and block.name == "record_results":
-            data = dict(block.input)
-            data.setdefault("event_date", None)
-            data.setdefault("race_name", None)
-            data.setdefault("class_name", None)
-            data.setdefault("results", [])
-            data["url"] = url
-            data.setdefault("_error", None)
-            return data
-
-    return _failed_results("no tool_use in response", url)
+        return _failed_results(f"Gemini call failed: {e}", url)
 
 
 def extract_results(url: str, markdown: str) -> dict[str, Any]:
     """Extract a structured list of race results from a results page.
 
-    For simple single-class pages, makes one Anthropic call. For large
+    For simple single-class pages, makes one Gemini call. For large
     multi-class pages (≥10k chars, ≥2 class headers, ≥40 table rows),
     splits the markdown at class-header boundaries and calls _extract_single
     once per chunk, then merges the results.

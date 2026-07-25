@@ -15,8 +15,8 @@ from irc_data.api.services.report.sections._base import SectionResult
 
 
 @pytest.mark.skipif(
-    not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="ANTHROPIC_API_KEY not set",
+    not os.environ.get("GEMINI_API_KEY"),
+    reason="GEMINI_API_KEY not set",
 )
 def test_generate_s03_for_sun_fish():
     eng = get_engine()

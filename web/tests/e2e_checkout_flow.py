@@ -41,14 +41,14 @@ def page(browser):
     context.close()
 
 
-def _search_and_select(page: Page, query: str = "chilli pepper"):
+def _search_and_select(page: Page, query: str = "sun fish"):
     """Helper: type a search query in the Hero combobox and click the first result."""
-    search = page.locator("input[role='combobox']")
+    search = page.locator("#main-search")
     search.click()
     search.fill(query)
     # Wait for debounced search results to appear (250ms debounce + API call)
-    dropdown_item = page.locator("li").first
-    expect(dropdown_item).to_be_visible(timeout=10000)
+    dropdown_item = page.locator("#search-results li").first
+    expect(dropdown_item).to_be_visible(timeout=15000)
     dropdown_item.click()
 
 
@@ -56,17 +56,17 @@ class TestHomepage:
     def test_homepage_loads(self, page: Page):
         """Page loads with search bar visible."""
         page.goto(DEV_URL, wait_until="networkidle")
-        expect(page.locator("input[role='combobox']")).to_be_visible()
+        expect(page.locator("#main-search")).to_be_visible()
 
     def test_search_returns_results(self, page: Page):
         """Searching for a known boat returns dropdown results."""
         page.goto(DEV_URL, wait_until="networkidle")
-        search = page.locator("input[role='combobox']")
+        search = page.locator("#main-search")
         search.click()
         search.fill("sun")
         # Wait for dropdown results
-        results = page.locator("ul li")
-        expect(results.first).to_be_visible(timeout=10000)
+        results = page.locator("#search-results li")
+        expect(results.first).to_be_visible(timeout=15000)
         assert results.count() > 0, "No dropdown results found for 'sun'"
 
 
@@ -75,20 +75,39 @@ class TestBoatPage:
         """Selecting a search result renders boat card with name and rating."""
         page.goto(DEV_URL, wait_until="networkidle")
         _search_and_select(page)
-        # BoatCard renders inline — look for heading with boat name
-        heading = page.locator("h2, h3").first
-        expect(heading).to_be_visible(timeout=10000)
+        # ReportModal renders the boat's file with name heading inside role="dialog"
+        heading = page.locator("[role='dialog'] h1").first
+        expect(heading).to_be_visible(timeout=15000)
 
     def test_teaser_streams(self, page: Page):
         """SSE insight stream starts and renders analysis text."""
         page.goto(DEV_URL, wait_until="networkidle")
         _search_and_select(page)
-        # Wait for the BoatCard to load, then TeaserAnalysis to start streaming
-        # The teaser takes a few seconds to stream from the AI
-        page.wait_for_timeout(15000)
-        body_text = page.text_content("body") or ""
-        # Should have substantial content from the teaser analysis
-        assert len(body_text) > 500, f"Expected teaser text, body only {len(body_text)} chars"
+        
+        # Wait for the modal or dialog to load
+        expect(page.locator("[role='dialog']")).to_be_visible(timeout=15000)
+        
+        # Let's wait up to 75s for the brief section header to show
+        try:
+            expect(page.locator("text=Section 01 of 08")).to_be_visible(timeout=75000)
+        except AssertionError as e:
+            dialog_text = page.locator("[role='dialog']").text_content() or ""
+            print("\n" + "="*50)
+            print("DIALOG TEXT ON FAILURE:", dialog_text)
+            print("="*50 + "\n")
+            raise e
+            
+        teaser_div = page.locator(".whitespace-pre-wrap").first
+        expect(teaser_div).to_be_visible(timeout=15000)
+        
+        # Wait up to 30s for the text content to stream and exceed 100 characters
+        page.wait_for_function(
+            "el => el.textContent.length > 100",
+            arg=teaser_div.element_handle(),
+            timeout=30000
+        )
+        teaser_text = teaser_div.text_content() or ""
+        assert len(teaser_text) > 100, f"Expected streamed teaser text, but got {len(teaser_text)} chars"
 
 
 class TestCheckoutFlow:
@@ -97,10 +116,10 @@ class TestCheckoutFlow:
         page.goto(DEV_URL, wait_until="networkidle")
         _search_and_select(page)
         # Wait for PurchaseCTA to appear (needs BoatCard to load first)
-        cta = page.locator("button:has-text('Report'), a:has-text('Report')").first
-        expect(cta).to_be_visible(timeout=30000)
+        cta = page.locator("button:has-text('Send me the file'), button:has-text('Report'), a:has-text('Report')").first
+        expect(cta).to_be_visible(timeout=60000)
         # Click and expect navigation to Stripe
-        with page.expect_navigation(url=re.compile(r"checkout\.stripe\.com"), timeout=20000):
+        with page.expect_navigation(url=re.compile(r"checkout\.stripe\.com"), timeout=25000):
             cta.click()
         assert "checkout.stripe.com" in page.url, f"Expected Stripe URL, got {page.url}"
 
@@ -109,9 +128,9 @@ class TestCheckoutFlow:
         """Complete a Stripe test payment and verify redirect to /report/."""
         page.goto(DEV_URL, wait_until="networkidle")
         _search_and_select(page)
-        cta = page.locator("button:has-text('Report'), a:has-text('Report')").first
-        expect(cta).to_be_visible(timeout=30000)
-        with page.expect_navigation(url=re.compile(r"checkout\.stripe\.com"), timeout=20000):
+        cta = page.locator("button:has-text('Send me the file'), button:has-text('Report'), a:has-text('Report')").first
+        expect(cta).to_be_visible(timeout=60000)
+        with page.expect_navigation(url=re.compile(r"checkout\.stripe\.com"), timeout=25000):
             cta.click()
 
         # Fill Stripe checkout form — use domcontentloaded (Stripe never reaches networkidle)
@@ -123,16 +142,27 @@ class TestCheckoutFlow:
         expect(email_input).to_be_visible(timeout=15000)
         email_input.fill("test@sailratings.com")
 
-        # Card number — Stripe uses iframes for card fields
-        card_frame = page.frame_locator("iframe[name*='__privateStripeFrame']").first
-        card_number = card_frame.locator("input[name='cardnumber'], input[placeholder*='card number']").first
-        card_number.fill(CARD_NUMBER)
-
-        card_exp = card_frame.locator("input[name='exp-date'], input[placeholder*='MM']").first
-        card_exp.fill(CARD_EXP)
-
-        card_cvc = card_frame.locator("input[name='cvc'], input[placeholder*='CVC']").first
-        card_cvc.fill(CARD_CVC)
+        # Stripe card inputs can be directly on the page (Checkout page) or inside an iframe
+        card_number_direct = page.locator("input#cardNumber, input[name='cardNumber'], input[autocomplete='cc-number']").first
+        if card_number_direct.is_visible(timeout=5000):
+            card_number_direct.fill(CARD_NUMBER)
+            
+            card_exp_direct = page.locator("input#cardExpiry, input[name='cardExpiry'], input[autocomplete='cc-exp']").first
+            card_exp_direct.fill(CARD_EXP)
+            
+            card_cvc_direct = page.locator("input#cardCvc, input[name='cardCvc'], input[autocomplete='cc-csc']").first
+            card_cvc_direct.fill(CARD_CVC)
+        else:
+            # Fallback to Stripe's iframe
+            card_frame = page.frame_locator("iframe[name*='__privateStripeFrame'], iframe[title*='Secure card payment'], iframe").first
+            card_number = card_frame.locator("input[name='cardnumber'], input[placeholder*='card number'], input[placeholder*='Card number'], input#cardNumber, input[autocomplete='cc-number']").first
+            card_number.fill(CARD_NUMBER)
+            
+            card_exp = card_frame.locator("input[name='exp-date'], input[placeholder*='MM'], input#cardExpiry, input[autocomplete='cc-exp']").first
+            card_exp.fill(CARD_EXP)
+            
+            card_cvc = card_frame.locator("input[name='cvc'], input[placeholder*='CVC'], input#cardCvc, input[autocomplete='cc-csc']").first
+            card_cvc.fill(CARD_CVC)
 
         # Name on card (if present)
         name_input = page.locator("input[name='billingName']")

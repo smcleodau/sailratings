@@ -8,7 +8,7 @@ running against markdown returned by ``irc_data.discovery.firecrawl_client.scrap
 This test is **live-network and live-Claude**, so it is gated on:
 
 - ``FIRECRAWL_API_KEY`` being set in the environment, AND
-- ``ANTHROPIC_API_KEY`` being set in the environment, AND
+- ``GEMINI_API_KEY`` being set in the environment, AND
 - ``RUN_LIVE_EXTRACTOR_TESTS=1`` being explicitly opted into.
 
 Without those, the test skips so CI runs stay hermetic and Firecrawl credits
@@ -29,7 +29,7 @@ import pytest
 LIVE_OK = (
     os.environ.get("RUN_LIVE_EXTRACTOR_TESTS") == "1"
     and bool(os.environ.get("FIRECRAWL_API_KEY"))
-    and bool(os.environ.get("ANTHROPIC_API_KEY"))
+    and bool(os.environ.get("GEMINI_API_KEY"))
 )
 
 # Three public Sailwave-published event pages. Replace with site-specific
@@ -39,12 +39,12 @@ KNOWN_EVENTS = [
     # (url, expected_min_rows). Fill in once a sailwave event URL has been
     # verified against a known finisher count.
     # ("https://example-club.sailwave.com/event-2024", 25),
-]
+ ]
 
 
 pytestmark = pytest.mark.skipif(
     not LIVE_OK,
-    reason="set RUN_LIVE_EXTRACTOR_TESTS=1 + FIRECRAWL_API_KEY + ANTHROPIC_API_KEY",
+    reason="set RUN_LIVE_EXTRACTOR_TESTS=1 + FIRECRAWL_API_KEY + GEMINI_API_KEY",
 )
 
 

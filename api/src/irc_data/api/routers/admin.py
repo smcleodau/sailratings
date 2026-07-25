@@ -272,11 +272,12 @@ def _load_conversation_messages(engine: Engine, conversation_id: int) -> list[di
 
 async def _admin_stream(engine: Engine, message: str, conversation_id: int | None = None):
     """Stream admin chat response, executing read queries inline."""
-    import anthropic
+    from google import genai
+    from google.genai import types
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        yield f"data: {json.dumps({'type': 'error', 'data': 'API key not configured'})}\n\n"
+        yield f"data: {json.dumps({'type': 'error', 'data': 'GEMINI_API_KEY not configured'})}\n\n"
         return
 
     # Create or reuse conversation
@@ -306,51 +307,55 @@ async def _admin_stream(engine: Engine, message: str, conversation_id: int | Non
 
 User message: {message}"""
 
-    from irc_data.api.services.analytics_service import get_anthropic_client
-    client = get_anthropic_client(api_key)
+    from irc_data.api.services.analytics_service import get_gemini_client
+    client = get_gemini_client(api_key)
 
-    # Use tool_use to let the LLM run SELECT queries
+    # Use tools to let the Gemini model run SELECT queries and propose changes
     tools = [
-        {
-            "name": "run_query",
-            "description": "Run a read-only SQL SELECT query against the database. Only SELECT statements are allowed.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "sql": {
-                        "type": "string",
-                        "description": "A SELECT SQL query to run against the PostgreSQL database"
-                    },
-                    "explanation": {
-                        "type": "string",
-                        "description": "Brief explanation of what this query investigates"
-                    }
-                },
-                "required": ["sql"]
-            }
-        },
-        {
-            "name": "propose_change",
-            "description": "Propose a data change for the user to confirm. This does NOT execute the change — it presents it for approval.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "sql": {
-                        "type": "string",
-                        "description": "The UPDATE/INSERT SQL statement to propose"
-                    },
-                    "explanation": {
-                        "type": "string",
-                        "description": "Plain English explanation of what this change does and why"
-                    },
-                    "affected_rows_estimate": {
-                        "type": "string",
-                        "description": "Estimated number of rows affected"
-                    }
-                },
-                "required": ["sql", "explanation"]
-            }
-        }
+        types.Tool(
+            function_declarations=[
+                types.FunctionDeclaration(
+                    name="run_query",
+                    description="Run a read-only SQL SELECT query against the database. Only SELECT statements are allowed.",
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "sql": types.Schema(
+                                type="STRING",
+                                description="A SELECT SQL query to run against the PostgreSQL database",
+                            ),
+                            "explanation": types.Schema(
+                                type="STRING",
+                                description="Brief explanation of what this query investigates",
+                            ),
+                        },
+                        required=["sql", "explanation"],
+                    ),
+                ),
+                types.FunctionDeclaration(
+                    name="propose_change",
+                    description="Propose a data change for the user to confirm. This does NOT execute the change — it presents it for approval.",
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "sql": types.Schema(
+                                type="STRING",
+                                description="The UPDATE/INSERT SQL statement to propose",
+                            ),
+                            "explanation": types.Schema(
+                                type="STRING",
+                                description="Plain English explanation of what this change does and why",
+                            ),
+                            "affected_rows_estimate": types.Schema(
+                                type="STRING",
+                                description="Estimated number of rows affected",
+                            ),
+                        },
+                        required=["sql", "explanation"],
+                    ),
+                ),
+            ]
+        )
     ]
 
     # Load prior conversation context
@@ -362,44 +367,54 @@ User message: {message}"""
 
     messages = prior_messages + [{"role": "user", "content": context}]
 
+    # Convert messages to Gemini's types.Content objects
+    gemini_messages = []
+    for msg in messages:
+        role = "model" if msg["role"] == "assistant" else "user"
+        gemini_messages.append(
+            types.Content(
+                role=role,
+                parts=[types.Part.from_text(text=msg["content"])]
+            )
+        )
+
     # Collect assistant response for persistence
     collected_text = []
     collected_queries = []
     collected_changes = []
 
     try:
-        # Agentic loop — let Claude run queries and build up understanding
+        # Agentic loop — let Gemini run queries and build up understanding
         max_turns = 8
         for turn in range(max_turns):
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=2000,
-                system=ADMIN_SYSTEM_PROMPT,
-                tools=tools,
-                messages=messages,
-                posthog_distinct_id=f"admin-conv-{conversation_id}",
-                posthog_properties={
-                    "endpoint": "admin/chat",
-                    "conversation_id": conversation_id,
-                    "turn": turn,
-                },
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=gemini_messages,
+                config=types.GenerateContentConfig(
+                    system_instruction=ADMIN_SYSTEM_PROMPT,
+                    tools=tools,
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+                    max_output_tokens=2000,
+                )
             )
 
-            # Process response content blocks
-            assistant_content = []
+            # Process response
+            if response.text:
+                yield f"data: {json.dumps({'type': 'text', 'data': response.text})}\n\n"
+                collected_text.append(response.text)
+
             has_tool_use = False
+            function_calls = response.function_calls
 
-            for block in response.content:
-                if block.type == "text":
-                    yield f"data: {json.dumps({'type': 'text', 'data': block.text})}\n\n"
-                    assistant_content.append(block)
-                    collected_text.append(block.text)
+            if function_calls:
+                has_tool_use = True
+                # Append model's response (containing function call parts) to history
+                gemini_messages.append(response.candidates[0].content)
 
-                elif block.type == "tool_use":
-                    has_tool_use = True
-                    assistant_content.append(block)
-                    tool_name = block.name
-                    tool_input = block.input
+                response_parts = []
+                for call in function_calls:
+                    tool_name = call.name
+                    tool_input = call.args
 
                     if tool_name == "run_query":
                         sql = tool_input.get("sql", "")
@@ -422,11 +437,11 @@ User message: {message}"""
                                 if rows:
                                     columns = list(rows[0]._mapping.keys())
                                     total_rows = len(rows)
-                                    for row in rows[:50]:
-                                        display_rows.append([_jsonable(v) for v in row])
+                                    for r in rows[:50]:
+                                        display_rows.append([_jsonable(v) for v in r])
                                     result_lines = [" | ".join(columns)]
-                                    for row in display_rows:
-                                        result_lines.append(" | ".join("" if v is None else str(v) for v in row))
+                                    for r in display_rows:
+                                        result_lines.append(" | ".join("" if v is None else str(v) for v in r))
                                     result_text = f"({total_rows} rows)\n" + "\n".join(result_lines)
                                 else:
                                     result_text = "(0 rows)"
@@ -448,13 +463,12 @@ User message: {message}"""
 
                         collected_queries.append(query_event)
 
-                        # Add tool result to conversation
-                        messages.append({"role": "assistant", "content": assistant_content})
-                        messages.append({
-                            "role": "user",
-                            "content": [{"type": "tool_result", "tool_use_id": block.id, "content": result_text}]
-                        })
-                        assistant_content = []
+                        response_parts.append(
+                            types.Part.from_function_response(
+                                name=tool_name,
+                                response={"result": result_text}
+                            )
+                        )
 
                     elif tool_name == "propose_change":
                         yield f"data: {json.dumps({'type': 'proposed_change', 'data': tool_input})}\n\n"
@@ -464,12 +478,20 @@ User message: {message}"""
                             "status": "pending",
                         })
 
-                        messages.append({"role": "assistant", "content": assistant_content})
-                        messages.append({
-                            "role": "user",
-                            "content": [{"type": "tool_result", "tool_use_id": block.id, "content": "Change proposed to user. Waiting for confirmation."}]
-                        })
-                        assistant_content = []
+                        response_parts.append(
+                            types.Part.from_function_response(
+                                name=tool_name,
+                                response={"result": "Change proposed to user. Waiting for confirmation."}
+                            )
+                        )
+
+                # Append user function responses to history
+                gemini_messages.append(
+                    types.Content(
+                        role="user",
+                        parts=response_parts
+                    )
+                )
 
             if not has_tool_use:
                 break
@@ -997,6 +1019,7 @@ async def firecrawl_diffs(
         """), params).fetchall()
 
         # Per-source rollup (last 30 days) for the at-a-glance traffic-light row
+        # Exclude "hollow" legacy pages (legacy_rows = 0) to avoid under-extraction skew.
         per_source = conn.execute(text("""
             SELECT source,
                    COUNT(*)::int                                        AS runs,
@@ -1009,6 +1032,7 @@ async def firecrawl_diffs(
                    MAX(ran_at)                                          AS last_run
             FROM firecrawl_diffs
             WHERE ran_at > now() - interval '30 days'
+              AND legacy_rows IS NOT NULL AND legacy_rows > 0
             GROUP BY source
             ORDER BY source
         """)).fetchall()

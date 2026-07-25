@@ -48,20 +48,8 @@ def track(
         logger.warning(f"posthog capture failed for {event}: {e}")
 
 
-def get_anthropic_client(api_key: str):
-    """Return an Anthropic client, instrumented with PostHog LLM tracking when available.
-
-    Falls back to the vanilla `anthropic.Anthropic` if PostHog isn't configured or its
-    AI helper isn't installed. The wrapper is a transparent drop-in — same `messages.create`,
-    `messages.stream` API surface — so callers don't change.
+def get_gemini_client(api_key: str):
+    """Return a Gemini client.
     """
-    posthog_client = _get_client()
-    if posthog_client is not None:
-        try:
-            from posthog.ai.anthropic import Anthropic as PostHogAnthropic
-            return PostHogAnthropic(api_key=api_key, posthog_client=posthog_client)
-        except ImportError:
-            logger.debug("posthog.ai.anthropic not available; using vanilla client")
-
-    import anthropic
-    return anthropic.Anthropic(api_key=api_key)
+    from google import genai
+    return genai.Client(api_key=api_key)

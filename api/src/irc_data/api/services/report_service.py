@@ -66,8 +66,9 @@ def generate_report_content(engine: Engine, order_id: int) -> None:
 
 
 def _generate_ai_analysis(engine: Engine, boat_id: int) -> str:
-    """Call Claude with premium context to generate the full report text."""
-    import anthropic
+    """Call Gemini with premium context to generate the full report text."""
+    from google import genai
+    from google.genai import types
 
     from irc_data.api.services.insights_service import (
         SYSTEM_PROMPT_PREMIUM,
@@ -78,27 +79,41 @@ def _generate_ai_analysis(engine: Engine, boat_id: int) -> str:
     if not context:
         return "Error: boat context could not be assembled."
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        logger.error("ANTHROPIC_API_KEY not configured")
+        logger.error("GEMINI_API_KEY not configured")
         return "Error: AI service not configured."
 
-    from irc_data.api.services.analytics_service import get_anthropic_client
-    client = get_anthropic_client(api_key)
+    try:
+        client = genai.Client(api_key=api_key)
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2500,
-        system=SYSTEM_PROMPT_PREMIUM,
-        messages=[{"role": "user", "content": context}],
-        posthog_distinct_id=str(boat_id),
-        posthog_properties={
+        response = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=context,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT_PREMIUM,
+                max_output_tokens=2500,
+            )
+        )
+
+        from irc_data.api.services.analytics_service import track
+        track("$ai_generation", str(boat_id), {
+            "$ai_provider": "gemini",
+            "$ai_model": "gemini-2.5-pro",
+            "$ai_input": [{"role": "user", "content": context}],
+            "$ai_output_choices": [
+                {"role": "assistant", "content": response.text}
+            ],
+            "$ai_input_tokens": getattr(response.usage_metadata, "prompt_token_count", None),
+            "$ai_output_tokens": getattr(response.usage_metadata, "candidates_token_count", None),
             "endpoint": "report_service.generate_report_content",
             "boat_id": boat_id,
-        },
-    )
+        })
 
-    return response.content[0].text
+        return response.text or ""
+    except Exception as e:
+        logger.error(f"Gemini report generation failed: {e}")
+        return f"Error generating report: {e}"
 
 
 def _fetch_structured_analytics(engine: Engine, boat_id: int) -> dict:

@@ -748,7 +748,7 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
     elif source == "rhkyc":
         from datetime import date as date_type
 
-        from irc_data.scrapers.rhkyc import RHKYCSource
+        from irc_data.scrapers.legacy.rhkyc import RHKYCSource
 
         console.print(f"Scraping RHKYC results{f' for {year}' if year else ''}...")
         rhkyc = RHKYCSource()

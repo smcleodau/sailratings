@@ -4,8 +4,8 @@ These events publish a fresh URL once a year. The extractor under test must
 return at least the expected baseline row count for each known year, with
 non-empty boat names.
 
-Live-network and live-Claude — gated identically to ``test_extractor_sailwave.py``
-behind ``RUN_LIVE_EXTRACTOR_TESTS=1`` + ``FIRECRAWL_API_KEY`` + ``ANTHROPIC_API_KEY``.
+Live-network and live-Gemini — gated identically to ``test_extractor_sailwave.py``
+behind ``RUN_LIVE_EXTRACTOR_TESTS=1`` + ``FIRECRAWL_API_KEY`` + ``GEMINI_API_KEY``.
 
 The CLI flag ``--year`` is also exercised here so the URL-derivation logic stays
 under test even when the network gates skip.
@@ -20,7 +20,7 @@ import pytest
 LIVE_OK = (
     os.environ.get("RUN_LIVE_EXTRACTOR_TESTS") == "1"
     and bool(os.environ.get("FIRECRAWL_API_KEY"))
-    and bool(os.environ.get("ANTHROPIC_API_KEY"))
+    and bool(os.environ.get("GEMINI_API_KEY"))
 )
 
 

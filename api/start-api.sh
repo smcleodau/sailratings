@@ -22,6 +22,7 @@ cd /home/irc-data/code/sailratings/api
 # Without it, `op run` errors with "no account found".
 source /home/irc-data/.credentials/op-service-account.env
 
+export OP_CACHE=false
 export PYTHONPATH=src
 
 # Resolve the dev Environment and exec uvicorn with secrets injected.

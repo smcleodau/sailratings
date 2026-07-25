@@ -43,3 +43,6 @@ build/
 # Local Claude state (sessions are per-machine)
 .claude/sessions/
 .claude/projects/
+
+# Antigravity CLI local state
+.antigravitycli/

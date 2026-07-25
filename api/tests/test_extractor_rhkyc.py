@@ -18,7 +18,7 @@ import pytest
 LIVE_OK = (
     os.environ.get("RUN_LIVE_EXTRACTOR_TESTS") == "1"
     and bool(os.environ.get("FIRECRAWL_API_KEY"))
-    and bool(os.environ.get("ANTHROPIC_API_KEY"))
+    and bool(os.environ.get("GEMINI_API_KEY"))
 )
 
 # Five PDFs sampled from race_results.source='rhkyc' on 2026-05-21.
@@ -33,7 +33,7 @@ PDF_URLS = [
 
 pytestmark = pytest.mark.skipif(
     not LIVE_OK,
-    reason="set RUN_LIVE_EXTRACTOR_TESTS=1 + FIRECRAWL_API_KEY + ANTHROPIC_API_KEY",
+    reason="set RUN_LIVE_EXTRACTOR_TESTS=1 + FIRECRAWL_API_KEY + GEMINI_API_KEY",
 )
 
 

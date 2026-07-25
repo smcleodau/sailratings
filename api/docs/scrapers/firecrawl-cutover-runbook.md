@@ -30,6 +30,7 @@ SELECT
     )                                                                AS p10_recall
 FROM firecrawl_diffs
 WHERE ran_at >= NOW() - INTERVAL '14 days'
+  AND legacy_rows IS NOT NULL AND legacy_rows > 0
 GROUP BY source
 ORDER BY mean_recall DESC;
 ```
@@ -111,15 +112,15 @@ Common quarantine causes:
 
 ---
 
-## Sources and Status (as of 2026-05-21)
+## Sources and Status (as of 2026-05-22)
 
 | Source | Legacy scraper | Firecrawl mode | Gate status |
 |--------|---------------|----------------|-------------|
-| ISORA | `isora.py` | `discover-and-ingest --source isora` | Pending T6 |
-| SailRaceHQ | `sailracehq.py` | `discover-and-ingest --source sailracehq` | Pending T6 |
-| Cowes Week | `cowesweek.py` | `discover-and-ingest --source cowesweek --mode per-source-expand --year YYYY` | Pending T6 |
-| RHKYC | `rhkyc.py` | `discover-and-ingest --source rhkyc` | Likely needs PDF pipeline |
+| ISORA | `legacy/isora.py` | `discover-and-ingest --source isora` | Chunker regex updated to support "Class 0/1/2" formats |
+| SailRaceHQ | `legacy/sailracehq.py` | `discover-and-ingest --source sailracehq` | Pending JS-rendering or API endpoint integration |
+| Cowes Week | `legacy/cowesweek.py` | `discover-and-ingest --source cowesweek --mode per-source-expand --year YYYY` | Chunker & name-matching parity pending review |
+| RHKYC | `legacy/rhkyc.py` (retired) | `discover-and-ingest --source rhkyc` | **Completed (2026-05-22)** - Legacy scraper archived |
 | SailSys | `sailsys.py` | **Not migrating** — structured API, no Firecrawl ROI | N/A |
 | TopYacht | `topyacht.py` | **Not migrating** — URL templates, no Firecrawl ROI | N/A |
 
-Update the Gate status column after T6 runs.
+Update the Gate status column as more sources are successfully transitioned.

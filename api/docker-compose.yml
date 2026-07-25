@@ -18,7 +18,7 @@ services:
       - "4100:4100"
     environment:
       DATABASE_URL: postgresql+psycopg://irc:irc@db:5432/irc_data
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     depends_on: [db]
     command: uvicorn irc_data.api.app:app --host 0.0.0.0 --port 4100 --workers 2
     restart: unless-stopped

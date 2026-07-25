@@ -1,9 +1,9 @@
-"""AI insights service — assembles boat context and streams Claude responses.
+"""AI insights service — assembles boat context and streams Gemini responses.
 
 The core flow:
 1. Search for boat(s) matching the user query
 2. Assemble a comprehensive context document from all DB tables
-3. Stream the context to Claude with the system prompt
+3. Stream the context to Gemini with the system prompt
 4. Return SSE events to the frontend
 """
 
@@ -1056,14 +1056,15 @@ async def stream_insight(engine: Engine, boat_id: int, question: str | None = No
     - {"type": "text", "data": "chunk..."}   (LLM-generated report text)
     - {"type": "done", "data": {"boat_id": ...}}
 
-    Requires ANTHROPIC_API_KEY environment variable.
+    Requires GEMINI_API_KEY environment variable.
     """
-    import anthropic
+    from google import genai
+    from google.genai import types
     import asyncio
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        yield {"type": "error", "data": "ANTHROPIC_API_KEY not configured"}
+        yield {"type": "error", "data": "GEMINI_API_KEY not configured"}
         return
 
     # Pre-compute everything that involves sync DB work, so once events start
@@ -1120,53 +1121,55 @@ async def stream_insight(engine: Engine, boat_id: int, question: str | None = No
         max_tokens = 2500
     else:
         system_prompt = SYSTEM_PROMPT_TEASER
-        max_tokens = 600
+        max_tokens = 2000
 
-    # Streaming context manager isn't supported by the posthog.ai wrapper, so use the
-    # vanilla client here and emit a properly-shaped $ai_generation event ourselves
-    # so PostHog LLM Analytics picks it up.
-    client = anthropic.Anthropic(api_key=api_key)
+    # Streaming content with Gemini and emitting a properly-shaped $ai_generation
+    # event ourselves so PostHog LLM Analytics picks it up.
+    client = genai.Client(api_key=api_key)
     from irc_data.api.services.analytics_service import track
     import time as _time
     import uuid as _uuid
     _started = _time.time()
     _output_text_parts: list[str] = []
-    _model = "claude-sonnet-4-20250514"
+    _model = "gemini-2.5-pro" if detail_level == "premium" else "gemini-2.5-flash"
     _trace_id = str(_uuid.uuid4())
     _input_messages = [{"role": "user", "content": user_message}]
+    _usage = None
 
     try:
-        with client.messages.stream(
+        response_stream = client.models.generate_content_stream(
             model=_model,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=_input_messages,
-        ) as stream:
-            for text in stream.text_stream:
+            contents=user_message,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                max_output_tokens=max_tokens,
+            )
+        )
+        for chunk in response_stream:
+            text = chunk.text or ""
+            if text:
                 _output_text_parts.append(text)
                 yield {"type": "text", "data": text}
-
-            _final = stream.get_final_message()
+            if chunk.usage_metadata:
+                _usage = chunk.usage_metadata
 
         _output_text = "".join(_output_text_parts)
         track("$ai_generation", str(boat_id), {
-            "$ai_provider": "anthropic",
+            "$ai_provider": "gemini",
             "$ai_model": _model,
             "$ai_input": _input_messages,
             "$ai_output_choices": [
                 {"role": "assistant", "content": _output_text}
             ],
-            "$ai_input_tokens": getattr(_final.usage, "input_tokens", None),
-            "$ai_output_tokens": getattr(_final.usage, "output_tokens", None),
-            "$ai_cache_creation_input_tokens": getattr(_final.usage, "cache_creation_input_tokens", None),
-            "$ai_cache_read_input_tokens": getattr(_final.usage, "cache_read_input_tokens", None),
+            "$ai_input_tokens": getattr(_usage, "prompt_token_count", None) if _usage else None,
+            "$ai_output_tokens": getattr(_usage, "candidates_token_count", None) if _usage else None,
             "$ai_latency": _time.time() - _started,
             "$ai_http_status": 200,
             "$ai_is_error": False,
             "$ai_trace_id": _trace_id,
             "$ai_span_name": "insights.teaser_stream" if detail_level == "free" else "insights.premium_stream",
-            "$ai_base_url": "https://api.anthropic.com",
-            "$ai_request_url": "https://api.anthropic.com/v1/messages",
+            "$ai_base_url": "https://api.google.com/gemini",
+            "$ai_request_url": "https://generativelanguage.googleapis.com/v1beta/models",
             "endpoint": "insights/ask",
             "detail_level": detail_level,
             "boat_id": boat_id,
@@ -1175,7 +1178,7 @@ async def stream_insight(engine: Engine, boat_id: int, question: str | None = No
 
     except Exception as e:
         track("$ai_generation", str(boat_id), {
-            "$ai_provider": "anthropic",
+            "$ai_provider": "gemini",
             "$ai_model": _model,
             "$ai_input": _input_messages,
             "$ai_output_choices": [
