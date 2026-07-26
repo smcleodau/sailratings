@@ -66,7 +66,12 @@ class Boat(Base):
 
     snapshots: Mapped[list["TCCSnapshotModel"]] = relationship(back_populates="boat")
     certificates: Mapped[list["Certificate"]] = relationship(back_populates="boat")
-    race_results: Mapped[list["RaceResultModel"]] = relationship(back_populates="boat")
+    race_results: Mapped[list["RaceResultModel"]] = relationship(
+        secondary="event_entries",
+        primaryjoin="Boat.id == EventEntry.boat_id",
+        secondaryjoin="EventEntry.id == RaceResultModel.event_entry_id",
+        viewonly=True,
+    )
     orc_certificates: Mapped[list["ORCCertificate"]] = relationship(back_populates="boat")
     identities: Mapped[list["BoatIdentity"]] = relationship(back_populates="boat")
 
@@ -204,17 +209,11 @@ class Certificate(Base):
 class RaceResultModel(Base):
     __tablename__ = "race_results"
     __table_args__ = (
-        UniqueConstraint("boat_id", "event_name", "race_name", "event_date"),
+        UniqueConstraint("event_entry_id", "race_name"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    boat_id: Mapped[int | None] = mapped_column(ForeignKey("boats.id"))
-    # Event info
-    event_name: Mapped[str] = mapped_column(Text, nullable=False)
-    event_date: Mapped[date | None] = mapped_column(Date)
-    event_series: Mapped[str | None] = mapped_column(Text)
-    organizing_club: Mapped[str | None] = mapped_column(Text)
-    event_type: Mapped[str | None] = mapped_column(Text)
+    event_entry_id: Mapped[int] = mapped_column(ForeignKey("event_entries.id"), nullable=False)
     # Race info
     race_name: Mapped[str | None] = mapped_column(Text)
     race_date_specific: Mapped[date | None] = mapped_column(Date)
@@ -249,7 +248,7 @@ class RaceResultModel(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    boat: Mapped["Boat | None"] = relationship(back_populates="race_results")
+    event_entry: Mapped["EventEntry"] = relationship(back_populates="race_results")
 
 
 # ---------------------------------------------------------------------------
@@ -494,5 +493,64 @@ class Order(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     report_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    boat: Mapped["Boat"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Events
+# ---------------------------------------------------------------------------
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str | None] = mapped_column(Text)
+    start_date: Mapped[date | None] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    venue: Mapped[str | None] = mapped_column(Text)
+    course_type: Mapped[str | None] = mapped_column(Text)
+    organiser: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    entries: Mapped[list["EventEntry"]] = relationship(back_populates="event")
+
+
+class EventEntry(Base):
+    __tablename__ = "event_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), nullable=False)
+    boat_id: Mapped[int | None] = mapped_column(ForeignKey("boats.id"))
+    sail_number: Mapped[str | None] = mapped_column(Text)
+    boat_name: Mapped[str | None] = mapped_column(Text)
+    tcc: Mapped[Decimal | None] = mapped_column(Numeric(5, 3))
+    design: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    event: Mapped["Event"] = relationship(back_populates="entries")
+    boat: Mapped["Boat"] = relationship()
+    race_results: Mapped[list["RaceResultModel"]] = relationship(back_populates="event_entry")
+
+
+class BoatEvent(Base):
+    __tablename__ = "boat_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    boat_id: Mapped[int] = mapped_column(ForeignKey("boats.id"), nullable=False)
+    event_type: Mapped[str | None] = mapped_column(Text)
+    event_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payload: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     boat: Mapped["Boat"] = relationship()

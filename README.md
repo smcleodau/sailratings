@@ -1,51 +1,23 @@
-# SailRatings
+# Sail Ratings
 
-SaaS platform for IRC sailing boat performance analysis. Monorepo containing
-the customer-facing site, the rating-data backend, the AI insights service,
-and the data-ingestion pipeline.
+This is the SailRatings platform monorepo. It contains the web frontend and the data API.
 
-| Service       | Path    | Stack                       | Dev URL                          |
-|---------------|---------|-----------------------------|----------------------------------|
-| Frontend      | `web/`  | Next.js 16 / React 19 / TS  | https://dev.sailratings.com      |
-| Backend / API | `api/`  | Python 3.11 / FastAPI       | https://api-dev.sailratings.com  |
+## Directory Structure
 
-PostgreSQL 16 runs on `localhost:5433` (dev DB `irc_data`, user/password `irc`/`irc`).
+* `web/` - The Next.js 16 frontend for the website and admin tools.
+* `api/` - The Python/FastAPI backend for data scraping, orchestration, and API services.
+* `.claude/` - Project-level configuration for Claude Code / Antigravity.
 
-## Quick start
+## Development
 
-```bash
-# API (port 4100)
-cd api && ./start-api.sh
+Both the frontend and the backend have their own stack-specific commands. See the `CLAUDE.md` files in each subdirectory for detailed setup and run instructions:
+* `web/CLAUDE.md`
+* `api/CLAUDE.md`
 
-# Frontend dev server (port 3000)
-cd web && npm run dev
+### Environment Variables
+Environment variables are managed centrally via 1Password Environments. The Dev environment ID is used during local development to inject secrets securely via `op run --environment <ID>`. Wait for your 1Password CLI to be authenticated before starting services.
 
-# Frontend production build (port 4200)
-cd web && ENVIRONMENT=dev npm run build && ./node_modules/.bin/next start -p 4200
-```
-
-## Layout
-
-- **`web/`** — Next.js frontend. See [`web/CLAUDE.md`](web/CLAUDE.md).
-- **`api/`** — Python backend, CLI, scrapers, analysis engines. See [`api/CLAUDE.md`](api/CLAUDE.md).
-- **`.claude/agents/`** — shared subagents (e.g. `sailing-marketing-writer`).
-- **`api/data/raw`** — symlink to `/home/irc-data/data-raw/` on the dev box;
-  contains ~1 GB of raw scraper output (cert PDFs, CSVs). Regeneratable via the
-  cron jobs in `api/crontab.txt`.
-
-## Deployment
-
-- **Dev** (this box): work on `develop`, commit, push — visible at `dev.sailratings.com`.
-- **Production** (Railway): merge `develop` → `main`, push; Railway auto-deploys (~2 min).
-- Rollback: Railway dashboard, or `git revert` + push.
-
-## Environment
-
-For local dev, secrets are sourced via 1Password CLI:
-
-```bash
-op run --env-file=.env.dev.template -- <command>
-```
-
-See `api/start-api.sh` for the injection pattern. Templates: `.env.dev.template`,
-`.env.prod.template`.
+### Services
+* **Frontend:** Next.js server running on port `4200`
+* **Backend:** FastAPI server running on port `4100`
+* **Database:** PostgreSQL on `localhost:5433` (database `irc_data`)

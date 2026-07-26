@@ -93,6 +93,9 @@ class Recommendation:
     feasibility_label: str
     evidence_strength: str  # "strong", "moderate", "limited"
     explanation: str
+    seconds_saved_per_hour: float = 0.0
+    return_on_rating: float = 0.0
+    return_on_rating_text: str = ""
     rank: int = 0
 
     def to_dict(self) -> dict:
@@ -108,6 +111,9 @@ class Recommendation:
             "feasibility_label": self.feasibility_label,
             "evidence_strength": self.evidence_strength,
             "explanation": self.explanation,
+            "seconds_saved_per_hour": self.seconds_saved_per_hour,
+            "return_on_rating": self.return_on_rating,
+            "return_on_rating_text": self.return_on_rating_text,
             "rank": self.rank,
         }
         return result
@@ -327,6 +333,31 @@ def _build_recommendations(
         else:
             evidence = "limited"
 
+        # Seconds saved per hour: 1 TCC point (0.001) = ~3.6s per hour
+        seconds_saved_hr = round(abs(estimated_tcc / 0.001) * 3.6, 1)
+
+        # Proxy cost per feasibility level ($)
+        cost_proxy = 0.0
+        if feas in (1, 2):
+            cost_proxy = 0.0
+        elif feas == 3:
+            cost_proxy = 2500.0
+        elif feas == 4:
+            cost_proxy = 4000.0
+        elif feas == 5:
+            cost_proxy = 10000.0
+        elif feas == 6:
+            cost_proxy = 15000.0
+        elif feas == 7:
+            cost_proxy = 25000.0
+
+        if cost_proxy > 0:
+            ror = round(seconds_saved_hr / (cost_proxy / 1000.0), 2)
+            ror_text = f"{ror}s saved / $1,000"
+        else:
+            ror = 999.0
+            ror_text = "Immediate / High Value ($0 admin cost)"
+
         # Explanation
         direction_word = "reducing" if optimal_dir == "decrease" else "increasing"
         explanation = (
@@ -335,7 +366,7 @@ def _build_recommendations(
         )
         if smart_val is not None:
             explanation += f" (top performers avg {smart_val:.2f})"
-        explanation += f". Est. TCC impact: {estimated_tcc:+.4f}."
+        explanation += f". Est. TCC impact: {estimated_tcc:+.4f} ({seconds_saved_hr}s/hr saved)."
 
         recommendations.append(Recommendation(
             field=field,
@@ -349,6 +380,9 @@ def _build_recommendations(
             feasibility_label=feas_label,
             evidence_strength=evidence,
             explanation=explanation,
+            seconds_saved_per_hour=seconds_saved_hr,
+            return_on_rating=ror,
+            return_on_rating_text=ror_text,
         ))
 
     return recommendations

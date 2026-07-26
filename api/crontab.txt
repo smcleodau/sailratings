@@ -5,112 +5,52 @@
 # MAILTO can be set for error notifications.
 
 SHELL=/bin/bash
-PATH=/home/irc-data/code/sailratings/api/.venv/bin:/usr/local/bin:/usr/bin:/bin
+PATH=/home/irc-data/code/sailratings/api/.venv/bin:/home/irc-data/.local/bin:/usr/local/bin:/usr/bin:/bin
 IRC_DATA_DIR=/home/irc-data/code/sailratings/api
 LOG_DIR=/home/irc-data/logs
+OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --environment vzhxzxt7mgb4tolyepo5wqzcz4 --"
 
 # === ORC (URGENT: never miss a day) ===
 # Daily full ORC snapshot at 03:00 UTC
-0 3 * * *    cd $IRC_DATA_DIR && irc-data scrape orc >> $LOG_DIR/orc_$(date +\%F).log 2>&1
-
-# Daily ORC-only match pass — closes the 7-day orphan gap (was Sunday-only).
-# Runs 15 min after the ORC scrape, before detail backfill.
-15 3 * * *   cd $IRC_DATA_DIR && irc-data match-boats --orc-only >> $LOG_DIR/match-orc_$(date +\%F).log 2>&1
-
-# Daily ORC detail backfill — clears the ~73% missing-GPH backlog at
-# 500 certs/night, ~15 days to drain. Runs 30 min after the ORC scrape.
-30 3 * * *   cd $IRC_DATA_DIR && irc-data scrape orc-detail --backlog --limit 500 >> $LOG_DIR/orc-detail_$(date +\%F).log 2>&1
+0 3 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape orc" >> $LOG_DIR/orc_$(date +\%F).log 2>&1
 
 # Refresh materialized views after ORC ingestion
-0 4 * * *    cd $IRC_DATA_DIR && irc-data refresh-views >> $LOG_DIR/views_$(date +\%F).log 2>&1
+0 4 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data refresh-views" >> $LOG_DIR/views_$(date +\%F).log 2>&1
 
 # === IRC ===
 # Daily TCC listing CSV download at 06:00 UTC
-0 6 * * *    cd $IRC_DATA_DIR && irc-data scrape tcc >> $LOG_DIR/tcc_$(date +\%F).log 2>&1
+0 6 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape tcc" >> $LOG_DIR/tcc_$(date +\%F).log 2>&1
 
 # Weekly cert discovery (Sunday 07:00 UTC)
-0 7 * * 0    cd $IRC_DATA_DIR && irc-data scrape certs --exhaustive >> $LOG_DIR/certs_$(date +\%F).log 2>&1
+0 7 * * 0    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape certs --exhaustive" >> $LOG_DIR/certs_$(date +\%F).log 2>&1
 
 # Weekly PDF parsing (Sunday 08:00 UTC)
-0 8 * * 0    cd $IRC_DATA_DIR && irc-data parse-certs >> $LOG_DIR/parse_$(date +\%F).log 2>&1
+0 8 * * 0    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data parse-certs" >> $LOG_DIR/parse_$(date +\%F).log 2>&1
 
 # === Race Results — All 13 SailSys clubs, every 30 min (incremental) ===
-*/30 * * * *  cd $IRC_DATA_DIR && irc-data scrape results --source sailsys --all-clubs >> $LOG_DIR/sailsys_$(date +\%F_\%H\%M).log 2>&1
+*/30 * * * *  cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape results --source sailsys --all-clubs" >> $LOG_DIR/sailsys_$(date +\%F_\%H\%M).log 2>&1
 
 # Re-match unmatched results after each scrape cycle (offset by 20 min)
-20,50 * * * *  cd $IRC_DATA_DIR && irc-data rematch-results >> $LOG_DIR/rematch_$(date +\%F_\%H\%M).log 2>&1
+20,50 * * * *  cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data rematch-results" >> $LOG_DIR/rematch_$(date +\%F_\%H\%M).log 2>&1
 
-# --- UK / Ireland / Asia offshore results ---
-# SailRaceHQ — current UK offshore results platform (replaces RORC static
-# HTML which only covered 2007-2022). Weekly Tuesday 10:00.
-0 10 * * 2   cd $IRC_DATA_DIR && irc-data scrape results --source sailracehq >> $LOG_DIR/sailracehq_$(date +\%F).log 2>&1
-
-# ISORA — Irish Sea Offshore Racing Association. Weekly Tuesday 11:00.
-0 11 * * 2   cd $IRC_DATA_DIR && irc-data scrape results --source isora >> $LOG_DIR/isora_$(date +\%F).log 2>&1
-
-# --- Firecrawl parallel-run entries (Task A6) -------------------------------
-# These run alongside the bespoke scrapers above for ~14 days. After parity
-# is green per `irc-data parity-report`, the legacy entries are retired and
-# only the Firecrawl entries remain.
-0 11 * * 2   cd $IRC_DATA_DIR && irc-data discover-and-ingest --seed-url "https://sailracehq.com/" --source sailracehq --tag-as firecrawl >> $LOG_DIR/sailracehq-firecrawl_$(date +\%F).log 2>&1
-0 12 * * 2   cd $IRC_DATA_DIR && irc-data discover-and-ingest --seed-url "https://www.isora.org/index.php/notice-board/results2" --source isora --tag-as firecrawl >> $LOG_DIR/isora-firecrawl_$(date +\%F).log 2>&1
-
-# RHKYC — Royal Hong Kong Yacht Club fleet. Weekly Wednesday 10:00 UTC.
-# Cut over to Firecrawl discover-and-ingest against the public results index
-# (see Task A5/A7). The bespoke scraper at irc_data.scrapers.rhkyc is retained
-# during the parallel-run window and retired in a follow-up commit.
-0 10 * * 3   cd $IRC_DATA_DIR && irc-data discover-and-ingest --seed-url "https://www.rhkyc.org.hk/sailing-results" --source rhkyc >> $LOG_DIR/rhkyc_$(date +\%F).log 2>&1
-
-# TopYacht — Southport YC + major AU regattas (HIRW, ABRW, FoS, ORWA, CYCSA…).
-# Daily 02:30 UTC. RQYS/SYC publish race-by-race; an annual cron pass would
-# miss the current sailing season for weeks at a time.
-30 2 * * *   cd $IRC_DATA_DIR && irc-data scrape results --source topyacht --incremental --store >> $LOG_DIR/topyacht_$(date +\%F).log 2>&1
-
-# --- Annual events via Firecrawl + Claude extractor ---
-# Cowes Week — runs in the first week of August. Scrape 5 September to catch
-# late-published amended results.
-0 6 5 9 *    cd $IRC_DATA_DIR && irc-data ingest-event --source cowesweek --year $(date +\%Y) >> $LOG_DIR/cowesweek_$(date +\%F).log 2>&1
-
-# Sydney–Hobart — race start 26 December; results finalised by 30 December.
-# DISABLED: there is no stable year-derivable URL — cyca.com.au/results/{year}-rolex-sydney-hobart
-# redirects to a marketing page and the real results live on bwps.cycaracing.com
-# at per-race URLs that vary year to year. Each December, find the canonical
-# bwps URL and run by hand, e.g.:
-#   irc-data ingest-event --source sydneyhobart --url https://bwps.cycaracing.com/?race=N
-# Once the URL pattern stabilises, re-enable a cron entry here.
-# 0 6 30 12 *  cd $IRC_DATA_DIR && irc-data ingest-event --source sydneyhobart --year $(date +\%Y) >> $LOG_DIR/sydneyhobart_$(date +\%F).log 2>&1
-
-# --- Decommissioned / on-demand sources (intentionally NOT scheduled) ---
-# rorc:        static HTML only covers 2007-2022. Use sailracehq for post-2023.
-# sailwave:    used by scattered clubs, no canonical URL pattern. Run by hand
-#              against specific event URLs when needed:
-#                irc-data ingest-event --url <URL> --source sailwave
+# Tuesday 10:00 — UK results (RORC)
+# Note: RORC static HTML only covers 2007-2022; post-2023 needs SailRaceHQ
+# 0 10 * * 2   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape results --source rorc" >> $LOG_DIR/rorc_$(date +\%F).log 2>&1
 
 # === Identity & Design Maintenance ===
 # Weekly: match new ORC certs to IRC boats (Sunday 05:00 UTC)
-0 5 * * 0    cd $IRC_DATA_DIR && irc-data match-boats >> $LOG_DIR/match_$(date +\%F).log 2>&1
+0 5 * * 0    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data match-boats" >> $LOG_DIR/match_$(date +\%F).log 2>&1
 
 # Monthly: re-seed designs and backfill (1st of month 04:30 UTC)
-30 4 1 * *   cd $IRC_DATA_DIR && irc-data seed-designs >> $LOG_DIR/designs_$(date +\%F).log 2>&1
+30 4 1 * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data seed-designs" >> $LOG_DIR/designs_$(date +\%F).log 2>&1
 
 # === Historical backfill ===
 # Monthly: Wayback Machine archive search (1st of month)
-0 4 1 * *    cd $IRC_DATA_DIR && irc-data scrape wayback >> $LOG_DIR/wayback_$(date +\%F).log 2>&1
+0 4 1 * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape wayback" >> $LOG_DIR/wayback_$(date +\%F).log 2>&1
 
 # === Monitoring ===
 # Daily health check at 09:00 UTC with webhook notification
-0 9 * * *    cd $IRC_DATA_DIR && irc-data health-check --notify >> $LOG_DIR/health_$(date +\%F).log 2>&1
-
-# Scrape watchdog — every 15 min, emails stuart@stuartmcleod.me when any
-# non-optional source breaches its freshness budget. 4h cooldown per source
-# is enforced inside the command. Reads RESEND_API_KEY + ALERT_EMAIL from env.
-*/15 * * * * cd $IRC_DATA_DIR && irc-data scrape-watchdog >> $LOG_DIR/watchdog_$(date +\%F).log 2>&1
-
-# === Discovery seed-crawl (Task A7) ===
-# Nightly 22:30 UTC: walk the aggregator/fixture sites listed in
-# DEFAULT_AGGREGATORS (see cli.py) and queue every discovered URL into
-# event_discovery for Justin to confirm at /justin/discovery.
-30 22 * * *  cd $IRC_DATA_DIR && irc-data seed-crawl --aggregators >> $LOG_DIR/seedcrawl_$(date +\%F).log 2>&1
+0 9 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data health-check --notify" >> $LOG_DIR/health_$(date +\%F).log 2>&1
 
 # === Cleanup ===
 # Delete logs older than 30 days (midnight)
@@ -118,5 +58,5 @@ LOG_DIR=/home/irc-data/logs
 0 1 * * * /home/irc-data/scripts/sync-prod-db.sh >> /home/irc-data/logs/sync-prod-db.log 2>&1
 @reboot nohup /home/irc-data/scripts/scrape-everything.sh >> /home/irc-data/logs/scrape-master.log 2>&1 &
 @reboot nohup /home/irc-data/scripts/data-maintenance.sh >> /home/irc-data/logs/data-maintenance.log 2>&1 &
-0 10 * * 1 source /home/irc-data/.env && python3 -m pytest tests/e2e_checkout_flow.py -v --timeout=120 >> /home/irc-data/logs/e2e_$(date +\%Y\%m\%d).log 2>&1
-30 4 * * *   cd $IRC_DATA_DIR && irc-data seed-design-designers >> $LOG_DIR/identity_$(date +\%F).log 2>&1 && irc-data backfill-boat-identity >> $LOG_DIR/identity_$(date +\%F).log 2>&1
+0 10 * * 1 cd $IRC_DATA_DIR && bash -c "export PYTHONPATH=src && $OP_ENV python3 -m pytest tests/e2e_checkout_flow.py -v --timeout=120" >> /home/irc-data/logs/e2e_$(date +\%Y\%m\%d).log 2>&1
+30 4 * * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data seed-design-designers" >> $LOG_DIR/identity_$(date +\%F).log 2>&1 && bash -c "$OP_ENV irc-data backfill-boat-identity" >> $LOG_DIR/identity_$(date +\%F).log 2>&1

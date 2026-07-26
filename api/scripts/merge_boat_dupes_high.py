@@ -5,15 +5,15 @@ canonical winner and re-point all FK references from losers to the winner,
 then delete the loser rows.
 
 Winner-picking rule (in order):
-  1. Row whose id matches certificates.boat_id AND has the most-recent
-     certificates.issue_date.
+  1. Row whose id matches irc_certificates.boat_id AND has the most-recent
+     irc_certificates.issue_date.
   2. Tie-break: highest race_results count.
   3. Tie-break: earliest boats.created_at.
 
 Safeguards:
   * One transaction per cluster — failure on N+1 leaves N committed.
   * Every loser is snapshotted into boat_merges (jsonb) BEFORE delete.
-  * Unique-constraint collisions on certificates.cert_number and
+  * Unique-constraint collisions on irc_certificates.cert_number and
     tcc_snapshots(boat_id, snapshot_date) are detected and resolved
     in-transaction by keeping the most-recent row and deleting the sibling
     (sibling row is captured in boat_merges.loser_snapshot.extra_certs[]
@@ -79,13 +79,21 @@ def ensure_boat_merges_table(conn: Connection) -> None:
     )
 
 
-def load_clusters(path: Path) -> dict[str, list[int]]:
-    clusters: dict[str, list[int]] = defaultdict(list)
-    with path.open("r", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            clusters[row["cluster_id"]].append(int(row["boat_id"]))
-    return dict(clusters)
+def load_clusters(engine) -> dict[str, list[int]]:
+    clusters: dict[str, list[int]] = {}
+    with engine.begin() as conn:
+        res = conn.execute(text("""
+            SELECT c.cert_number || '|' || b.boat_name AS cluster_id, array_agg(b.id) as boat_ids
+            FROM irc_certificates c
+            JOIN boats b ON b.id = c.boat_id
+            WHERE c.cert_number IS NOT NULL AND c.cert_number != ''
+            AND b.boat_name IS NOT NULL AND b.boat_name != ''
+            GROUP BY c.cert_number, b.boat_name
+            HAVING COUNT(*) > 1
+        """))
+        for row in res:
+            clusters[row.cluster_id] = list(row.boat_ids)
+    return clusters
 
 
 def fetch_boat_row(conn: Connection, boat_id: int) -> dict[str, Any] | None:
@@ -112,7 +120,7 @@ def pick_winner(conn: Connection, boat_ids: list[int]) -> int:
             SELECT b.id,
                    b.created_at,
                    (SELECT MAX(c.issue_date)
-                      FROM certificates c WHERE c.boat_id = b.id) AS latest_cert,
+                      FROM irc_certificates c WHERE c.boat_id = b.id) AS latest_cert,
                    (SELECT COUNT(*) FROM race_results r WHERE r.boat_id = b.id) AS rr_count
               FROM boats b
              WHERE b.id = ANY(:ids)
@@ -148,7 +156,7 @@ def repoint_simple(
 def resolve_cert_collisions(
     conn: Connection, winner_id: int, loser_id: int, extras_sink: list[dict]
 ) -> tuple[int, int]:
-    """Handle certificates.cert_number UNIQUE collisions.
+    """Handle irc_certificates.cert_number UNIQUE collisions.
 
     If winner has cert X and loser has cert X (same cert_number), keep the
     one with the most-recent issue_date and DELETE the other (captured in
@@ -161,7 +169,7 @@ def resolve_cert_collisions(
         r["cert_number"]: dict(r)
         for r in conn.execute(
             text(
-                "SELECT id, cert_number, issue_date, source FROM certificates "
+                "SELECT id, cert_number, issue_date, source FROM irc_certificates "
                 "WHERE boat_id = :w AND cert_number IS NOT NULL"
             ),
             {"w": winner_id},
@@ -171,7 +179,7 @@ def resolve_cert_collisions(
     loser_certs = conn.execute(
         text(
             "SELECT row_to_json(c)::jsonb AS j, id, cert_number, issue_date "
-            "FROM certificates c WHERE c.boat_id = :l"
+            "FROM irc_certificates c WHERE c.boat_id = :l"
         ),
         {"l": loser_id},
     ).mappings().all()
@@ -184,7 +192,7 @@ def resolve_cert_collisions(
         if wc is None:
             # No collision — just re-point.
             conn.execute(
-                text("UPDATE certificates SET boat_id = :w WHERE id = :id"),
+                text("UPDATE irc_certificates SET boat_id = :w WHERE id = :id"),
                 {"w": winner_id, "id": lc["id"]},
             )
             repointed += 1
@@ -204,22 +212,22 @@ def resolve_cert_collisions(
             # Drop the loser's cert row; capture in extras.
             extras_sink.append({"kind": "certificate_collision_dropped", "row": lc["j"]})
             conn.execute(
-                text("DELETE FROM certificates WHERE id = :id"), {"id": lc["id"]}
+                text("DELETE FROM irc_certificates WHERE id = :id"), {"id": lc["id"]}
             )
         else:
             # Loser's cert is newer — capture winner's, delete winner's, re-point loser's.
             winner_full = conn.execute(
-                text("SELECT row_to_json(c)::jsonb AS j FROM certificates c WHERE c.id = :id"),
+                text("SELECT row_to_json(c)::jsonb AS j FROM irc_certificates c WHERE c.id = :id"),
                 {"id": wc["id"]},
             ).scalar()
             extras_sink.append(
                 {"kind": "certificate_collision_replaced_winner", "row": winner_full}
             )
             conn.execute(
-                text("DELETE FROM certificates WHERE id = :id"), {"id": wc["id"]}
+                text("DELETE FROM irc_certificates WHERE id = :id"), {"id": wc["id"]}
             )
             conn.execute(
-                text("UPDATE certificates SET boat_id = :w WHERE id = :id"),
+                text("UPDATE irc_certificates SET boat_id = :w WHERE id = :id"),
                 {"w": winner_id, "id": lc["id"]},
             )
             repointed += 1
@@ -383,8 +391,8 @@ def merge_cluster(
                 conn, winner_id, loser_id, extras
             )
 
-            rep.rows_repointed.setdefault("certificates", 0)
-            rep.rows_repointed["certificates"] += cert_rp
+            rep.rows_repointed.setdefault("irc_certificates", 0)
+            rep.rows_repointed["irc_certificates"] += cert_rp
             rep.rows_repointed.setdefault("tcc_snapshots", 0)
             rep.rows_repointed["tcc_snapshots"] += tcc_rp
             rep.rows_repointed.setdefault("race_results", 0)
@@ -418,7 +426,7 @@ def merge_cluster(
 
             # Confirm no FK references remain.
             for tbl in [
-                "certificates",
+                "irc_certificates",
                 "tcc_snapshots",
                 "race_results",
                 "orc_certificates",
@@ -442,16 +450,12 @@ def merge_cluster(
 
 
 def main() -> int:
-    if not CSV_PATH.exists():
-        print(f"ERROR: {CSV_PATH} not found", file=sys.stderr)
-        return 1
-
     engine = get_engine()
     with engine.begin() as conn:
         ensure_boat_merges_table(conn)
 
-    clusters = load_clusters(CSV_PATH)
-    print(f"Loaded {len(clusters)} clusters from {CSV_PATH}")
+    clusters = load_clusters(engine)
+    print(f"Loaded {len(clusters)} clusters from DB")
 
     reports: list[MergeReport] = []
     errors: list[tuple[str, str]] = []

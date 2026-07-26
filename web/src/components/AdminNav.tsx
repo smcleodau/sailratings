@@ -11,47 +11,47 @@ interface AdminNavProps {
 
 const SECTIONS = [
   {
-    href: "/justin",
+    href: "/admin",
     label: "Chat",
     match: (p: string) =>
-      p === "/justin" ||
-      (p.startsWith("/justin") &&
-        !p.startsWith("/justin/tables") &&
-        !p.startsWith("/justin/corrections") &&
-        !p.startsWith("/justin/scrapers") &&
-        !p.startsWith("/justin/discovery") &&
-        !p.startsWith("/justin/firecrawl")),
+      p === "/admin" ||
+      (p.startsWith("/admin") &&
+        !p.startsWith("/admin/tables") &&
+        !p.startsWith("/admin/corrections") &&
+        !p.startsWith("/admin/scrapers") &&
+        !p.startsWith("/admin/discovery") &&
+        !p.startsWith("/admin/firecrawl")),
   },
   {
-    href: "/justin/scrapers",
+    href: "/admin/scrapers",
     label: "Scrapers",
-    match: (p: string) => p.startsWith("/justin/scrapers"),
+    match: (p: string) => p.startsWith("/admin/scrapers"),
   },
   {
-    href: "/justin/discovery",
+    href: "/admin/discovery",
     label: "Discovery",
-    match: (p: string) => p.startsWith("/justin/discovery"),
+    match: (p: string) => p.startsWith("/admin/discovery"),
   },
   {
-    href: "/justin/firecrawl",
+    href: "/admin/firecrawl",
     label: "Firecrawl",
-    match: (p: string) => p.startsWith("/justin/firecrawl"),
+    match: (p: string) => p.startsWith("/admin/firecrawl"),
   },
   {
-    href: "/justin/tables",
+    href: "/admin/tables",
     label: "Tables",
     match: (p: string) =>
-      p.startsWith("/justin/tables") && p !== "/justin/tables/admin_edits",
+      p.startsWith("/admin/tables") && p !== "/admin/tables/admin_edits",
   },
   {
-    href: "/justin/corrections",
+    href: "/admin/corrections",
     label: "Corrections",
-    match: (p: string) => p.startsWith("/justin/corrections"),
+    match: (p: string) => p.startsWith("/admin/corrections"),
   },
   {
-    href: "/justin/tables/admin_edits",
+    href: "/admin/tables/admin_edits",
     label: "Audit",
-    match: (p: string) => p === "/justin/tables/admin_edits",
+    match: (p: string) => p === "/admin/tables/admin_edits",
   },
 ];
 
@@ -62,26 +62,25 @@ export function AdminNav({ rightSlot }: AdminNavProps) {
   const handleSignOut = () => {
     if (typeof window === "undefined") return;
     localStorage.removeItem("admin_token");
-    router.push("/justin");
+    router.push("/admin");
     router.refresh();
   };
 
   return (
-    <header className="flex-shrink-0 border-b border-white/10 bg-navy px-6 py-3 flex items-center justify-between gap-6 flex-wrap">
+    <header className="admin-nav px-10 py-3 flex items-center justify-between gap-6 flex-wrap">
       {/* Brand */}
-      <Link
-        href="/justin"
-        prefetch
-        className="flex items-baseline gap-2 group flex-shrink-0"
-      >
-        <span className="brand-wordmark text-white text-sm">Sail Ratings</span>
-        <span className="data-mono text-[10px] uppercase tracking-[0.18em] text-white/30 group-hover:text-white/60 transition-colors">
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <img src="/mark-marine-on-light.svg" alt="" className="w-[22px] h-[22px]" />
+        <Link href="/admin" prefetch className="admin-header-font font-extrabold text-[15px] tracking-[0.02em] text-[#162423]">
+          SAIL<span className="text-[#FF4119]">RATINGS</span>
+        </Link>
+        <span className="admin-mono-font text-[9px] tracking-[0.18em] uppercase text-[#0C5F5C] border border-[#0C5F5C]/35 rounded-full px-2 py-[2px] ml-1">
           Admin
         </span>
-      </Link>
+      </div>
 
       {/* Section tabs */}
-      <nav className="flex items-center gap-0 -mb-3 flex-1" aria-label="Admin sections">
+      <nav className="flex items-center gap-0 flex-1" aria-label="Admin sections">
         {SECTIONS.map((s) => {
           const active = s.match(pathname);
           return (
@@ -89,29 +88,25 @@ export function AdminNav({ rightSlot }: AdminNavProps) {
               key={s.href}
               href={s.href}
               prefetch
-              className={`relative data-mono text-[11px] uppercase tracking-[0.16em] px-4 py-3 transition-colors ${
-                active ? "text-brass" : "text-white/40 hover:text-white/70"
+              className={`admin-mono-font text-[10px] tracking-[0.14em] uppercase px-3 py-2 ${
+                active ? "admin-link-active" : "admin-link"
               }`}
             >
               {s.label}
-              {active && (
-                <span className="absolute left-3 right-3 bottom-0 h-px bg-brass" aria-hidden />
-              )}
             </Link>
           );
         })}
       </nav>
 
-      {/* Right slot + sign out */}
+      {/* Right controls */}
       <div className="flex items-center gap-4 flex-shrink-0">
         {rightSlot}
         <button
           onClick={handleSignOut}
-          className="inline-flex items-center gap-1.5 data-mono text-[10px] uppercase tracking-[0.16em] text-white/30 hover:text-white/70 transition-colors"
-          title="Sign out"
+          className="admin-mono-font text-[10px] tracking-[0.14em] uppercase admin-link flex items-center gap-2"
+          aria-label="Sign out"
         >
-          <LogOut size={12} strokeWidth={1.75} />
-          Sign Out
+          Sign out
         </button>
       </div>
     </header>

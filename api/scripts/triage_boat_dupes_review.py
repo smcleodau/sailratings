@@ -12,7 +12,7 @@ Tiers
 -----
 A. SAFE_MERGE — multiple signal-bearing rows BUT they share a strong identifier
    (matching normalised sail_number, or matching cert_number on boats / via the
-   certificates table). REQUIRES no design_conflict and no year_conflict.
+   irc_certificates table). REQUIRES no design_conflict and no year_conflict.
 B. LIKELY_MERGE — no shared identifier, same design_canonical (after
    normalize_design), within 5 years on year_built, same country.
 C. KEEP_SEPARATE — fails design_conflict, year_conflict, or big_cluster (the
@@ -71,7 +71,7 @@ YEAR_BUILT_TOLERANCE_TIER_B = 5
 # Tables whose presence on a row counts as STRONG signal — same as the
 # medium-confidence pass.
 SIGNAL_TABLES = (
-    "certificates",
+    "irc_certificates",
     "race_results",
     "orders",
     "insight_cache",
@@ -226,7 +226,7 @@ def fetch_cluster(
 
     by_id = {b.boat_id: b for b in boats}
 
-    # cert_number from certificates table
+    # cert_number from irc_certificates table
     cert_rows = conn.execute(
         text(
             """
@@ -279,7 +279,7 @@ def fetch_cluster(
             """
             SELECT b.id,
                    GREATEST(
-                     (SELECT MAX(c.issue_date)::timestamp FROM certificates c WHERE c.boat_id = b.id),
+                     (SELECT MAX(c.issue_date)::timestamp FROM irc_certificates c WHERE c.boat_id = b.id),
                      (SELECT MAX(r.event_date)::timestamp FROM race_results r WHERE r.boat_id = b.id),
                      (SELECT MAX(o.created_at)::timestamp FROM orders o WHERE o.boat_id = b.id)
                    ) AS latest
@@ -316,7 +316,7 @@ def _shared_identifier(cluster: Cluster) -> tuple[str, str] | None:
 
     We require the shared identifier to be borne by at least two distinct
     boats in the cluster. cert match across {boats.cert_number,
-    certificates.cert_number, orc_certificates.ref_no} all count.
+    irc_certificates.cert_number, orc_irc_certificates.ref_no} all count.
     """
     # sail — token-set intersection: handles concatenated strings
     # ("2561&011") and class-prefix variants ("EAUS1213" ↔ "AUS1213").
@@ -429,7 +429,7 @@ def pick_winner(cluster: Cluster) -> int:
     """
     def score(b: BoatFacts) -> tuple:
         total = (
-            b.signal_counts.get("certificates", 0)
+            b.signal_counts.get("irc_certificates", 0)
             + b.signal_counts.get("race_results", 0)
             + b.signal_counts.get("orders", 0)
         )
@@ -485,7 +485,7 @@ def merge_cluster(engine, cluster: Cluster) -> dict[str, Any]:
             rr_rp, _rr_col = resolve_race_results_collisions(conn, winner_id, loser_id, extras)
 
             rp = report["rows_repointed"]
-            rp["certificates"] = rp.get("certificates", 0) + cert_rp
+            rp["irc_certificates"] = rp.get("irc_certificates", 0) + cert_rp
             rp["tcc_snapshots"] = rp.get("tcc_snapshots", 0) + tcc_rp
             rp["race_results"] = rp.get("race_results", 0) + rr_rp
             report["cert_collisions"] += cert_col
@@ -512,7 +512,7 @@ def merge_cluster(engine, cluster: Cluster) -> dict[str, Any]:
             )
 
             for tbl in [
-                "certificates", "tcc_snapshots", "race_results",
+                "irc_certificates", "tcc_snapshots", "race_results",
                 "orc_certificates", "boat_identities", "insight_cache",
                 "orders", "boat_corrections",
             ]:

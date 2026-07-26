@@ -3262,3 +3262,7 @@ def scrape_watchdog(ctx, cooldown_hours, dry_run):
 from irc_data.diagnostics.scraper_parity import parity_report as _parity_report  # noqa: E402
 
 cli.add_command(_parity_report)
+
+from irc_data.cli_news_events import register_news_and_events_commands
+register_news_and_events_commands(cli)
+

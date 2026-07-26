@@ -105,7 +105,7 @@ export default function CorrectionsPage() {
     <button
       onClick={() => load(tab)}
       disabled={loading}
-      className="text-white/40 hover:text-white/80 transition-colors disabled:opacity-30"
+      className="text-[#7E948F] hover:text-[#162423] transition-colors disabled:opacity-30"
       title="Refresh"
     >
       <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
@@ -114,10 +114,10 @@ export default function CorrectionsPage() {
 
   if (!token) {
     return (
-      <div className="flex-1 flex items-center justify-center px-6">
+      <div className="flex-1 flex items-center justify-center px-6 bg-[#F3F1EC]">
         <div className="w-full max-w-sm text-center">
-          <p className="body-text text-white/60 mb-4">
-            Sign in via <a className="text-brass underline" href="/justin">/justin</a> first.
+          <p className="text-[13px] text-[#52655F] mb-4">
+            Sign in via <a className="text-[#0C5F5C] underline hover:text-[#3E9B95]" href="/admin">/admin</a> first.
           </p>
         </div>
       </div>
@@ -125,19 +125,19 @@ export default function CorrectionsPage() {
   }
 
   return (
-    <>
-      <div className="px-6 py-3 border-b border-white/10 flex items-center justify-between gap-3">
+    <div className="flex flex-col h-full bg-[#F3F1EC]">
+      <div className="px-6 py-3 border-b border-[#0C5F5C]/12 flex items-center justify-between gap-3 bg-[#F6F4EE]">
         <div className="flex items-baseline gap-3">
-          <h1 className="heading-display text-lg text-white/90">Corrections</h1>
-          <span className="data-mono text-xs text-white/25">moderation queue</span>
+          <h1 className="heading-display text-lg text-[#162423]">Corrections</h1>
+          <span className="admin-mono-font text-[10px] text-[#7E948F]">moderation queue</span>
         </div>
         <div className="flex items-center gap-1">
           {(["pending", "applied", "rejected"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`data-mono text-[10px] uppercase tracking-[0.16em] px-3 py-1.5 transition-colors ${
-                tab === t ? "text-brass border-b border-brass" : "text-white/40 hover:text-white/70"
+              className={`admin-mono-font text-[10px] uppercase tracking-[0.16em] px-3 py-1.5 transition-colors ${
+                tab === t ? "text-[#0C5F5C] border-b-2 border-[#0C5F5C]" : "text-[#7E948F] hover:text-[#162423]"
               }`}
             >
               {t}
@@ -149,63 +149,63 @@ export default function CorrectionsPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-6 py-6">
           {error && (
-            <div className="border border-brass/40 bg-brass/10 px-4 py-3 mb-4">
-              <p className="body-text text-sm text-brass">{error}</p>
+            <div className="border border-[#C92B12]/40 bg-[#C92B12]/5 px-4 py-3 mb-4 rounded-[4px]">
+              <p className="text-[13px] text-[#C92B12]">{error}</p>
             </div>
           )}
 
           {rows.length === 0 && !loading && (
-            <p className="body-text text-sm text-white/40 text-center py-16">
+            <p className="text-[13px] text-[#7E948F] text-center py-16">
               No {tab} corrections.
             </p>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             {rows.map((r) => (
               <div
                 key={r.id}
-                className="border border-white/10 bg-white/5 px-4 py-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3"
+                className="border border-[#0C5F5C]/12 bg-white px-4 py-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 rounded-[4px] shadow-sm"
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span className="body-text text-sm text-white/90 font-medium">
+                    <span className="text-[13px] text-[#162423] font-medium">
                       {r.boat_name ?? "—"}
                     </span>
-                    <span className="data-mono text-xs text-white/30">
+                    <span className="admin-mono-font text-[10px] text-[#7E948F]">
                       #{r.boat_id ?? "?"}
                     </span>
-                    <span className="data-mono text-xs uppercase tracking-wider text-brass">
+                    <span className="admin-mono-font text-[10px] uppercase tracking-[0.14em] text-[#0C5F5C]">
                       {r.field_name}
                     </span>
-                    <span className="data-mono text-xs text-white/30">
+                    <span className="admin-mono-font text-[10px] text-[#7E948F]">
                       {fmt(r.submitted_at)}
                     </span>
                   </div>
                   <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
                     <div>
-                      <span className="data-mono text-xs text-white/30 uppercase tracking-wider">
+                      <span className="admin-mono-font text-[9px] text-[#7E948F] uppercase tracking-wider">
                         Current
                       </span>
-                      <p className="body-text text-sm text-white/60 break-words">
-                        {r.current_value ?? <span className="italic">empty</span>}
+                      <p className="text-[13px] text-[#52655F] break-words">
+                        {r.current_value ?? <span className="italic text-[#7E948F]">empty</span>}
                       </p>
                     </div>
                     <div>
-                      <span className="data-mono text-xs text-signal-light/80 uppercase tracking-wider">
+                      <span className="admin-mono-font text-[9px] text-[#2E7D54] uppercase tracking-wider">
                         Proposed
                       </span>
-                      <p className="body-text text-sm text-white/90 break-words">
+                      <p className="text-[13px] text-[#162423] break-words">
                         {r.proposed_value}
                       </p>
                     </div>
                   </div>
                   {r.submitted_email && (
-                    <p className="data-mono text-xs text-white/30 mt-2">
+                    <p className="admin-mono-font text-[10px] text-[#7E948F] mt-2">
                       from {r.submitted_email}
                     </p>
                   )}
                   {r.review_notes && (
-                    <p className="body-text text-xs text-white/40 mt-1 italic">
+                    <p className="text-[11px] text-[#52655F] mt-1 italic">
                       note: {r.review_notes}
                     </p>
                   )}
@@ -216,7 +216,7 @@ export default function CorrectionsPage() {
                     <button
                       onClick={() => act(r.id, "approve")}
                       disabled={acting.has(r.id)}
-                      className="flex items-center justify-center gap-1.5 px-4 py-1.5 bg-signal-light/20 hover:bg-signal-light/30 text-signal-light text-sm body-text font-medium transition-colors disabled:opacity-40"
+                      className="flex items-center justify-center gap-1.5 px-4 py-1.5 bg-[#0C5F5C] text-white text-[11px] font-medium hover:bg-[#3E9B95] transition-colors disabled:opacity-40 rounded-[4px] shadow-sm"
                     >
                       <Check size={14} strokeWidth={2} />
                       Approve
@@ -227,7 +227,7 @@ export default function CorrectionsPage() {
                         act(r.id, "reject", reason);
                       }}
                       disabled={acting.has(r.id)}
-                      className="flex items-center justify-center gap-1.5 px-4 py-1.5 border border-white/20 text-white/60 hover:text-white hover:border-white/40 text-sm body-text transition-colors disabled:opacity-40"
+                      className="flex items-center justify-center gap-1.5 px-4 py-1.5 border border-[#C92B12]/40 text-[#C92B12] hover:bg-[#C92B12]/10 text-[11px] font-medium transition-colors disabled:opacity-40 rounded-[4px]"
                     >
                       <X size={14} strokeWidth={2} />
                       Reject
@@ -239,6 +239,6 @@ export default function CorrectionsPage() {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

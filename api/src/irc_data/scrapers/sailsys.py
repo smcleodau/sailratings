@@ -268,6 +268,7 @@ async def scrape_race_results(
             phs_place = None
             scratch_place = None
 
+            status = None
             for calc in (item.get("calculations") or []):
                 if not calc:
                     continue
@@ -275,7 +276,10 @@ async def scrape_race_results(
                 corrected = calc.get("correctedTime")
                 placings = calc.get("placings", [])
                 place = placings[0].get("place") if placings else None
-                placing_text = placings[0].get("placingText", "") if placings else ""
+                placing_text = placings[0].get("placingText", "").strip() if placings else ""
+
+                if placing_text and placing_text in {"DNF", "DNC", "DSQ", "OCS", "RET", "DNS", "RAF", "STP"}:
+                    status = placing_text
 
                 if hc_def_id in IRC_HANDICAP_IDS:
                     irc_corrected = corrected
@@ -301,6 +305,7 @@ async def scrape_race_results(
                 source_url=source_url,
                 tcc_at_race=tcc,
                 place=place,
+                status=status,
                 elapsed_time=elapsed_time,
                 corrected_time=corrected_time,
                 raw_data={

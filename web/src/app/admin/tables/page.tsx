@@ -73,7 +73,7 @@ export default function TablesIndex() {
     <button
       onClick={load}
       disabled={loading}
-      className="text-white/40 hover:text-white/80 disabled:opacity-30"
+      className="text-[#7E948F] hover:text-[#162423] disabled:opacity-30 transition-colors"
       title="Refresh"
     >
       <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
@@ -82,12 +82,12 @@ export default function TablesIndex() {
 
   if (!token) {
     return (
-      <div className="flex-1 flex items-center justify-center px-6">
+      <div className="flex-1 flex items-center justify-center px-6 bg-[#F3F1EC]">
         <div className="text-center">
-          <p className="body-text text-white/60 mb-4">
+          <p className="text-[13px] text-[#52655F] mb-4">
             Sign in via{" "}
-            <a className="text-brass underline" href="/justin">
-              /justin
+            <a className="text-[#0C5F5C] underline hover:text-[#3E9B95]" href="/admin">
+              /admin
             </a>{" "}
             first.
           </p>
@@ -101,23 +101,23 @@ export default function TablesIndex() {
 
   return (
     <>
-      <div className="px-6 py-4 border-b border-white/10 flex items-baseline gap-3">
-        <h1 className="heading-display text-xl text-white/90">Tables</h1>
-        <span className="data-mono text-xs text-white/25">
+      <div className="px-6 py-4 border-b border-[#0C5F5C]/12 flex items-baseline gap-3 bg-[#F6F4EE]">
+        <h1 className="heading-display text-xl text-[#162423]">Tables</h1>
+        <span className="admin-mono-font text-[10px] text-[#7E948F]">
           {fmtCount(totalRows)} rows · {fmtBytes(totalSize)}
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-navy">
+      <div className="flex-1 overflow-y-auto bg-[#F3F1EC]">
         <div className="max-w-5xl mx-auto px-6 py-6">
           {error && (
-            <div className="border border-brass/40 bg-brass/10 px-4 py-3 mb-4">
-              <p className="body-text text-sm text-brass">{error}</p>
+            <div className="border border-[#C92B12]/40 bg-[#C92B12]/5 px-4 py-3 mb-4 rounded-[4px]">
+              <p className="text-[13px] text-[#C92B12]">{error}</p>
             </div>
           )}
 
           <div className="space-y-1">
-            <div className="grid grid-cols-12 gap-3 px-3 py-2 data-mono text-[10px] uppercase tracking-wider text-white/35 border-b border-white/10">
+            <div className="grid grid-cols-12 gap-3 px-3 py-2 admin-mono-font text-[10px] uppercase tracking-[0.14em] text-[#7E948F] border-b border-[#0C5F5C]/12">
               <div className="col-span-5">Table</div>
               <div className="col-span-2 text-right">Rows</div>
               <div className="col-span-2 text-right">Data</div>
@@ -127,28 +127,28 @@ export default function TablesIndex() {
             {rows.map((t) => (
               <a
                 key={t.name}
-                href={`/justin/tables/${encodeURIComponent(t.name)}`}
-                className="group grid grid-cols-12 gap-3 px-3 py-2.5 border-b border-white/5 hover:bg-white/5 transition-colors"
+                href={`/admin/tables/${encodeURIComponent(t.name)}`}
+                className="group grid grid-cols-12 gap-3 px-3 py-2.5 border-b border-[#0C5F5C]/5 hover:bg-[#F6F4EE] transition-colors rounded-[4px]"
               >
-                <div className="col-span-5 min-w-0">
-                  <span className="data-mono text-sm text-white/90 truncate">{t.name}</span>
+                <div className="col-span-5 min-w-0 flex items-center">
+                  <span className="admin-mono-font text-[11px] text-[#162423] font-medium truncate">{t.name}</span>
                 </div>
-                <div className="col-span-2 text-right data-mono text-sm text-white/70">
+                <div className="col-span-2 text-right admin-mono-font text-[11px] text-[#52655F] flex items-center justify-end">
                   {fmtCount(t.rows)}
                 </div>
-                <div className="col-span-2 text-right data-mono text-sm text-white/50">
+                <div className="col-span-2 text-right admin-mono-font text-[11px] text-[#7E948F] flex items-center justify-end">
                   {fmtBytes(t.table_bytes)}
                 </div>
-                <div className="col-span-2 text-right data-mono text-sm text-white/35">
+                <div className="col-span-2 text-right admin-mono-font text-[11px] text-[#7E948F]/70 flex items-center justify-end">
                   {fmtBytes(t.index_bytes)}
                 </div>
-                <div className="col-span-1 text-right">
+                <div className="col-span-1 text-right flex items-center justify-end">
                   {t.editable ? (
-                    <span className="data-mono text-[10px] uppercase tracking-wider text-signal-light/70">
+                    <span className="admin-mono-font text-[9px] uppercase tracking-wider text-[#2E7D54]">
                       edit
                     </span>
                   ) : (
-                    <Lock size={12} className="inline text-brass/60" />
+                    <Lock size={12} className="inline text-[#8A6613]/60" />
                   )}
                 </div>
               </a>

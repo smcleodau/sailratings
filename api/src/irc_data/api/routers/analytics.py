@@ -206,3 +206,36 @@ def compare_designs_endpoint(
 
     result = compare_designs(engine, design_list)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Global System Statistics
+# ---------------------------------------------------------------------------
+
+
+@router.get("/stats")
+def get_global_stats(
+    engine: Engine = Depends(get_db),
+):
+    """Retrieve live global database statistics for the platform landing page."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        total_boats = conn.execute(text("SELECT COUNT(*) FROM boats")).scalar() or 0
+        active_certs = conn.execute(
+            text("SELECT COUNT(*) FROM irc_certificates")
+        ).scalar() or 0
+        total_results = conn.execute(text("SELECT COUNT(*) FROM race_results")).scalar() or 0
+        tracked_designs = conn.execute(text("SELECT COUNT(*) FROM design_classes")).scalar() or 0
+        countries_covered = conn.execute(
+            text("SELECT COUNT(DISTINCT country) FROM boats WHERE country IS NOT NULL")
+        ).scalar() or 0
+
+    return {
+        "total_boats": total_boats,
+        "active_certs": active_certs,
+        "total_results": total_results,
+        "tracked_designs": tracked_designs,
+        "countries_covered": countries_covered,
+    }
+

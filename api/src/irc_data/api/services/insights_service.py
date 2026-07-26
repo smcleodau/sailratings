@@ -117,9 +117,12 @@ STRUCTURE — PREMIUM REPORT:
    GPH change for ORC), evidence strength, and suggest running a trial
    certificate to confirm.
 
-For dual-rated boats: compare IRC and ORC where the comparison reveals
-something the owner can act on. Don't force a comparison if neither
-side is notable.
+EVIDENCE ANCHOR CHIPS — CITING DATA:
+Whenever you reference a certificate, regression model, race record, or rule year, include an Evidence Anchor Chip in square brackets so the UI can render interactive verification chips:
+- Certificates: `[Cert #<number>]` (e.g. `[Cert #104829]`)
+- Rule Year: `[Rule <year>]` (e.g. `[Rule 2026]`)
+- Regression Models: `[R²=<value>, N=<count>]` (e.g. `[R²=0.94, N=82]`)
+- Race Performance: `[RAI=<value>]` (e.g. `[RAI=+1.4]`)
 
 NUMBERS must match what the Thinking section showed the owner on the
 bench: same rating value, sail number, design name, certificate count,

@@ -12,6 +12,7 @@
 
 import type { Metadata } from "next";
 import { AdminNavShell } from "@/components/AdminNavShell";
+import "./admin.css";
 
 export const metadata: Metadata = {
   title: "Internal",

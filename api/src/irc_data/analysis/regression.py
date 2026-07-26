@@ -85,6 +85,7 @@ class RegressionResult:
     coefficients: list[CoefficientResult] = field(default_factory=list)
     collinearity_warnings: list[str] = field(default_factory=list)
     interpretation: str = ""
+    is_one_design: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -97,6 +98,7 @@ class RegressionResult:
             "coefficients": [c.to_dict() for c in self.coefficients],
             "collinearity_warnings": self.collinearity_warnings,
             "interpretation": self.interpretation,
+            "is_one_design": self.is_one_design,
         }
 
 
@@ -106,6 +108,7 @@ class CorrelationResult:
     design: str
     n_boats: int
     correlations: dict[str, float]
+    is_one_design: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -443,9 +446,19 @@ def analyze_design_sensitivity(
     if n_total < 2:
         return None
 
+    # Check One-Design / Low-Headroom conditions across tier_b_data
+    tccs = [float(r["tcc"]) for r in tier_b_data if r.get("tcc") is not None]
+    is_one_design = False
+    if tccs:
+        tcc_spread = max(tccs) - min(tccs)
+        if tcc_spread < 0.0010:
+            is_one_design = True
+
     # For < 5 boats, return correlations only
     if n_total < MIN_BOATS_FOR_REGRESSION:
-        return _correlation_only(tier_b_data, design)
+        corr_res = _correlation_only(tier_b_data, design)
+        corr_res.is_one_design = is_one_design
+        return corr_res
 
     results = []
 
@@ -462,14 +475,26 @@ def analyze_design_sensitivity(
 
     # Return best result (Tier A if available and decent, else Tier B)
     if not results:
-        return _correlation_only(tier_b_data, design)
+        corr_res = _correlation_only(tier_b_data, design)
+        corr_res.is_one_design = is_one_design
+        return corr_res
 
-    # Prefer Tier A if R² is reasonable
+    selected_result = None
     for r in results:
         if r.model_tier == "A" and r.r_squared > 0.3:
-            return r
+            selected_result = r
+            break
+    if not selected_result:
+        selected_result = results[-1]  # Tier B
 
-    return results[-1]  # Tier B
+    selected_result.is_one_design = is_one_design
+    if is_one_design:
+        selected_result.interpretation = (
+            selected_result.interpretation
+            + " [Strict One-Design / Low-Headroom Class: Continuous physical measurement sliders are suppressed.]"
+        ).strip()
+
+    return selected_result
 
 
 def analyze_all_designs(engine: Engine, min_boats: int = 5) -> list[dict]:

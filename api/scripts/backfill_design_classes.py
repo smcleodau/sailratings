@@ -235,7 +235,7 @@ def _iter_irc(engine: Engine) -> Iterable[tuple[str, DesignSample]]:
         SELECT c.raw_data->>'design_raw' AS design_raw,
                b.design AS boat_design,
                b.designer, b.builder, b.year_built, b.loa, b.beam_max, b.displacement_kg
-        FROM certificates c
+        FROM irc_certificates c
         JOIN boats b ON b.id = c.boat_id
         WHERE (c.raw_data->>'design_raw' IS NOT NULL AND c.raw_data->>'design_raw' <> '')
            OR (b.design IS NOT NULL AND b.design <> '')

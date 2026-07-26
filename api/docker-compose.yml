@@ -34,6 +34,8 @@ services:
     depends_on: [api]
     restart: unless-stopped
 
+
+
 volumes:
   pgdata:
   caddy_data:

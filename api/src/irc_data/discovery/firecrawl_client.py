@@ -157,7 +157,7 @@ def scrape_url(url: str, *, caller: str | None = None) -> ScrapeResult:
     return ScrapeResult(url=url, markdown=md, title=title)
 
 
-def map_site(seed_url: str, limit: int = 50, *, caller: str | None = None) -> list[str]:
+def map_site(seed_url: str, limit: int = 50, *, search: str | None = None, caller: str | None = None) -> list[str]:
     """Discover sub-URLs reachable from a seed. Returns a flat list of URLs.
 
     Use this when handed a calendar / results-index page — Firecrawl walks
@@ -166,7 +166,12 @@ def map_site(seed_url: str, limit: int = 50, *, caller: str | None = None) -> li
     fc = _client()
     t0 = time.monotonic()
     try:
-        resp = fc.map(seed_url, limit=limit)
+        kwargs = {}
+        if search:
+            kwargs["search"] = search
+        else:
+            kwargs["limit"] = limit
+        resp = fc.map(seed_url, **kwargs)
     except Exception as e:
         _log_call(
             mode="map", url=seed_url, status="error",
@@ -187,6 +192,8 @@ def map_site(seed_url: str, limit: int = 50, *, caller: str | None = None) -> li
             links.append(item)
         elif isinstance(item, dict) and "url" in item:
             links.append(item["url"])
+        elif hasattr(item, "url"):
+            links.append(item.url)
 
     _log_call(
         mode="map", url=seed_url,

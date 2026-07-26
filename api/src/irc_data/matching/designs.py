@@ -797,6 +797,34 @@ def seed_design_classes(engine: Engine) -> dict:
             conn.execute(stmt)
             stats["from_orc"] += 1
 
+        # Also seed all canonical targets from DESIGN_ALIASES
+        for alias, canon in DESIGN_ALIASES.items():
+            stmt = pg_insert(DesignClass.__table__).values(
+                name_canonical=canon,
+                aliases=[alias],
+            )
+            stmt = stmt.on_conflict_do_nothing(constraint="design_classes_name_canonical_key")
+            conn.execute(stmt)
+
+        # Also seed distinct normalized designs from boats
+        boat_designs = conn.execute(text("""
+            SELECT design, COUNT(*) as cnt
+            FROM boats
+            WHERE design IS NOT NULL AND design != ''
+            GROUP BY design
+        """)).fetchall()
+
+        for row in boat_designs:
+            canonical = normalize_design(row.design)
+            if not canonical:
+                continue
+            stmt = pg_insert(DesignClass.__table__).values(
+                name_canonical=canonical,
+                aliases=[row.design.strip()],
+            )
+            stmt = stmt.on_conflict_do_nothing(constraint="design_classes_name_canonical_key")
+            conn.execute(stmt)
+
         # Count total
         total = conn.execute(text("SELECT COUNT(*) FROM design_classes")).scalar()
         stats["total"] = total

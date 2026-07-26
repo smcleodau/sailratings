@@ -116,36 +116,33 @@ function StatCard({
 }) {
   const valueClass =
     tone === "warn"
-      ? "text-brass"
+      ? "text-[#C92B12]"
       : tone === "good"
-      ? "text-emerald-400"
-      : "text-white/90";
+      ? "text-[#2E7D54]"
+      : "text-[#162423]";
   return (
-    <div className="border border-white/10 bg-white/[0.02] rounded-sm px-4 py-3">
-      <p className="data-mono text-[10px] uppercase tracking-[0.16em] text-white/40">
+    <div className="border border-[#0C5F5C]/12 bg-white rounded-[4px] px-4 py-3 shadow-sm">
+      <p className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[#7E948F]">
         {label}
       </p>
       <p className={`heading-display text-2xl mt-1 tabular-nums ${valueClass}`}>
         {value}
       </p>
       {sub && (
-        <p className="data-mono text-[11px] text-white/35 mt-1">{sub}</p>
+        <p className="admin-mono-font text-[9px] text-[#52655F] mt-1">{sub}</p>
       )}
     </div>
   );
 }
 
 function ModePill({ mode }: { mode: CallMode }) {
-  // Warm tones for legibility on navy — blue text on blue background
-  // read as smudges. Scrape is the routine call (brass); map is the
-  // rarer site-walk (cream accent).
   const cls =
     mode === "scrape"
-      ? "bg-brass/15 text-brass border-brass/40"
-      : "bg-white/10 text-white/90 border-white/30";
+      ? "bg-[#E8B23A]/15 text-[#8A6613] border-[#8A6613]/30"
+      : "bg-[#0C5F5C]/10 text-[#0C5F5C] border-[#0C5F5C]/20";
   return (
     <span
-      className={`data-mono text-[10px] uppercase tracking-[0.14em] px-2 py-0.5 border ${cls}`}
+      className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2 py-0.5 border rounded-[2px] ${cls}`}
     >
       {mode}
     </span>
@@ -155,20 +152,20 @@ function ModePill({ mode }: { mode: CallMode }) {
 function StatusPill({ status }: { status: CallStatus }) {
   if (status === "ok") {
     return (
-      <span className="inline-flex items-center gap-1 data-mono text-[10px] uppercase tracking-[0.14em] text-emerald-400/90">
+      <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[#2E7D54]">
         <CheckCircle2 size={11} strokeWidth={2} /> ok
       </span>
     );
   }
   if (status === "empty") {
     return (
-      <span className="data-mono text-[10px] uppercase tracking-[0.14em] text-white/40">
+      <span className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[#7E948F]">
         empty
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 data-mono text-[10px] uppercase tracking-[0.14em] text-brass">
+    <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[#C92B12]">
       <AlertTriangle size={11} strokeWidth={2} /> error
     </span>
   );
@@ -249,7 +246,7 @@ export default function FirecrawlPage() {
 
   if (!token) {
     return (
-      <div className="flex-1 flex items-center justify-center px-6">
+      <div className="flex-1 flex items-center justify-center px-6 bg-[#F3F1EC]">
         <form
           className="w-full max-w-sm space-y-4"
           onSubmit={(e) => {
@@ -260,7 +257,7 @@ export default function FirecrawlPage() {
             }
           }}
         >
-          <h1 className="heading-display text-2xl text-white/90 text-center">
+          <h1 className="heading-display text-2xl text-[#162423] text-center mb-6">
             Firecrawl
           </h1>
           <input
@@ -268,11 +265,11 @@ export default function FirecrawlPage() {
             value={pwInput}
             onChange={(e) => setPwInput(e.target.value)}
             placeholder="Admin password"
-            className="w-full h-12 px-4 bg-navy-light border border-white/10 text-white body-text"
+            className="w-full h-12 px-4 bg-white border border-[#0C5F5C]/25 text-[#162423] text-[13px] placeholder:text-[#7E948F] focus:border-[#0C5F5C] focus:ring-1 focus:ring-[#0C5F5C]/20 outline-none transition-all rounded-[4px] shadow-sm"
           />
           <button
             type="submit"
-            className="w-full h-12 bg-brass text-white body-text font-medium"
+            className="w-full h-12 bg-[#0C5F5C] text-white text-[13px] font-medium hover:bg-[#3E9B95] transition-colors rounded-[4px] shadow-sm"
           >
             Sign in
           </button>
@@ -309,27 +306,27 @@ export default function FirecrawlPage() {
   /* ── Render ─────────────────────────────────────────────────────── */
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto bg-[#F3F1EC]">
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-end justify-between mb-8 gap-6 flex-wrap">
           <div>
-            <h1 className="heading-display text-2xl text-white/90">Firecrawl</h1>
-            <p className="body-text text-sm text-white/40 mt-1">
+            <h1 className="heading-display text-2xl text-[#162423]">Firecrawl</h1>
+            <p className="text-[13px] text-[#52655F] mt-1">
               Per-call telemetry for every scrape + map request. Auto-refreshes
               every minute.
             </p>
           </div>
-          <div className="flex items-center gap-4 text-white/35">
+          <div className="flex items-center gap-4 text-[#7E948F]">
             {summary?.as_of && (
-              <span className="data-mono text-[11px] uppercase tracking-[0.16em]">
+              <span className="admin-mono-font text-[10px] uppercase tracking-[0.16em]">
                 As of {fmtDateTime(summary.as_of)}
               </span>
             )}
             <button
               onClick={fetchAll}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 data-mono text-[11px] uppercase tracking-[0.16em] text-white/40 hover:text-white/70 transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[#7E948F] hover:text-[#162423] transition-colors disabled:opacity-40"
             >
               <RefreshCw
                 size={12}
@@ -342,25 +339,25 @@ export default function FirecrawlPage() {
         </div>
 
         {error && (
-          <div className="border border-brass/40 bg-brass/5 px-4 py-3 mb-6 body-text text-sm text-brass">
+          <div className="border border-[#C92B12]/40 bg-[#C92B12]/5 px-4 py-3 mb-6 text-[13px] text-[#C92B12] rounded-[4px]">
             {error}
           </div>
         )}
 
         {/* Credit-balance banner — the authoritative number from Firecrawl */}
         {summary?.remaining ? (
-          <div className="border border-white/10 bg-white/[0.02] rounded-sm p-4 mb-6">
+          <div className="border border-[#0C5F5C]/12 bg-white rounded-[4px] shadow-sm p-4 mb-6">
             <div className="flex items-baseline justify-between gap-4 flex-wrap mb-2">
-              <span className="data-mono text-[11px] uppercase tracking-[0.16em] text-white/55">
+              <span className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[#7E948F]">
                 Credit balance · Firecrawl
               </span>
               <span
-                className={`data-mono text-[11px] uppercase tracking-[0.16em] ${
+                className={`admin-mono-font text-[10px] uppercase tracking-[0.16em] ${
                   remainingTone === "warn"
-                    ? "text-brass"
+                    ? "text-[#C92B12]"
                     : remainingTone === "good"
-                    ? "text-emerald-400/70"
-                    : "text-white/45"
+                    ? "text-[#2E7D54]"
+                    : "text-[#52655F]"
                 }`}
               >
                 {remaining?.toLocaleString()} remaining
@@ -368,29 +365,29 @@ export default function FirecrawlPage() {
               </span>
             </div>
             {planUsedPct != null && (
-              <div className="h-1.5 bg-white/5 rounded-sm overflow-hidden">
+              <div className="h-1.5 bg-[#F6F4EE] rounded-[2px] overflow-hidden">
                 <div
                   className={`h-full ${
                     remainingTone === "warn"
-                      ? "bg-brass"
+                      ? "bg-[#C92B12]"
                       : remainingTone === "good"
-                      ? "bg-emerald-500/60"
-                      : "bg-white/40"
+                      ? "bg-[#2E7D54]"
+                      : "bg-[#0C5F5C]/60"
                   }`}
                   style={{ width: `${planUsedPct * 100}%` }}
                 />
               </div>
             )}
             {monthlyBurn != null && plan != null && (
-              <p className="data-mono text-[11px] text-white/35 mt-2">
+              <p className="admin-mono-font text-[10px] text-[#7E948F] mt-2">
                 Projected monthly burn (from last 7d):{" "}
-                <span className="text-white/65 tabular-nums">
+                <span className="text-[#162423] tabular-nums">
                   {monthlyBurn.toLocaleString()}
                 </span>{" "}
                 cr ·{" "}
                 <span
                   className={
-                    monthlyBurn > plan ? "text-brass" : "text-emerald-400/70"
+                    monthlyBurn > plan ? "text-[#C92B12]" : "text-[#2E7D54]"
                   }
                 >
                   {monthlyBurn > plan
@@ -401,9 +398,9 @@ export default function FirecrawlPage() {
             )}
           </div>
         ) : (
-          <div className="border border-amber-500/30 bg-amber-500/5 px-4 py-3 mb-6 flex items-start gap-3">
-            <AlertTriangle size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
-            <p className="body-text text-sm text-white/80">
+          <div className="border border-[#8A6613]/30 bg-[#E8B23A]/10 px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px]">
+            <AlertTriangle size={16} className="text-[#8A6613] flex-shrink-0 mt-0.5" />
+            <p className="text-[13px] text-[#8A6613]">
               Credit balance unavailable. Check that FIRECRAWL_API_KEY is set on
               the API process.
             </p>
@@ -445,15 +442,15 @@ export default function FirecrawlPage() {
         {/* Per-domain table */}
         <div className="mb-8">
           <div className="flex items-baseline justify-between mb-3">
-            <h2 className="heading-display text-base text-white/85">
+            <h2 className="heading-display text-base text-[#162423]">
               Per-domain · last 7 days
             </h2>
-            <span className="data-mono text-[10px] text-white/30">
+            <span className="admin-mono-font text-[9px] text-[#7E948F]">
               {domains.length} domain{domains.length === 1 ? "" : "s"}
             </span>
           </div>
-          <div className="border border-white/10 rounded-sm overflow-hidden">
-            <div className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-3 bg-white/[0.03] border-b border-white/10 data-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
+          <div className="border border-[#0C5F5C]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
+            <div className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-3 bg-[#F6F4EE] border-b border-[#0C5F5C]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[#7E948F] font-medium">
               <span>Domain</span>
               <span className="text-right">Calls</span>
               <span className="text-right">Cr</span>
@@ -462,43 +459,43 @@ export default function FirecrawlPage() {
               <span className="text-right">Last call</span>
             </div>
             {domains.length === 0 && !loading && (
-              <div className="px-4 py-6 body-text text-sm text-white/40 italic text-center">
+              <div className="px-4 py-6 text-[13px] text-[#7E948F] italic text-center">
                 No Firecrawl calls in the last 7 days.
               </div>
             )}
             {domains.map((d) => {
               const successCls =
                 d.success_rate >= 0.95
-                  ? "text-emerald-400/85"
+                  ? "text-[#2E7D54]"
                   : d.success_rate >= 0.7
-                  ? "text-white/70"
-                  : "text-brass";
+                  ? "text-[#52655F]"
+                  : "text-[#C92B12]";
               return (
                 <div
                   key={d.domain}
-                  className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-2.5 items-center border-b border-white/5 last:border-b-0 hover:bg-white/[0.02]"
+                  className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-2.5 items-center border-b border-[#0C5F5C]/5 last:border-b-0 hover:bg-[#F6F4EE] transition-colors"
                 >
-                  <p className="body-text text-sm text-white/85 truncate">
+                  <p className="text-[13px] text-[#162423] truncate">
                     {d.domain}
                   </p>
-                  <p className="data-mono text-xs text-white/70 tabular-nums text-right">
+                  <p className="admin-mono-font text-[10px] text-[#52655F] tabular-nums text-right">
                     {d.calls}
                   </p>
-                  <p className="data-mono text-xs text-white/70 tabular-nums text-right">
+                  <p className="admin-mono-font text-[10px] text-[#52655F] tabular-nums text-right">
                     {d.credits}
                   </p>
                   <p
-                    className={`data-mono text-xs tabular-nums text-right ${successCls}`}
+                    className={`admin-mono-font text-[10px] tabular-nums text-right ${successCls}`}
                   >
                     {pct(d.success_rate)}
                     {d.errored > 0 && (
-                      <span className="text-white/30"> · {d.errored} err</span>
+                      <span className="text-[#7E948F]"> · {d.errored} err</span>
                     )}
                   </p>
-                  <p className="data-mono text-xs text-white/55 tabular-nums text-right">
+                  <p className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums text-right">
                     {fmtMs(d.avg_ms)}
                   </p>
-                  <p className="data-mono text-xs text-white/45 tabular-nums text-right">
+                  <p className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums text-right">
                     {fmtAge(d.last_called)}
                   </p>
                 </div>
@@ -510,7 +507,7 @@ export default function FirecrawlPage() {
         {/* Recent calls — log */}
         <div>
           <div className="flex items-baseline justify-between mb-3 gap-3 flex-wrap">
-            <h2 className="heading-display text-base text-white/85">
+            <h2 className="heading-display text-base text-[#162423]">
               Recent calls
             </h2>
             <div className="flex items-center gap-2 flex-wrap">
@@ -519,24 +516,24 @@ export default function FirecrawlPage() {
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}
-                  className={`data-mono text-[10px] uppercase tracking-[0.14em] px-2.5 py-1 border ${
+                  className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border rounded-[4px] transition-colors ${
                     statusFilter === s
-                      ? "border-brass text-brass bg-brass/10"
-                      : "border-white/10 text-white/40 hover:text-white/70"
+                      ? "border-[#0C5F5C] text-[#0C5F5C] bg-[#E6F0EE]"
+                      : "border-[#0C5F5C]/12 text-[#7E948F] bg-white hover:text-[#162423]"
                   }`}
                 >
                   {s}
                 </button>
               ))}
-              <span className="text-white/15 mx-1">·</span>
+              <span className="text-[#0C5F5C]/20 mx-1">·</span>
               {(["all", "scrape", "map"] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => setModeFilter(m)}
-                  className={`data-mono text-[10px] uppercase tracking-[0.14em] px-2.5 py-1 border ${
+                  className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border rounded-[4px] transition-colors ${
                     modeFilter === m
-                      ? "border-brass text-brass bg-brass/10"
-                      : "border-white/10 text-white/40 hover:text-white/70"
+                      ? "border-[#0C5F5C] text-[#0C5F5C] bg-[#E6F0EE]"
+                      : "border-[#0C5F5C]/12 text-[#7E948F] bg-white hover:text-[#162423]"
                   }`}
                 >
                   {m}
@@ -545,8 +542,8 @@ export default function FirecrawlPage() {
             </div>
           </div>
 
-          <div className="border border-white/10 rounded-sm overflow-hidden">
-            <div className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-3 bg-white/[0.03] border-b border-white/10 data-mono text-[10px] uppercase tracking-[0.16em] text-white/35">
+          <div className="border border-[#0C5F5C]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
+            <div className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-3 bg-[#F6F4EE] border-b border-[#0C5F5C]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[#7E948F] font-medium">
               <span>When</span>
               <span>Mode</span>
               <span>URL</span>
@@ -557,13 +554,13 @@ export default function FirecrawlPage() {
             </div>
 
             {loading && recent.length === 0 && (
-              <div className="px-4 py-6 flex items-center gap-2 text-white/40 body-text text-sm">
+              <div className="px-4 py-6 flex items-center gap-2 text-[#7E948F] text-[13px]">
                 <Loader2 size={14} className="animate-spin" /> Loading…
               </div>
             )}
 
             {!loading && recent.length === 0 && (
-              <div className="px-4 py-8 body-text text-sm text-white/40 italic text-center flex items-center justify-center gap-2">
+              <div className="px-4 py-8 text-[13px] text-[#7E948F] italic text-center flex items-center justify-center gap-2">
                 <Clock size={14} /> No calls match the current filter.
               </div>
             )}
@@ -571,10 +568,10 @@ export default function FirecrawlPage() {
             {recent.map((c) => (
               <div
                 key={c.id}
-                className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-2 items-center border-b border-white/5 last:border-b-0 hover:bg-white/[0.02]"
+                className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-2 items-center border-b border-[#0C5F5C]/5 last:border-b-0 hover:bg-[#F6F4EE] transition-colors"
               >
                 <p
-                  className="data-mono text-[11px] text-white/55 tabular-nums truncate"
+                  className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums truncate"
                   title={fmtDateTime(c.called_at)}
                 >
                   {fmtAge(c.called_at)}
@@ -585,24 +582,24 @@ export default function FirecrawlPage() {
                     href={c.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="body-text text-xs text-white/75 hover:text-white truncate inline-flex items-center gap-1 max-w-full"
+                    className="text-[11px] text-[#52655F] hover:text-[#0C5F5C] truncate inline-flex items-center gap-1 max-w-full transition-colors"
                     title={c.url}
                   >
                     <span className="truncate">
                       {c.url.replace(/^https?:\/\/(www\.)?/, "")}
                     </span>
-                    <ExternalLink size={10} className="flex-shrink-0 text-white/30" />
+                    <ExternalLink size={10} className="flex-shrink-0 text-[#7E948F]" />
                   </a>
                   {c.error_message && (
                     <p
-                      className="data-mono text-[10px] text-brass/80 truncate"
+                      className="admin-mono-font text-[9px] text-[#C92B12] truncate mt-0.5"
                       title={c.error_message}
                     >
                       {c.error_message}
                     </p>
                   )}
                   {c.caller && (
-                    <p className="data-mono text-[10px] text-white/25">
+                    <p className="admin-mono-font text-[9px] text-[#7E948F] mt-0.5">
                       caller: {c.caller}
                     </p>
                   )}
@@ -610,13 +607,13 @@ export default function FirecrawlPage() {
                 <div className="text-right">
                   <StatusPill status={c.status} />
                 </div>
-                <p className="data-mono text-[11px] text-white/55 tabular-nums text-right">
+                <p className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums text-right">
                   {fmtMs(c.duration_ms)}
                 </p>
-                <p className="data-mono text-[11px] text-white/55 tabular-nums text-right">
+                <p className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums text-right">
                   {c.credits ?? "—"}
                 </p>
-                <p className="data-mono text-[11px] text-white/45 tabular-nums text-right">
+                <p className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums text-right">
                   {c.mode === "map"
                     ? `${c.links_found ?? 0} links`
                     : c.response_chars != null
@@ -628,7 +625,7 @@ export default function FirecrawlPage() {
           </div>
         </div>
 
-        <p className="data-mono text-[10px] uppercase tracking-[0.14em] text-white/25 mt-6">
+        <p className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[#7E948F] mt-6">
           Firecrawl Hobby plan · 1 cr per scrape or map ·
           credit balance refreshes monthly · per-domain rollup is the last 7 days
         </p>

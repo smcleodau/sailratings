@@ -24,11 +24,15 @@ export function AdminNavShell({ children }: { children: React.ReactNode }) {
   const ctxValue = useMemo<RightCtx>(() => ({ setRightSlot }), []);
 
   return (
-    <div className="min-h-screen bg-navy flex flex-col">
-      <AdminNav rightSlot={rightSlot} />
-      <AdminNavRightContext.Provider value={ctxValue}>
-        {children}
-      </AdminNavRightContext.Provider>
+    <div className="admin-theme">
+      <div className="admin-box">
+        <AdminNav rightSlot={rightSlot} />
+        <AdminNavRightContext.Provider value={ctxValue}>
+          <div className="admin-container">
+            {children}
+          </div>
+        </AdminNavRightContext.Provider>
+      </div>
     </div>
   );
 }
