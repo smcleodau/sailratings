@@ -66,20 +66,27 @@ async def teardown_worktree(worktree_path: str) -> None:
 @activity.defn
 async def run_openhands_agent(args: list) -> dict:
     worktree_path, task = args
-    # This is a stub for the OpenHands SDK integration
-    # It will initialize a DockerWorkspace mapped to worktree_path
-    # and run the agent loop
+    activity.logger.info(f"Initializing OpenHands Lead Agent in {worktree_path} for task {task.get('id')}")
     
-    # from openhands.sdk.agent import Agent
+    # Example of how the Spec Writer is defined and invoked using the SDK:
+    # 
+    # from openhands.sdk.agent import Agent, LLM
     # from openhands.sdk.workspace import DockerWorkspace
+    #
+    # llm = LLM(model="anthropic/claude-3-5-sonnet-20241022")
+    # workspace = DockerWorkspace(worktree_path, custom_image="sailratings-agent:latest")
+    #
+    # spec_writer_prompt = \"\"\"
+    # You are the 'Spec Writer', a highly specialized Technical Architect.
+    # Your ONLY job is to read the provided Notion/GitHub issue and output a detailed Markdown 
+    # specification document containing Architecture, Data Models, and Acceptance Criteria.
+    # Do not write code. Do not run tests. Only write the specification.
+    # \"\"\"
+    #
+    # spec_agent = Agent(llm=llm, workspace=workspace, system_prompt=spec_writer_prompt)
+    # result = await spec_agent.run(task["description"])
     
-    # workspace = DockerWorkspace(worktree_path)
-    # agent = Agent(workspace=workspace, max_iterations=30, budget=5.0)
-    # result = await agent.run(task["description"])
-    # return result
-    
-    activity.logger.info(f"Running OpenHands agent in {worktree_path} for task {task.get('id')}")
-    await asyncio.sleep(5) # Simulate agent work
+    await asyncio.sleep(2) # Simulate agent work
     return {"status": "success", "commits": 1}
 
 @activity.defn
