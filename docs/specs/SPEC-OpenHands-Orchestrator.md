@@ -21,10 +21,12 @@ Using the OpenHands Python SDK, the Orchestrator will provision agents dynamical
 ### 3.1 Custom Docker Environment
 The custom Agent image will be built on `mcr.microsoft.com/playwright:v1.44.0-jammy` to provide native headless browser support for UI/UX testing, along with Python 3.12, Node.js, and pre-cached dependencies.
 
-### 3.2 Agent Roles:
-- **Spec Writer Agent:** Expands Notion/GitHub issues into technical markdown specs and acceptance criteria.
-- **Implementation Engineer:** Equipped with CLI tools, grep, file editors, and Playwright to write and test feature code.
-- **PR Reviewer Agent:** A read-only agent that analyzes branch diffs against `main` for QA and approvals.
+### 3.2 Agent Roles & Native Communication
+OpenHands manages multi-agent communication natively through a **hierarchical delegation model**. We do not need external orchestration frameworks like CrewAI or LangGraph for micro-level agent communication, as OpenHands handles this via a shared event-stream and `AgentDelegateAction`.
+- **Lead Agent:** The primary agent spawned by Temporal. It analyzes the Notion task and delegates sub-tasks to specialized sub-agents.
+- **Spec Writer Sub-Agent:** Delegated to expand Notion/GitHub issues into technical markdown specs and acceptance criteria.
+- **Implementation Sub-Agent:** Delegated to use CLI tools, grep, file editors, and Playwright to write and test feature code.
+- **PR Reviewer Sub-Agent:** A read-only sub-agent delegated to analyze branch diffs against `main` for QA and approvals.
 
 ## 4. Cost Monitoring, Observability, and Limits
 - **Cost Telemetry:** An `observability.py` module intercepts the OpenHands `Conversation` stream to calculate input/output token usage in real-time.
