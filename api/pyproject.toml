@@ -31,6 +31,8 @@ dependencies = [
     "posthog>=7.0",
     "firecrawl-py>=4.0",
     "temporalio>=1.5",
+    "openhands-sdk>=1.17.0",
+    "openhands-tools>=1.37.1",
 ]
 
 [project.optional-dependencies]
