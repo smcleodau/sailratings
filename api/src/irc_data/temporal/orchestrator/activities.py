@@ -194,7 +194,7 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
     activity.logger.info(f"Running Playwright tests in {worktree_path}")
     web_dir = os.path.join(worktree_path, "web")
     proc = await asyncio.create_subprocess_shell(
-        "npm install && npx playwright test",
+        "npm install && npx -y playwright test",
         cwd=web_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
