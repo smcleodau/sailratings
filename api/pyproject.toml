@@ -46,3 +46,10 @@ irc-data = "irc_data.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+# Resolve the package from this worktree's `src` ahead of any editable
+# install inherited from a shared virtualenv.
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
