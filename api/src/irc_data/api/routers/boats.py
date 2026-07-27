@@ -379,6 +379,20 @@ def get_boat_polars(
     }
 
 
+@router.get("/{boat_id}/news")
+def get_boat_news(
+    boat_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    engine: Engine = Depends(get_db),
+):
+    """News articles mentioning this canonical boat (SPEC-14 graph linkage)."""
+    _ensure_boat_exists(boat_id, engine)
+    from irc_data.api.routers.news import boat_news_for
+
+    results = boat_news_for(engine, boat_id, limit)
+    return {"boat_id": boat_id, "total": len(results), "results": results}
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -36,6 +36,12 @@ def cli(ctx, db_url):
         ctx.obj["engine"] = get_engine()
 
 
+# Register the LLM news entity-extraction workflow commands (SPEC-14).
+from irc_data.cli_news import register_news_commands  # noqa: E402
+
+register_news_commands(cli)
+
+
 @cli.command()
 @click.pass_context
 def init(ctx):

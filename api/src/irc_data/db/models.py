@@ -491,3 +491,74 @@ class Order(Base):
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     boat: Mapped["Boat"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Raw news + LLM-extracted boat mentions (SPEC-14 §4)
+# ---------------------------------------------------------------------------
+
+
+class RawNews(Base):
+    """Unstructured news article awaiting / having undergone LLM entity extraction.
+
+    A news article is temporarily stored here (SPEC-14 §4), a workflow passes
+    ``body_text`` to the Sailing LLM to extract structured entities, and the
+    extracted ``mentioned_boats`` are linked to canonical boats in
+    :class:`BoatNewsMention`.
+    """
+
+    __tablename__ = "raw_news"
+    __table_args__ = (Index("ix_raw_news_status", "processing_status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body_text: Mapped[str | None] = mapped_column(Text)
+    author: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # pending -> processing -> processed | failed
+    processing_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending"
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # SPEC-14 §4 extraction schema (full blob + promoted queryable columns)
+    extracted_entities: Mapped[dict | None] = mapped_column(JSONB)
+    mentioned_events: Mapped[list | None] = mapped_column(JSONB)
+    sentiment: Mapped[str | None] = mapped_column(Text)
+    key_takeaway: Mapped[str | None] = mapped_column(Text)
+    extraction_model: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    raw_data: Mapped[dict | None] = mapped_column(JSONB)
+
+    mentions: Mapped[list["BoatNewsMention"]] = relationship(
+        back_populates="news", cascade="all, delete-orphan"
+    )
+
+
+class BoatNewsMention(Base):
+    """Join table linking an extracted boat mention to a canonical boat."""
+
+    __tablename__ = "boat_news_mentions"
+    __table_args__ = (
+        UniqueConstraint("news_id", "boat_id", name="uq_boat_news_mentions_news_boat"),
+        Index("ix_boat_news_mentions_news", "news_id"),
+        Index("ix_boat_news_mentions_boat", "boat_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    news_id: Mapped[int] = mapped_column(ForeignKey("raw_news.id", ondelete="CASCADE"))
+    boat_id: Mapped[int] = mapped_column(ForeignKey("boats.id", ondelete="CASCADE"))
+    mention_text: Mapped[str | None] = mapped_column(Text)
+    match_method: Mapped[str] = mapped_column(Text, nullable=False)
+    match_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    news: Mapped["RawNews"] = relationship(back_populates="mentions")
+    boat: Mapped["Boat"] = relationship()
