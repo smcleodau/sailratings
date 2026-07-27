@@ -196,8 +196,8 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
 
     `npm install` resolves the project's devDependencies (including @playwright/test,
     which provides the local `playwright` binary so `npx playwright test` runs
-    without an interactive download prompt). `npx playwright test` then executes
-    the specs discovered via web/playwright.config.ts.
+    without an interactive download prompt) and `npx playwright test` runs the
+    E2E suite.
 
     Returns False if the command exits with a non-zero code (test failure,
     install failure, or missing web directory) so the orchestrator can loop the
