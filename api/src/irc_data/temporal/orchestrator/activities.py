@@ -1,9 +1,14 @@
 import os
+import json
 import shutil
 import asyncio
 from datetime import timedelta
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
+
+# Dead Letter Queue: failed task payloads are appended here as one JSON object
+# per line. Module-level so tests can redirect it without touching the real file.
+DLQ_PATH = "/home/irc-data/code/sailratings/worktrees/dlq.jsonl"
 
 @activity.defn
 async def provision_worktree(task: dict) -> str:
@@ -109,4 +114,9 @@ async def notify_admin_hitl(details: dict) -> None:
 @activity.defn
 async def route_to_dlq(details: dict) -> None:
     activity.logger.error(f"Routing to DLQ: {details}")
-    pass
+    try:
+        with open(DLQ_PATH, "a") as dlq_file:
+            dlq_file.write(json.dumps(details) + "\n")
+    except Exception as e:
+        activity.logger.error(f"Failed to write task to DLQ file {DLQ_PATH}: {e}")
+        raise
