@@ -38,8 +38,9 @@ app.add_middleware(
 )
 
 # Import and register routers
-from irc_data.api.routers import admin, admin_tables, analytics, boats, checkout, corrections, designs, events, fleet, health, insights, pipeline, reports, search, stats, surveys  # noqa: E402
+from irc_data.api.routers import admin, admin_tables, analytics, boats, checkout, corrections, designs, events, fleet, health, insights, pipeline, reports, search, stats, surveys, swarm  # noqa: E402
 
+app.include_router(swarm.router, prefix="/v1/swarm", tags=["Swarm"])
 app.include_router(search.router, prefix="/v1", tags=["Search"])
 app.include_router(boats.router, prefix="/v1", tags=["Boats"])
 app.include_router(designs.router, prefix="/v1", tags=["Designs"])

@@ -1,5 +1,14 @@
 #!/bin/bash
-source .venv/bin/activate
+set -euo pipefail
+
+cd /home/irc-data/code/sailratings/api
+
+source /home/irc-data/.credentials/op-service-account.env
+
+export OP_CACHE=false
 export PYTHONPATH=src
-nohup python3 src/irc_data/temporal/worker.py >> /home/irc-data/logs/temporal_worker.log 2>&1 &
-echo "Worker started with PID $!"
+export TEMPORAL_ADDRESS=localhost:7233
+
+exec /home/irc-data/.local/bin/op run \
+    --environment vzhxzxt7mgb4tolyepo5wqzcz4 \
+    -- /home/irc-data/code/sailratings/api/.venv/bin/python src/irc_data/temporal/worker.py

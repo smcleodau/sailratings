@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SignInButton, SignUpButton, Show, UserButton } from '@clerk/nextjs';
 
 const NAV_ITEMS = [
   { label: "Ratings", href: "/ratings" },
@@ -54,7 +55,20 @@ export default function MainNav({ theme, cta }: MainNavProps) {
           </Link>
         ))}
       </div>
-      <div className="justify-self-end">{cta}</div>
+      <div className="justify-self-end flex items-center gap-4">
+        {cta}
+        <Show when="signed-out">
+          <SignInButton mode="modal">
+            <button className={`text-sm font-medium ${linkBase} transition-colors`}>Sign In</button>
+          </SignInButton>
+          <SignUpButton mode="modal">
+            <button className="bg-[#FF4119] text-white text-sm font-medium px-4 py-2 rounded-full hover:bg-[#e03a16] transition-colors">Sign Up</button>
+          </SignUpButton>
+        </Show>
+        <Show when="signed-in">
+          <UserButton />
+        </Show>
+      </div>
     </nav>
   );
 }

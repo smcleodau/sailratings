@@ -1,3 +1,4 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
@@ -146,7 +147,9 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <PostHogProvider>{children}</PostHogProvider>
+        <ClerkProvider>
+          <PostHogProvider>{children}</PostHogProvider>
+        </ClerkProvider>
       </body>
     </html>
   );
