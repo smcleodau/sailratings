@@ -210,7 +210,29 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
 @activity.defn
 async def create_pull_request(worktree_path: str) -> None:
     activity.logger.info(f"Creating pull request for {worktree_path}")
-    pass
+    task_id = os.path.basename(worktree_path)
+    branch_name = f"feature/{task_id}"
+
+    # 1. Push the local worktree branch to origin
+    push_proc = await asyncio.create_subprocess_shell(
+        f"git -C {worktree_path} push -u origin HEAD",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await push_proc.communicate()
+    if push_proc.returncode != 0:
+        raise ApplicationError(f"Failed to push branch to origin: {stderr.decode()}")
+
+    # 2. Open a pull request via the GitHub CLI
+    pr_proc = await asyncio.create_subprocess_shell(
+        f'gh pr create --title "Automated PR" --body "Evidence verified." --head {branch_name} --repo irc-data/sailratings',
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await pr_proc.communicate()
+    if pr_proc.returncode != 0:
+        raise ApplicationError(f"Failed to create pull request: {stderr.decode()}")
+    activity.logger.info(f"Pull request created: {stdout.decode().strip()}")
 
 @activity.defn
 async def notify_admin_hitl(details: dict) -> None:
