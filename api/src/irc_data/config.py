@@ -1,5 +1,6 @@
 """Configuration constants for IRC data collection."""
 
+import os
 from pathlib import Path
 
 # Project paths
@@ -11,8 +12,16 @@ CERTIFICATES_DIR = RAW_DIR / "certificates"
 RACE_RESULTS_DIR = RAW_DIR / "race_results"
 IMPORTS_DIR = RAW_DIR / "imports"
 
-# Database
-DATABASE_URL = "postgresql+psycopg://irc:irc@localhost:5433/irc_data"
+# Database — read from the environment (Railway injects DATABASE_URL pointing
+# at the Postgres service) so the URL is correct regardless of import order.
+# SQLAlchemy 2.0 + psycopg v3 needs the postgresql+psycopg:// scheme, which
+# Railway's plain postgresql:// URL does not provide, so normalise it here.
+_DATABASE_URL = os.environ.get(
+    "DATABASE_URL", "postgresql+psycopg://irc:irc@localhost:5433/irc_data"
+)
+if _DATABASE_URL.startswith("postgresql://"):
+    _DATABASE_URL = _DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+DATABASE_URL = _DATABASE_URL
 
 # IRC Rating URLs
 IRC_CERTIFICATE_SEARCH_URL = "https://ircrating.org/boat-data-for-valid-irc-certificates/"
