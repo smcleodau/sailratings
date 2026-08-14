@@ -345,3 +345,25 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
 input:focus-visible { outline: 2px solid var(--color-navy); outline-offset: 2px; }
+
+/* ── Clerk: inherit the Soehne typeface across auth surfaces ─────────── */
+.cl-rootBox,
+.cl-card,
+.cl-form,
+.cl-formFieldInput,
+.cl-formButtonPrimary,
+.cl-socialButtonsBlockButton,
+.cl-socialButtonsBlockButtonText,
+.cl-otpCodeFieldInput,
+.cl-footerActionLink,
+.cl-headerTitle,
+.cl-headerSubtitle,
+.cl-profileSectionTitle,
+.cl-userButtonAnchor,
+.cl-userButtonTrigger,
+.cl-userPreview {
+  font-family: "Soehne", system-ui, sans-serif;
+}
+.cl-formButtonPrimary {
+  letter-spacing: 0;
+}

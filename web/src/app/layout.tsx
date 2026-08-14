@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import "./globals.css";
 import { PostHogProvider } from "@/components/PostHogProvider";
 import { isProdHost } from "@/lib/seo";
+import { clerkAppearance } from "@/lib/clerkAppearance";
 
 const SITE_URL = "https://sailratings.com";
 
@@ -155,7 +156,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         {clerkPublishableKey ? (
-          <ClerkProvider>{content}</ClerkProvider>
+          <ClerkProvider appearance={clerkAppearance}>{content}</ClerkProvider>
         ) : (
           content
         )}
