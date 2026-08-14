@@ -12,7 +12,16 @@ def get_engine(url: str | None = None) -> Engine:
     """Get or create the SQLAlchemy engine."""
     global _engine
     if _engine is None or url is not None:
-        _engine = create_engine(url or DATABASE_URL, echo=False)
+        # pool_pre_ping discards stale connections before use (prevents the
+        # "server closed the connection unexpectedly" errors seen when Railway's
+        # proxy reaps idle TCP connections). pool_recycle ensures connections
+        # are recycled before the proxy/idle timeout can kill them.
+        _engine = create_engine(
+            url or DATABASE_URL,
+            echo=False,
+            pool_pre_ping=True,
+            pool_recycle=300,
+        )
     return _engine
 
 

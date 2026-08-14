@@ -33,6 +33,8 @@ export default function MainNav({ theme, cta }: MainNavProps) {
   const containerClass = onImage
     ? "absolute top-0 left-0 w-full z-50"
     : "relative w-full z-30 border-b border-border-light bg-cream";
+  // Clerk auth UI only renders when Clerk is configured for this environment.
+  const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
   return (
     <nav
@@ -57,17 +59,21 @@ export default function MainNav({ theme, cta }: MainNavProps) {
       </div>
       <div className="justify-self-end flex items-center gap-4">
         {cta}
-        <Show when="signed-out">
-          <SignInButton mode="modal">
-            <button className={`text-sm font-medium ${linkBase} transition-colors`}>Sign In</button>
-          </SignInButton>
-          <SignUpButton mode="modal">
-            <button className="bg-[#FF4119] text-white text-sm font-medium px-4 py-2 rounded-full hover:bg-[#e03a16] transition-colors">Sign Up</button>
-          </SignUpButton>
-        </Show>
-        <Show when="signed-in">
-          <UserButton />
-        </Show>
+        {clerkConfigured && (
+          <>
+            <Show when="signed-out">
+              <SignInButton mode="modal">
+                <button className={`text-sm font-medium ${linkBase} transition-colors`}>Sign In</button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <button className="bg-[#FF4119] text-white text-sm font-medium px-4 py-2 rounded-full hover:bg-[#e03a16] transition-colors">Sign Up</button>
+              </SignUpButton>
+            </Show>
+            <Show when="signed-in">
+              <UserButton />
+            </Show>
+          </>
+        )}
       </div>
     </nav>
   );

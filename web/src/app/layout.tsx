@@ -137,6 +137,13 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Clerk auth is optional: when NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not set
+  // (e.g. an environment without a Clerk app yet), render the public site
+  // without the auth provider instead of crashing on the missing key. Auth
+  // re-engages automatically once the key is provisioned.
+  const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const content = <PostHogProvider>{children}</PostHogProvider>;
+
   return (
     <html lang="en">
       <head>
@@ -147,9 +154,11 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <ClerkProvider>
-          <PostHogProvider>{children}</PostHogProvider>
-        </ClerkProvider>
+        {clerkPublishableKey ? (
+          <ClerkProvider>{content}</ClerkProvider>
+        ) : (
+          content
+        )}
       </body>
     </html>
   );

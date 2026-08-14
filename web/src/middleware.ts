@@ -1,16 +1,22 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from "next/server";
 
+const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const isProtectedRoute = createRouteMatcher(['/admin(.*)']);
 
-export default clerkMiddleware(async (auth, req) => {
+function adminHostRedirect(req: NextRequest) {
   const url = req.nextUrl;
   const hostname = req.headers.get('host');
-
-  // Redirect admin.sailratings.com root to /admin/swarm
   if (hostname === 'admin.sailratings.com' && url.pathname === '/') {
     return NextResponse.redirect(new URL('/admin/swarm', req.url));
   }
+  return null;
+}
+
+// Full auth: used when Clerk is configured.
+const clerkConfiguredMiddleware = clerkMiddleware(async (auth, req) => {
+  const redirect = adminHostRedirect(req);
+  if (redirect) return redirect;
 
   if (isProtectedRoute(req)) {
     await auth.protect();
@@ -18,6 +24,27 @@ export default clerkMiddleware(async (auth, req) => {
 
   return NextResponse.next();
 });
+
+// Fallback: when Clerk is NOT configured, render public pages normally and
+// refuse access to protected admin routes (503) instead of crashing on the
+// missing publishable key. Auth re-engages automatically once
+// NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY are provisioned.
+function unconfiguredMiddleware(req: NextRequest) {
+  const redirect = adminHostRedirect(req);
+  if (redirect) return redirect;
+
+  if (isProtectedRoute(req)) {
+    return new NextResponse('Authentication is not configured on this environment.', {
+      status: 503,
+    });
+  }
+
+  return NextResponse.next();
+}
+
+export default clerkPublishableKey
+  ? clerkConfiguredMiddleware
+  : unconfiguredMiddleware;
 
 export const config = {
   matcher: [
