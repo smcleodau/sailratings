@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class NotionPoller:
     def __init__(self):
         self.notion_token = os.environ.get("SAILRATINGS_NOTION_TOKEN")
-        self.db_id = '3a937ffe-f467-81b3-b888-d873def19261'
+        self.db_id = '3ac37ffe-f467-8059-855a-e4e5666e7e3d'
         self.headers = {
             'Authorization': f'Bearer {self.notion_token}',
             'Notion-Version': '2022-06-28',
@@ -27,7 +27,7 @@ class NotionPoller:
             data=json.dumps({
                 "filter": {
                     "property": "Status",
-                    "select": {"equals": "Ready for Agent"}
+                    "select": {"equals": "Ready"}
                 }
             }).encode(),
             method='POST',
@@ -66,7 +66,8 @@ class NotionPoller:
         for page in results:
             try:
                 # Extract title
-                title_objs = page.get('properties', {}).get('Issue', {}).get('title', [])
+                title_objs = page.get('properties', {}).get('Title', {}).get('rich_text', []) \
+                    or page.get('properties', {}).get('ID', {}).get('title', [])
                 title = title_objs[0].get('text', {}).get('content', '') if title_objs else "Untitled"
                 
                 # Fetch children
@@ -74,17 +75,74 @@ class NotionPoller:
                 res_children = urllib.request.urlopen(req_children)
                 children = json.loads(res_children.read()).get('results', [])
                 
-                description = f"Title: {title}\nURL: {page['url']}\n\nTask Details:\n"
-                
+                def prop_text(page, key):
+                    p = page.get('properties', {}).get(key, {})
+                    ptype = p.get('type')
+                    if ptype == 'rich_text':
+                        return "".join(t['text']['content'] for t in p.get('rich_text', []))
+                    elif ptype == 'title':
+                        return "".join(t['text']['content'] for t in p.get('title', []))
+                    elif ptype == 'select':
+                        sel = p.get('select')
+                        return sel['name'] if sel else ''
+                    return ''
+
+                props = page.get('properties', {})
+                issue_id = prop_text(page, 'ID')
+                goal = prop_text(page, 'Goal')
+                scope = prop_text(page, 'Scope')
+                deliverable = prop_text(page, 'Deliverable')
+                acceptance = prop_text(page, 'Acceptance Criteria')
+                spec_ref = prop_text(page, 'Spec Reference')
+                verification = prop_text(page, 'Verification')
+                blocked_by = prop_text(page, 'Blocked By')
+                handoff = prop_text(page, 'Handoff / Output Contract')
+
+                description = (
+                    f"Issue: {issue_id} — {title}\n"
+                    f"URL: {page['url']}\n"
+                    f"Spec Reference: {spec_ref}\n\n"
+                    f"Goal: {goal}\n\n"
+                    f"Scope: {scope}\n\n"
+                    f"Deliverable: {deliverable}\n\n"
+                    f"Handoff / Output Contract: {handoff}\n\n"
+                    f"Acceptance Criteria:\n{acceptance}\n\n"
+                    f"Verification: {verification}\n\n"
+                    f"Blocked By: {blocked_by}\n\n"
+                    f"Additional notes from page body:\n"
+                )
+
                 for child in children:
-                    if child['type'] == 'paragraph':
+                    btype = child['type']
+                    if btype == 'paragraph':
                         rt = child['paragraph'].get('rich_text', [])
                         text = "".join([t['text']['content'] for t in rt])
                         description += text + "\n"
-                    elif child['type'] == 'heading_3':
+                    elif btype == 'heading_1':
+                        rt = child['heading_1'].get('rich_text', [])
+                        text = "".join([t['text']['content'] for t in rt])
+                        description += f"# {text}\n"
+                    elif btype == 'heading_2':
+                        rt = child['heading_2'].get('rich_text', [])
+                        text = "".join([t['text']['content'] for t in rt])
+                        description += f"## {text}\n"
+                    elif btype == 'heading_3':
                         rt = child['heading_3'].get('rich_text', [])
                         text = "".join([t['text']['content'] for t in rt])
                         description += f"### {text}\n"
+                    elif btype in ('bulleted_list_item', 'numbered_list_item'):
+                        rt = child[btype].get('rich_text', [])
+                        text = "".join([t['text']['content'] for t in rt])
+                        description += f"- {text}\n"
+                    elif btype == 'code':
+                        rt = child['code'].get('rich_text', [])
+                        text = "".join([t['text']['content'] for t in rt])
+                        lang = child['code'].get('language', '')
+                        description += f"```{lang}\n{text}\n```\n"
+                    elif btype == 'quote':
+                        rt = child['quote'].get('rich_text', [])
+                        text = "".join([t['text']['content'] for t in rt])
+                        description += f"> {text}\n"
 
                 task_payload = {"id": page["id"], "url": page["url"], "description": description, "title": title}
                 
@@ -110,7 +168,8 @@ class NotionPoller:
         # Trigger Specification Agents for Epics
         for page in spec_results:
             try:
-                title_objs = page.get('properties', {}).get('Issue', {}).get('title', [])
+                title_objs = page.get('properties', {}).get('Title', {}).get('rich_text', []) \
+                    or page.get('properties', {}).get('ID', {}).get('title', [])
                 title = title_objs[0].get('text', {}).get('content', '') if title_objs else "Untitled"
                 
                 req_children = urllib.request.Request(f"https://api.notion.com/v1/blocks/{page['id']}/children", headers=self.headers)
