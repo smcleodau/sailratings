@@ -79,14 +79,21 @@ class NotionPoller:
         slots_available = self.MAX_CONCURRENT - running_count
         dispatched = 0
 
-        # Only dispatch issues that have a Spec Reference — unspecced work stays queued
-        specced = [
-            p for p in results
-            if p.get('properties', {}).get('Spec Reference', {}).get('rich_text', [])
-        ]
-        logger.info(f"{len(specced)} of {len(results)} ready tasks have a spec reference")
+        # Configurable epic allow-list (comma-separated, e.g. "DP-01,AF-00")
+        # Empty string = all epics allowed
+        allowed_epics_env = os.environ.get("FACTORY_ALLOWED_EPICS", "DP-01")
+        allowed_epics = [e.strip() for e in allowed_epics_env.split(",") if e.strip()] if allowed_epics_env else []
 
-        for page in specced[:min(len(specced), self.MAX_PER_POLL, slots_available)]:
+        def epic_allowed(page):
+            parent = (page.get('properties', {}).get('Parent Epic', {}).get('select') or {}).get('name', '')
+            if not allowed_epics:
+                return True
+            return parent in allowed_epics
+
+        eligible = [p for p in results if epic_allowed(p)]
+        logger.info(f"{len(eligible)} of {len(results)} ready tasks are in allowed epics {allowed_epics}")
+
+        for page in eligible[:min(len(eligible), self.MAX_PER_POLL, slots_available)]:
             try:
                 # Extract title
                 title_objs = page.get('properties', {}).get('Title', {}).get('rich_text', []) \
