@@ -1,4 +1,4 @@
-"""Source adapter SDK (SPEC-012 §4, deliverable DP-01-03).
+"""Source adapter SDK (SPEC-012 §4–§5, deliverables DP-01-03 + DP-01-04).
 
 A reusable, policy-aware adapter framework for the SailRatings data
 platform.  Adapters inherit from :class:`SourceAdapter`, implement the
@@ -6,6 +6,12 @@ discover / fetch / enumerate / checkpoint / parse-hint / rate-limit /
 conditional-request / health-probe surface, and emit **raw envelopes
 only** (``RawCaptureRequestV1``).  No parsing or normalisation happens
 inside an adapter — that is the job of the DP-02 pipeline.
+
+The **acquisition primitive library** (DP-01-04) provides six bounded
+fetchers — :func:`fetch_html`, :func:`fetch_pdf`, :func:`fetch_json`,
+:func:`fetch_file`, :func:`paginate`, :func:`render_page` — that cover
+every common sailing-source delivery format.  All return
+:class:`FetchResult` and enforce the collection policy.
 
 Design note
 -----------
@@ -28,6 +34,14 @@ Public API::
         HealthProbeResult,
         InMemorySourceRegistry,
         run_adapter_contract,
+        # Acquisition primitives (DP-01-04)
+        fetch_html,
+        fetch_pdf,
+        fetch_json,
+        fetch_file,
+        paginate,
+        render_page,
+        RenderedFetchResult,
     )
 """
 
@@ -54,6 +68,19 @@ from .registry import (
     seed_registry,
 )
 from .contract_suite import run_adapter_contract
+from .primitives import (
+    BrowserFactory,
+    BrowserLike,
+    MalformedResponseError,
+    PageLike,
+    RenderedFetchResult,
+    fetch_file,
+    fetch_html,
+    fetch_json,
+    fetch_pdf,
+    paginate,
+    render_page,
+)
 
 __all__ = [
     "CURRENT_POLICY_VERSION",
@@ -74,4 +101,16 @@ __all__ = [
     "SourceNotApprovedError",
     "UserAgentError",
     "run_adapter_contract",
+    # Acquisition primitives (DP-01-04)
+    "fetch_html",
+    "fetch_pdf",
+    "fetch_json",
+    "fetch_file",
+    "paginate",
+    "render_page",
+    "RenderedFetchResult",
+    "MalformedResponseError",
+    "BrowserFactory",
+    "BrowserLike",
+    "PageLike",
 ]

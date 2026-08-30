@@ -38,15 +38,19 @@ class RateLimiter:
 
 
 def get_http_client(**kwargs) -> httpx.AsyncClient:
-    """Create an httpx async client with sensible defaults."""
+    """Create an httpx async client with sensible defaults.
+
+    The standard SailRatings User-Agent is set by default (INTERIM-POLICY.md §6).
+    Legacy callers may still override it via ``headers`` but should migrate
+    to the policy-aware client in ``irc_data.sources``.
+    """
     defaults = {
         "timeout": httpx.Timeout(30.0, connect=10.0),
         "follow_redirects": True,
         "headers": {
             "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
+                "SailRatings/1.0 "
+                "(+https://sailratings.com; contact=stuart@sailratings.com)"
             ),
         },
     }
