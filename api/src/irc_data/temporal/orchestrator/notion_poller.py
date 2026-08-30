@@ -79,7 +79,14 @@ class NotionPoller:
         slots_available = self.MAX_CONCURRENT - running_count
         dispatched = 0
 
-        for page in results[:min(len(results), self.MAX_PER_POLL, slots_available)]:
+        # Only dispatch issues that have a Spec Reference — unspecced work stays queued
+        specced = [
+            p for p in results
+            if p.get('properties', {}).get('Spec Reference', {}).get('rich_text', [])
+        ]
+        logger.info(f"{len(specced)} of {len(results)} ready tasks have a spec reference")
+
+        for page in specced[:min(len(specced), self.MAX_PER_POLL, slots_available)]:
             try:
                 # Extract title
                 title_objs = page.get('properties', {}).get('Title', {}).get('rich_text', []) \
