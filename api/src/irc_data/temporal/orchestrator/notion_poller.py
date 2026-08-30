@@ -3,6 +3,7 @@ import asyncio
 import logging
 import urllib.request
 import json
+from datetime import timedelta
 from temporalio.client import Client as TemporalClient
 
 logger = logging.getLogger(__name__)
@@ -181,7 +182,8 @@ class NotionPoller:
                     "EpicExecutionWorkflow",
                     task_payload,
                     id=f"agent-task-{page['id']}",
-                    task_queue="orchestrator-task-queue"
+                    task_queue="orchestrator-task-queue",
+                    task_timeout=timedelta(seconds=60),
                 )
                 dispatched += 1
                 
