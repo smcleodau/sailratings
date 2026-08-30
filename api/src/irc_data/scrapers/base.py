@@ -38,16 +38,19 @@ class RateLimiter:
 
 
 def get_http_client(**kwargs) -> httpx.AsyncClient:
-    """Create an httpx async client with sensible defaults."""
+    """Create an httpx async client with sensible defaults.
+
+    The User-Agent is set per the responsible-collection policy
+    (DP-01-02 / docs/INTERIM-POLICY.md §6).  Never override with a
+    browser User-Agent or blank User-Agent.
+    """
+    from irc_data.sources.policy import ACTIVE_POLICY
+
     defaults = {
         "timeout": httpx.Timeout(30.0, connect=10.0),
         "follow_redirects": True,
         "headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
+            "User-Agent": ACTIVE_POLICY.attribution.user_agent,
         },
     }
     defaults.update(kwargs)
