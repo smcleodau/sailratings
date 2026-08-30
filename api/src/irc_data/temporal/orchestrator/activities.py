@@ -96,12 +96,12 @@ async def run_lane_worker_agent(worktree_path: str, task: dict, feedback: str = 
     import asyncio
     
     llm = LLM(
-        model="openai/glm-5.2", 
-        api_key=os.environ.get("GEMINI_API_KEY", "dummy"),
-        base_url="http://100.93.15.38:10006/api/worker-router"
+        model=os.environ.get("LLM_MODEL", "openai/glm-5.2"),
+        api_key=os.environ.get("LLM_API_KEY", os.environ.get("GEMINI_API_KEY", "dummy")),
+        base_url=os.environ.get("LLM_BASE_URL", "http://100.93.15.38:10006/api/worker-router")
     )
     workspace = LocalWorkspace(working_dir=worktree_path)
-    
+
     system_prompt = """
     You are the 'Lane Worker Agent', responsible for implementing features according to technical specifications.
     Read the provided task description, inspect the repository if needed, and write the code to fulfill the requirements.
@@ -153,12 +153,12 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
     import asyncio
     
     llm = LLM(
-        model="openai/glm-5.2", 
-        api_key=os.environ.get("GEMINI_API_KEY", "dummy"),
-        base_url="http://100.93.15.38:10006/api/worker-router"
+        model=os.environ.get("LLM_MODEL", "openai/glm-5.2"),
+        api_key=os.environ.get("LLM_API_KEY", os.environ.get("GEMINI_API_KEY", "dummy")),
+        base_url=os.environ.get("LLM_BASE_URL", "http://100.93.15.38:10006/api/worker-router")
     )
     workspace = LocalWorkspace(working_dir=worktree_path)
-    
+
     system_prompt = """
     You are the 'Adversarial Watchdog'. You review code changes and issue boards.
     1. Verify that the exact AC from the spec is met.
