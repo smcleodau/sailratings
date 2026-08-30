@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { LogOut } from "lucide-react";
+import Image from "next/image";
 
 interface AdminNavProps {
   /** Optional element rendered after the tabs (e.g. conversation badge on chat). */
@@ -67,20 +67,26 @@ export function AdminNav({ rightSlot }: AdminNavProps) {
   };
 
   return (
-    <header className="admin-nav px-10 py-3 flex items-center justify-between gap-6 flex-wrap">
-      {/* Brand */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <img src="/mark-marine-on-light.svg" alt="" className="w-[22px] h-[22px]" />
-        <Link href="/admin" prefetch className="admin-header-font font-extrabold text-[15px] tracking-[0.02em] text-[#162423]">
-          SAIL<span className="text-[#FF4119]">RATINGS</span>
+    <header className="sr-app-header px-8 py-3 flex items-center justify-between gap-6 flex-wrap bg-[var(--sr-surface-deep)] border-b border-[var(--sr-border-subtle)]">
+      {/* Brand Header using Official Outlined Wordmark SVG */}
+      <div className="flex items-center gap-2.5 flex-shrink-0">
+        <Link href="/admin" prefetch className="flex items-center gap-2">
+          <Image
+            src="/brand/wordmark-outlined.svg"
+            alt="SailRatings"
+            width={140}
+            height={21}
+            priority
+            className="h-5 w-auto"
+          />
         </Link>
-        <span className="admin-mono-font text-[9px] tracking-[0.18em] uppercase text-[#0C5F5C] border border-[#0C5F5C]/35 rounded-full px-2 py-[2px] ml-1">
+        <span className="sr-label text-[9px] tracking-[0.18em] uppercase text-[var(--sr-marine-200)] border border-[var(--sr-marine-600)]/40 rounded-full px-2 py-[2px] ml-1">
           Admin
         </span>
       </div>
 
       {/* Section tabs */}
-      <nav className="flex items-center gap-0 flex-1" aria-label="Admin sections">
+      <nav className="flex items-center gap-1 flex-1" aria-label="Admin sections">
         {SECTIONS.map((s) => {
           const active = s.match(pathname);
           return (
@@ -88,8 +94,10 @@ export function AdminNav({ rightSlot }: AdminNavProps) {
               key={s.href}
               href={s.href}
               prefetch
-              className={`admin-mono-font text-[10px] tracking-[0.14em] uppercase px-3 py-2 ${
-                active ? "admin-link-active" : "admin-link"
+              className={`sr-label text-[10px] tracking-[0.14em] uppercase px-3 py-2 transition-colors ${
+                active
+                  ? "text-[var(--sr-paper)] border-b-2 border-[var(--sr-action)]"
+                  : "text-[var(--sr-text-secondary)] hover:text-[var(--sr-paper)]"
               }`}
             >
               {s.label}
@@ -103,7 +111,7 @@ export function AdminNav({ rightSlot }: AdminNavProps) {
         {rightSlot}
         <button
           onClick={handleSignOut}
-          className="admin-mono-font text-[10px] tracking-[0.14em] uppercase admin-link flex items-center gap-2"
+          className="sr-label text-[10px] tracking-[0.14em] uppercase text-[var(--sr-text-secondary)] hover:text-[var(--sr-paper)] transition-colors flex items-center gap-2"
           aria-label="Sign out"
         >
           Sign out

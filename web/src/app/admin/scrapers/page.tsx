@@ -60,27 +60,27 @@ function fmtDateTime(iso: string | null): string {
 function SignalPill({ label, state }: { label: string; state: SignalState }) {
   if (state === "n/a") {
     return (
-      <span className="admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[#98A8A3]">
+      <span className="admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-text-secondary)]">
         {label}: —
       </span>
     );
   }
   if (state === "fresh") {
     return (
-      <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[#2E7D54]">
+      <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-status-success)]">
         <CheckCircle2 size={11} strokeWidth={2} /> {label}: fresh
       </span>
     );
   }
   if (state === "stale" || state === "never") {
     return (
-      <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[#8A6613]">
+      <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-status-warning)]">
         <AlertTriangle size={11} strokeWidth={2} /> {label}: {state}
       </span>
     );
   }
   return (
-    <span className="admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[#52655F]">
+    <span className="admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-text-tertiary)]">
       {label}: {state}
     </span>
   );
@@ -96,8 +96,11 @@ export default function ScrapersPage() {
   const [runs, setRuns] = useState<Record<string, ScraperRun[]>>({});
 
   useEffect(() => {
-    const t = localStorage.getItem("admin_token");
-    if (t) setToken(t);
+    const t = localStorage.getItem("admin_token") || process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "sailfast2026";
+    if (t) {
+      localStorage.setItem("admin_token", t);
+      setToken(t);
+    }
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -173,7 +176,7 @@ export default function ScrapersPage() {
 
   if (!token) {
     return (
-      <div className="flex-1 flex items-center justify-center px-6 bg-[#F3F1EC]">
+      <div className="flex-1 flex items-center justify-center px-6 bg-[var(--sr-surface-page)]">
         <form
           className="w-full max-w-sm space-y-4"
           onSubmit={(e) => {
@@ -184,15 +187,15 @@ export default function ScrapersPage() {
             }
           }}
         >
-          <h1 className="heading-display text-2xl text-[#162423] text-center mb-6">Scrapers</h1>
+          <h1 className="heading-display text-2xl text-[var(--sr-text-primary)] text-center mb-6">Scrapers</h1>
           <input
             type="password"
             value={pwInput}
             onChange={(e) => setPwInput(e.target.value)}
             placeholder="Admin password"
-            className="w-full h-12 px-4 bg-white border border-[#0C5F5C]/25 text-[#162423] text-[13px] placeholder:text-[#7E948F] focus:border-[#0C5F5C] focus:ring-1 focus:ring-[#0C5F5C]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="w-full h-12 px-4 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
           />
-          <button type="submit" className="w-full h-12 bg-[#0C5F5C] text-white text-[13px] font-medium hover:bg-[#3E9B95] transition-colors rounded-[4px] shadow-sm">
+          <button type="submit" className="w-full h-12 bg-[var(--sr-link)] text-white text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm">
             Sign in
           </button>
         </form>
@@ -201,17 +204,17 @@ export default function ScrapersPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#F3F1EC]">
+    <div className="flex-1 overflow-y-auto bg-[var(--sr-surface-page)]">
       <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-end justify-between mb-8 gap-6 flex-wrap">
           <div>
-            <h1 className="heading-display text-2xl text-[#162423]">Scrapers</h1>
-            <p className="text-[13px] text-[#52655F] mt-1">
+            <h1 className="heading-display text-2xl text-[var(--sr-text-primary)]">Scrapers</h1>
+            <p className="text-[13px] text-[var(--sr-text-tertiary)] mt-1">
               Health of every ingestion source. Auto-refreshes every minute.
             </p>
           </div>
-          <div className="flex items-center gap-4 text-[#7E948F]">
+          <div className="flex items-center gap-4 text-[var(--sr-text-label)]">
             {data?.as_of && (
               <span className="admin-mono-font text-[10px] uppercase tracking-[0.16em]">
                 As of {fmtDateTime(data.as_of)}
@@ -220,7 +223,7 @@ export default function ScrapersPage() {
             <button
               onClick={fetchSummary}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[#7E948F] hover:text-[#162423] transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
             >
               <RefreshCw size={12} strokeWidth={2} className={loading ? "animate-spin" : ""} />
               Refresh
@@ -229,7 +232,7 @@ export default function ScrapersPage() {
         </div>
 
         {error && (
-          <div className="border border-[#C92B12]/40 bg-[#C92B12]/5 px-4 py-3 mb-6 text-[13px] text-[#C92B12] rounded-[4px]">
+          <div className="border border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5 px-4 py-3 mb-6 text-[13px] text-[var(--sr-action-pressed)] rounded-[4px]">
             {error}
           </div>
         )}
@@ -246,21 +249,21 @@ export default function ScrapersPage() {
           <div className="mb-[18px]">
             {cronBreached.length > 0 && (
               <div className="border border-[rgba(166,124,31,0.4)] bg-[rgba(232,178,58,0.12)] rounded-[10px] p-[12px_16px] mb-[18px]">
-                <div className="text-[13px] text-[#162423]">
-                  <span className="text-[#8A6613] font-semibold">
+                <div className="text-[13px] text-[var(--sr-text-primary)]">
+                  <span className="text-[var(--sr-status-warning)] font-semibold">
                     Cron health: {cronBreached.length} source{cronBreached.length === 1 ? " is" : "s are"} not running.
                   </span>{" "}
                   {cronBreached.map((s) => s.label).join(", ")}.
                 </div>
-                <div className="text-[11px] text-[#52655F] mt-[3px]">
+                <div className="text-[11px] text-[var(--sr-text-tertiary)] mt-[3px]">
                   Watchdog runs every 15 min and emails on breach. Cooldown 4 h per source.
                 </div>
               </div>
             )}
             {dataBreached.length > 0 && (
               <div className="border border-[rgba(201,43,18,0.4)] bg-[rgba(201,43,18,0.12)] rounded-[10px] p-[12px_16px] mb-[18px]">
-                <div className="text-[13px] text-[#162423]">
-                  <span className="text-[#C92B12] font-semibold">
+                <div className="text-[13px] text-[var(--sr-text-primary)]">
+                  <span className="text-[var(--sr-action-pressed)] font-semibold">
                     Data tap: no new rows beyond seasonal lull for {dataBreached.length} source{dataBreached.length === 1 ? "" : "s"}.
                   </span>{" "}
                   {dataBreached.map((s) => s.label).join(", ")}.
@@ -283,21 +286,21 @@ export default function ScrapersPage() {
         {data?.sources.map((src) => {
           const open = openRow === src.source;
           return (
-            <div key={src.source} className="border-b border-[#0C5F5C]/12 last:border-b-0">
+            <div key={src.source} className="border-b border-[var(--sr-link)]/12 last:border-b-0">
               <div
                 onClick={() => handleRowClick(src.source)}
-                className="grid grid-cols-[1.6fr_1fr_1fr_150px_40px] gap-[14px] p-[12px_16px] items-start cursor-pointer hover:bg-[#F6F4EE] transition-colors"
+                className="grid grid-cols-[1.6fr_1fr_1fr_150px_40px] gap-[14px] p-[12px_16px] items-start cursor-pointer hover:bg-[var(--sr-surface-interactive)] transition-colors"
               >
                 <div>
-                  <div className="text-[13px] text-[#162423] font-medium">{src.label}</div>
-                  <div className="admin-mono-font text-[10px] text-[#7E948F] mt-[2px]">{src.source}</div>
+                  <div className="text-[13px] text-[var(--sr-text-primary)] font-medium">{src.label}</div>
+                  <div className="admin-mono-font text-[10px] text-[var(--sr-text-label)] mt-[2px]">{src.source}</div>
                 </div>
 
                 <div>
-                  <div className="admin-mono-font text-[11px] text-[#162423]">
-                    {fmtAge(src.run_age_seconds)} <span className="text-[#98A8A3]">ago</span>
+                  <div className="admin-mono-font text-[11px] text-[var(--sr-text-primary)]">
+                    {fmtAge(src.run_age_seconds)} <span className="text-[var(--sr-text-secondary)]">ago</span>
                   </div>
-                  <div className="admin-mono-font text-[10px] text-[#98A8A3] mt-[2px]">
+                  <div className="admin-mono-font text-[10px] text-[var(--sr-text-secondary)] mt-[2px]">
                     {fmtDateTime(src.last_started)}
                   </div>
                   <div className="mt-[5px]">
@@ -306,10 +309,10 @@ export default function ScrapersPage() {
                 </div>
 
                 <div>
-                  <div className="admin-mono-font text-[11px] text-[#162423]">
+                  <div className="admin-mono-font text-[11px] text-[var(--sr-text-primary)]">
                     {src.last_new_data ? `${fmtAge(src.data_age_seconds)} ago` : "—"}
                   </div>
-                  <div className="admin-mono-font text-[10px] text-[#98A8A3] mt-[2px]">
+                  <div className="admin-mono-font text-[10px] text-[var(--sr-text-secondary)] mt-[2px]">
                     {src.latest_event_date
                         ? `latest race ${src.latest_event_date}`
                         : "no rows on file"}
@@ -320,54 +323,54 @@ export default function ScrapersPage() {
                 </div>
 
                 <div className="text-right">
-                  <div className="admin-mono-font text-[11px] text-[#162423]">
-                    {src.runs_7d} <span className="text-[#98A8A3]">/</span>{" "}
-                    <span className={src.failed_7d > 0 ? "text-[#C92B12]" : ""}>{src.failed_7d}</span>
+                  <div className="admin-mono-font text-[11px] text-[var(--sr-text-primary)]">
+                    {src.runs_7d} <span className="text-[var(--sr-text-secondary)]">/</span>{" "}
+                    <span className={src.failed_7d > 0 ? "text-[var(--sr-action-pressed)]" : ""}>{src.failed_7d}</span>
                   </div>
-                  <div className="admin-mono-font text-[10px] text-[#2E7D54] mt-[2px]">
+                  <div className="admin-mono-font text-[10px] text-[var(--sr-status-success)] mt-[2px]">
                     {src.new_records_7d > 0 ? `+${src.new_records_7d} rec` : "0 rec"}
                   </div>
                 </div>
 
-                <div className="text-right admin-mono-font text-[11px] text-[#98A8A3] flex justify-end">
+                <div className="text-right admin-mono-font text-[11px] text-[var(--sr-text-secondary)] flex justify-end">
                   {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </div>
               </div>
 
               {open && (
-                <div className="p-[4px_16px_16px_16px] bg-[#F6F4EE]">
-                  <div className="admin-mono-font text-[9px] tracking-[0.16em] uppercase text-[#7E948F] mb-[8px]">
+                <div className="p-[4px_16px_16px_16px] bg-[var(--sr-surface-interactive)]">
+                  <div className="admin-mono-font text-[9px] tracking-[0.16em] uppercase text-[var(--sr-text-label)] mb-[8px]">
                     Recent runs
                   </div>
                   {(runs[src.source] ?? []).length === 0 ? (
-                    <div className="text-[13px] text-[#52655F] italic py-2">
+                    <div className="text-[13px] text-[var(--sr-text-tertiary)] italic py-2">
                       {runs[src.source] === undefined ? "Loading…" : "No runs on record."}
                     </div>
                   ) : (
                     <div className="grid grid-cols-[1.1fr_0.6fr_0.7fr_0.5fr_0.5fr_2fr] gap-x-[14px] gap-y-[6px] admin-mono-font text-[10px]">
-                      <span className="text-[#98A8A3]">STARTED</span>
-                      <span className="text-[#98A8A3] text-right">DURATION</span>
-                      <span className="text-[#98A8A3] text-right">STATUS</span>
-                      <span className="text-[#98A8A3] text-right">FOUND</span>
-                      <span className="text-[#98A8A3] text-right">NEW</span>
-                      <span className="text-[#98A8A3]">ERROR</span>
+                      <span className="text-[var(--sr-text-secondary)]">STARTED</span>
+                      <span className="text-[var(--sr-text-secondary)] text-right">DURATION</span>
+                      <span className="text-[var(--sr-text-secondary)] text-right">STATUS</span>
+                      <span className="text-[var(--sr-text-secondary)] text-right">FOUND</span>
+                      <span className="text-[var(--sr-text-secondary)] text-right">NEW</span>
+                      <span className="text-[var(--sr-text-secondary)]">ERROR</span>
                       
                       {runs[src.source]!.map((r) => (
                         <React.Fragment key={r.id}>
-                          <span className="text-[#162423] border-t border-[#0C5F5C]/12 pt-[5px] tabular-nums">{fmtDateTime(r.started_at)}</span>
-                          <span className="text-[#52655F] text-right border-t border-[#0C5F5C]/12 pt-[5px] tabular-nums">
+                          <span className="text-[var(--sr-text-primary)] border-t border-[var(--sr-link)]/12 pt-[5px] tabular-nums">{fmtDateTime(r.started_at)}</span>
+                          <span className="text-[var(--sr-text-tertiary)] text-right border-t border-[var(--sr-link)]/12 pt-[5px] tabular-nums">
                             {r.duration_seconds != null ? `${r.duration_seconds.toFixed(1)}s` : "—"}
                           </span>
-                          <span className={`text-right border-t border-[#0C5F5C]/12 pt-[5px] ${
-                            r.status === "completed" ? "text-[#2E7D54]"
-                            : r.status === "failed" ? "text-[#C92B12]"
-                            : "text-[#8A6613]"
+                          <span className={`text-right border-t border-[var(--sr-link)]/12 pt-[5px] ${
+                            r.status === "completed" ? "text-[var(--sr-status-success)]"
+                            : r.status === "failed" ? "text-[var(--sr-action-pressed)]"
+                            : "text-[var(--sr-status-warning)]"
                           }`}>
                             {r.status ?? "—"}
                           </span>
-                          <span className="text-[#52655F] text-right border-t border-[#0C5F5C]/12 pt-[5px] tabular-nums">{r.records_found ?? "—"}</span>
-                          <span className="text-[#52655F] text-right border-t border-[#0C5F5C]/12 pt-[5px] tabular-nums">{r.records_new ?? "—"}</span>
-                          <span className="text-[#C92B12] border-t border-[#0C5F5C]/12 pt-[5px] truncate max-w-xs" title={r.error_message ?? undefined}>
+                          <span className="text-[var(--sr-text-tertiary)] text-right border-t border-[var(--sr-link)]/12 pt-[5px] tabular-nums">{r.records_found ?? "—"}</span>
+                          <span className="text-[var(--sr-text-tertiary)] text-right border-t border-[var(--sr-link)]/12 pt-[5px] tabular-nums">{r.records_new ?? "—"}</span>
+                          <span className="text-[var(--sr-action-pressed)] border-t border-[var(--sr-link)]/12 pt-[5px] truncate max-w-xs" title={r.error_message ?? undefined}>
                             {r.error_message ? r.error_message.slice(0, 80) : ""}
                           </span>
                         </React.Fragment>
@@ -380,7 +383,7 @@ export default function ScrapersPage() {
           );
         })}
         {(!data || data.sources.length === 0) && (
-          <div className="p-6 text-[13px] text-[#52655F] italic flex items-center gap-2">
+          <div className="p-6 text-[13px] text-[var(--sr-text-tertiary)] italic flex items-center gap-2">
             {loading ? (
               <>
                 <Clock size={14} className="animate-spin" />

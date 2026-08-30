@@ -22,5 +22,9 @@ node_modules/
 # Temporal workflow runtime output
 api/*_wfs.txt
 
+# Test output
+web/test-results/
+web/screenshot.png
+
 # OS
 .DS_Store

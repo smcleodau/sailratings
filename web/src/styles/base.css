@@ -1,0 +1,133 @@
+@layer sr.reset, sr.base, sr.components, sr.utilities;
+
+@layer sr.reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-width: 360px;
+    text-size-adjust: 100%;
+  }
+
+  body,
+  h1,
+  h2,
+  h3,
+  p,
+  figure {
+    margin: 0;
+  }
+
+  img,
+  svg {
+    display: block;
+    max-width: 100%;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer sr.base {
+  html {
+    background: var(--sr-surface-page);
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--sr-surface-page);
+    color: var(--sr-text-primary);
+    font-family: var(--sr-font-body);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--sr-signal-500);
+    color: var(--sr-abyss);
+  }
+
+  a {
+    color: var(--sr-link);
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.18em;
+  }
+
+  a:hover {
+    color: var(--sr-link-hover);
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--sr-focus);
+    outline-offset: 3px;
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: var(--sr-text-primary);
+    font-family: var(--sr-font-display);
+    text-wrap: balance;
+  }
+
+  h1 {
+    font-size: var(--sr-type-app-h1);
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  h2 {
+    font-size: var(--sr-type-h2);
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  code,
+  kbd,
+  samp,
+  .sr-data {
+    font-family: var(--sr-font-data);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sr-label {
+    color: var(--sr-text-label);
+    font-family: var(--sr-font-data);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    line-height: 1.35;
+    text-transform: uppercase;
+  }
+
+  .sr-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

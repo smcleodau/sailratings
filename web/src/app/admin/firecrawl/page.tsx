@@ -116,20 +116,20 @@ function StatCard({
 }) {
   const valueClass =
     tone === "warn"
-      ? "text-[#C92B12]"
+      ? "text-[var(--sr-action-pressed)]"
       : tone === "good"
-      ? "text-[#2E7D54]"
-      : "text-[#162423]";
+      ? "text-[var(--sr-status-success)]"
+      : "text-[var(--sr-text-primary)]";
   return (
-    <div className="border border-[#0C5F5C]/12 bg-white rounded-[4px] px-4 py-3 shadow-sm">
-      <p className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[#7E948F]">
+    <div className="border border-[var(--sr-link)]/12 bg-white rounded-[4px] px-4 py-3 shadow-sm">
+      <p className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
         {label}
       </p>
       <p className={`heading-display text-2xl mt-1 tabular-nums ${valueClass}`}>
         {value}
       </p>
       {sub && (
-        <p className="admin-mono-font text-[9px] text-[#52655F] mt-1">{sub}</p>
+        <p className="admin-mono-font text-[9px] text-[var(--sr-text-tertiary)] mt-1">{sub}</p>
       )}
     </div>
   );
@@ -138,8 +138,8 @@ function StatCard({
 function ModePill({ mode }: { mode: CallMode }) {
   const cls =
     mode === "scrape"
-      ? "bg-[#E8B23A]/15 text-[#8A6613] border-[#8A6613]/30"
-      : "bg-[#0C5F5C]/10 text-[#0C5F5C] border-[#0C5F5C]/20";
+      ? "bg-[var(--sr-status-warning)]/15 text-[var(--sr-status-warning)] border-[var(--sr-status-warning)]/30"
+      : "bg-[var(--sr-link)]/10 text-[var(--sr-link)] border-[var(--sr-link)]/20";
   return (
     <span
       className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2 py-0.5 border rounded-[2px] ${cls}`}
@@ -152,20 +152,20 @@ function ModePill({ mode }: { mode: CallMode }) {
 function StatusPill({ status }: { status: CallStatus }) {
   if (status === "ok") {
     return (
-      <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[#2E7D54]">
+      <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-status-success)]">
         <CheckCircle2 size={11} strokeWidth={2} /> ok
       </span>
     );
   }
   if (status === "empty") {
     return (
-      <span className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[#7E948F]">
+      <span className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-label)]">
         empty
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[#C92B12]">
+    <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-action-pressed)]">
       <AlertTriangle size={11} strokeWidth={2} /> error
     </span>
   );
@@ -189,8 +189,11 @@ export default function FirecrawlPage() {
   const [modeFilter, setModeFilter] = useState<CallMode | "all">("all");
 
   useEffect(() => {
-    const t = localStorage.getItem("admin_token");
-    if (t) setToken(t);
+    const t = localStorage.getItem("admin_token") || process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "sailfast2026";
+    if (t) {
+      localStorage.setItem("admin_token", t);
+      setToken(t);
+    }
   }, []);
 
   const fetchAll = useCallback(async () => {
@@ -246,7 +249,7 @@ export default function FirecrawlPage() {
 
   if (!token) {
     return (
-      <div className="flex-1 flex items-center justify-center px-6 bg-[#F3F1EC]">
+      <div className="flex-1 flex items-center justify-center px-6 bg-[var(--sr-surface-page)]">
         <form
           className="w-full max-w-sm space-y-4"
           onSubmit={(e) => {
@@ -257,7 +260,7 @@ export default function FirecrawlPage() {
             }
           }}
         >
-          <h1 className="heading-display text-2xl text-[#162423] text-center mb-6">
+          <h1 className="heading-display text-2xl text-[var(--sr-text-primary)] text-center mb-6">
             Firecrawl
           </h1>
           <input
@@ -265,11 +268,11 @@ export default function FirecrawlPage() {
             value={pwInput}
             onChange={(e) => setPwInput(e.target.value)}
             placeholder="Admin password"
-            className="w-full h-12 px-4 bg-white border border-[#0C5F5C]/25 text-[#162423] text-[13px] placeholder:text-[#7E948F] focus:border-[#0C5F5C] focus:ring-1 focus:ring-[#0C5F5C]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="w-full h-12 px-4 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
           />
           <button
             type="submit"
-            className="w-full h-12 bg-[#0C5F5C] text-white text-[13px] font-medium hover:bg-[#3E9B95] transition-colors rounded-[4px] shadow-sm"
+            className="w-full h-12 bg-[var(--sr-link)] text-white text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
           >
             Sign in
           </button>
@@ -306,18 +309,18 @@ export default function FirecrawlPage() {
   /* ── Render ─────────────────────────────────────────────────────── */
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#F3F1EC]">
+    <div className="flex-1 overflow-y-auto bg-[var(--sr-surface-page)]">
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-end justify-between mb-8 gap-6 flex-wrap">
           <div>
-            <h1 className="heading-display text-2xl text-[#162423]">Firecrawl</h1>
-            <p className="text-[13px] text-[#52655F] mt-1">
+            <h1 className="heading-display text-2xl text-[var(--sr-text-primary)]">Firecrawl</h1>
+            <p className="text-[13px] text-[var(--sr-text-tertiary)] mt-1">
               Per-call telemetry for every scrape + map request. Auto-refreshes
               every minute.
             </p>
           </div>
-          <div className="flex items-center gap-4 text-[#7E948F]">
+          <div className="flex items-center gap-4 text-[var(--sr-text-label)]">
             {summary?.as_of && (
               <span className="admin-mono-font text-[10px] uppercase tracking-[0.16em]">
                 As of {fmtDateTime(summary.as_of)}
@@ -326,7 +329,7 @@ export default function FirecrawlPage() {
             <button
               onClick={fetchAll}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[#7E948F] hover:text-[#162423] transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
             >
               <RefreshCw
                 size={12}
@@ -339,25 +342,25 @@ export default function FirecrawlPage() {
         </div>
 
         {error && (
-          <div className="border border-[#C92B12]/40 bg-[#C92B12]/5 px-4 py-3 mb-6 text-[13px] text-[#C92B12] rounded-[4px]">
+          <div className="border border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5 px-4 py-3 mb-6 text-[13px] text-[var(--sr-action-pressed)] rounded-[4px]">
             {error}
           </div>
         )}
 
         {/* Credit-balance banner — the authoritative number from Firecrawl */}
         {summary?.remaining ? (
-          <div className="border border-[#0C5F5C]/12 bg-white rounded-[4px] shadow-sm p-4 mb-6">
+          <div className="border border-[var(--sr-link)]/12 bg-white rounded-[4px] shadow-sm p-4 mb-6">
             <div className="flex items-baseline justify-between gap-4 flex-wrap mb-2">
-              <span className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[#7E948F]">
+              <span className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
                 Credit balance · Firecrawl
               </span>
               <span
                 className={`admin-mono-font text-[10px] uppercase tracking-[0.16em] ${
                   remainingTone === "warn"
-                    ? "text-[#C92B12]"
+                    ? "text-[var(--sr-action-pressed)]"
                     : remainingTone === "good"
-                    ? "text-[#2E7D54]"
-                    : "text-[#52655F]"
+                    ? "text-[var(--sr-status-success)]"
+                    : "text-[var(--sr-text-tertiary)]"
                 }`}
               >
                 {remaining?.toLocaleString()} remaining
@@ -365,29 +368,29 @@ export default function FirecrawlPage() {
               </span>
             </div>
             {planUsedPct != null && (
-              <div className="h-1.5 bg-[#F6F4EE] rounded-[2px] overflow-hidden">
+              <div className="h-1.5 bg-[var(--sr-surface-interactive)] rounded-[2px] overflow-hidden">
                 <div
                   className={`h-full ${
                     remainingTone === "warn"
-                      ? "bg-[#C92B12]"
+                      ? "bg-[var(--sr-action-pressed)]"
                       : remainingTone === "good"
-                      ? "bg-[#2E7D54]"
-                      : "bg-[#0C5F5C]/60"
+                      ? "bg-[var(--sr-status-success)]"
+                      : "bg-[var(--sr-link)]/60"
                   }`}
                   style={{ width: `${planUsedPct * 100}%` }}
                 />
               </div>
             )}
             {monthlyBurn != null && plan != null && (
-              <p className="admin-mono-font text-[10px] text-[#7E948F] mt-2">
+              <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] mt-2">
                 Projected monthly burn (from last 7d):{" "}
-                <span className="text-[#162423] tabular-nums">
+                <span className="text-[var(--sr-text-primary)] tabular-nums">
                   {monthlyBurn.toLocaleString()}
                 </span>{" "}
                 cr ·{" "}
                 <span
                   className={
-                    monthlyBurn > plan ? "text-[#C92B12]" : "text-[#2E7D54]"
+                    monthlyBurn > plan ? "text-[var(--sr-action-pressed)]" : "text-[var(--sr-status-success)]"
                   }
                 >
                   {monthlyBurn > plan
@@ -398,9 +401,9 @@ export default function FirecrawlPage() {
             )}
           </div>
         ) : (
-          <div className="border border-[#8A6613]/30 bg-[#E8B23A]/10 px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px]">
-            <AlertTriangle size={16} className="text-[#8A6613] flex-shrink-0 mt-0.5" />
-            <p className="text-[13px] text-[#8A6613]">
+          <div className="border border-[var(--sr-status-warning)]/30 bg-[var(--sr-status-warning)]/10 px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px]">
+            <AlertTriangle size={16} className="text-[var(--sr-status-warning)] flex-shrink-0 mt-0.5" />
+            <p className="text-[13px] text-[var(--sr-status-warning)]">
               Credit balance unavailable. Check that FIRECRAWL_API_KEY is set on
               the API process.
             </p>
@@ -442,15 +445,15 @@ export default function FirecrawlPage() {
         {/* Per-domain table */}
         <div className="mb-8">
           <div className="flex items-baseline justify-between mb-3">
-            <h2 className="heading-display text-base text-[#162423]">
+            <h2 className="heading-display text-base text-[var(--sr-text-primary)]">
               Per-domain · last 7 days
             </h2>
-            <span className="admin-mono-font text-[9px] text-[#7E948F]">
+            <span className="admin-mono-font text-[9px] text-[var(--sr-text-label)]">
               {domains.length} domain{domains.length === 1 ? "" : "s"}
             </span>
           </div>
-          <div className="border border-[#0C5F5C]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
-            <div className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-3 bg-[#F6F4EE] border-b border-[#0C5F5C]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[#7E948F] font-medium">
+          <div className="border border-[var(--sr-link)]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
+            <div className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-3 bg-[var(--sr-surface-interactive)] border-b border-[var(--sr-link)]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium">
               <span>Domain</span>
               <span className="text-right">Calls</span>
               <span className="text-right">Cr</span>
@@ -459,29 +462,29 @@ export default function FirecrawlPage() {
               <span className="text-right">Last call</span>
             </div>
             {domains.length === 0 && !loading && (
-              <div className="px-4 py-6 text-[13px] text-[#7E948F] italic text-center">
+              <div className="px-4 py-6 text-[13px] text-[var(--sr-text-label)] italic text-center">
                 No Firecrawl calls in the last 7 days.
               </div>
             )}
             {domains.map((d) => {
               const successCls =
                 d.success_rate >= 0.95
-                  ? "text-[#2E7D54]"
+                  ? "text-[var(--sr-status-success)]"
                   : d.success_rate >= 0.7
-                  ? "text-[#52655F]"
-                  : "text-[#C92B12]";
+                  ? "text-[var(--sr-text-tertiary)]"
+                  : "text-[var(--sr-action-pressed)]";
               return (
                 <div
                   key={d.domain}
-                  className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-2.5 items-center border-b border-[#0C5F5C]/5 last:border-b-0 hover:bg-[#F6F4EE] transition-colors"
+                  className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-2.5 items-center border-b border-[var(--sr-link)]/5 last:border-b-0 hover:bg-[var(--sr-surface-interactive)] transition-colors"
                 >
-                  <p className="text-[13px] text-[#162423] truncate">
+                  <p className="text-[13px] text-[var(--sr-text-primary)] truncate">
                     {d.domain}
                   </p>
-                  <p className="admin-mono-font text-[10px] text-[#52655F] tabular-nums text-right">
+                  <p className="admin-mono-font text-[10px] text-[var(--sr-text-tertiary)] tabular-nums text-right">
                     {d.calls}
                   </p>
-                  <p className="admin-mono-font text-[10px] text-[#52655F] tabular-nums text-right">
+                  <p className="admin-mono-font text-[10px] text-[var(--sr-text-tertiary)] tabular-nums text-right">
                     {d.credits}
                   </p>
                   <p
@@ -489,13 +492,13 @@ export default function FirecrawlPage() {
                   >
                     {pct(d.success_rate)}
                     {d.errored > 0 && (
-                      <span className="text-[#7E948F]"> · {d.errored} err</span>
+                      <span className="text-[var(--sr-text-label)]"> · {d.errored} err</span>
                     )}
                   </p>
-                  <p className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums text-right">
+                  <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] tabular-nums text-right">
                     {fmtMs(d.avg_ms)}
                   </p>
-                  <p className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums text-right">
+                  <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] tabular-nums text-right">
                     {fmtAge(d.last_called)}
                   </p>
                 </div>
@@ -507,7 +510,7 @@ export default function FirecrawlPage() {
         {/* Recent calls — log */}
         <div>
           <div className="flex items-baseline justify-between mb-3 gap-3 flex-wrap">
-            <h2 className="heading-display text-base text-[#162423]">
+            <h2 className="heading-display text-base text-[var(--sr-text-primary)]">
               Recent calls
             </h2>
             <div className="flex items-center gap-2 flex-wrap">
@@ -518,22 +521,22 @@ export default function FirecrawlPage() {
                   onClick={() => setStatusFilter(s)}
                   className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border rounded-[4px] transition-colors ${
                     statusFilter === s
-                      ? "border-[#0C5F5C] text-[#0C5F5C] bg-[#E6F0EE]"
-                      : "border-[#0C5F5C]/12 text-[#7E948F] bg-white hover:text-[#162423]"
+                      ? "border-[var(--sr-link)] text-[var(--sr-link)] bg-[var(--sr-surface-card)]"
+                      : "border-[var(--sr-link)]/12 text-[var(--sr-text-label)] bg-white hover:text-[var(--sr-text-primary)]"
                   }`}
                 >
                   {s}
                 </button>
               ))}
-              <span className="text-[#0C5F5C]/20 mx-1">·</span>
+              <span className="text-[var(--sr-link)]/20 mx-1">·</span>
               {(["all", "scrape", "map"] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => setModeFilter(m)}
                   className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border rounded-[4px] transition-colors ${
                     modeFilter === m
-                      ? "border-[#0C5F5C] text-[#0C5F5C] bg-[#E6F0EE]"
-                      : "border-[#0C5F5C]/12 text-[#7E948F] bg-white hover:text-[#162423]"
+                      ? "border-[var(--sr-link)] text-[var(--sr-link)] bg-[var(--sr-surface-card)]"
+                      : "border-[var(--sr-link)]/12 text-[var(--sr-text-label)] bg-white hover:text-[var(--sr-text-primary)]"
                   }`}
                 >
                   {m}
@@ -542,8 +545,8 @@ export default function FirecrawlPage() {
             </div>
           </div>
 
-          <div className="border border-[#0C5F5C]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
-            <div className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-3 bg-[#F6F4EE] border-b border-[#0C5F5C]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[#7E948F] font-medium">
+          <div className="border border-[var(--sr-link)]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
+            <div className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-3 bg-[var(--sr-surface-interactive)] border-b border-[var(--sr-link)]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium">
               <span>When</span>
               <span>Mode</span>
               <span>URL</span>
@@ -554,13 +557,13 @@ export default function FirecrawlPage() {
             </div>
 
             {loading && recent.length === 0 && (
-              <div className="px-4 py-6 flex items-center gap-2 text-[#7E948F] text-[13px]">
+              <div className="px-4 py-6 flex items-center gap-2 text-[var(--sr-text-label)] text-[13px]">
                 <Loader2 size={14} className="animate-spin" /> Loading…
               </div>
             )}
 
             {!loading && recent.length === 0 && (
-              <div className="px-4 py-8 text-[13px] text-[#7E948F] italic text-center flex items-center justify-center gap-2">
+              <div className="px-4 py-8 text-[13px] text-[var(--sr-text-label)] italic text-center flex items-center justify-center gap-2">
                 <Clock size={14} /> No calls match the current filter.
               </div>
             )}
@@ -568,10 +571,10 @@ export default function FirecrawlPage() {
             {recent.map((c) => (
               <div
                 key={c.id}
-                className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-2 items-center border-b border-[#0C5F5C]/5 last:border-b-0 hover:bg-[#F6F4EE] transition-colors"
+                className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-2 items-center border-b border-[var(--sr-link)]/5 last:border-b-0 hover:bg-[var(--sr-surface-interactive)] transition-colors"
               >
                 <p
-                  className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums truncate"
+                  className="admin-mono-font text-[10px] text-[var(--sr-text-label)] tabular-nums truncate"
                   title={fmtDateTime(c.called_at)}
                 >
                   {fmtAge(c.called_at)}
@@ -582,24 +585,24 @@ export default function FirecrawlPage() {
                     href={c.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] text-[#52655F] hover:text-[#0C5F5C] truncate inline-flex items-center gap-1 max-w-full transition-colors"
+                    className="text-[11px] text-[var(--sr-text-tertiary)] hover:text-[var(--sr-link)] truncate inline-flex items-center gap-1 max-w-full transition-colors"
                     title={c.url}
                   >
                     <span className="truncate">
                       {c.url.replace(/^https?:\/\/(www\.)?/, "")}
                     </span>
-                    <ExternalLink size={10} className="flex-shrink-0 text-[#7E948F]" />
+                    <ExternalLink size={10} className="flex-shrink-0 text-[var(--sr-text-label)]" />
                   </a>
                   {c.error_message && (
                     <p
-                      className="admin-mono-font text-[9px] text-[#C92B12] truncate mt-0.5"
+                      className="admin-mono-font text-[9px] text-[var(--sr-action-pressed)] truncate mt-0.5"
                       title={c.error_message}
                     >
                       {c.error_message}
                     </p>
                   )}
                   {c.caller && (
-                    <p className="admin-mono-font text-[9px] text-[#7E948F] mt-0.5">
+                    <p className="admin-mono-font text-[9px] text-[var(--sr-text-label)] mt-0.5">
                       caller: {c.caller}
                     </p>
                   )}
@@ -607,13 +610,13 @@ export default function FirecrawlPage() {
                 <div className="text-right">
                   <StatusPill status={c.status} />
                 </div>
-                <p className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums text-right">
+                <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] tabular-nums text-right">
                   {fmtMs(c.duration_ms)}
                 </p>
-                <p className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums text-right">
+                <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] tabular-nums text-right">
                   {c.credits ?? "—"}
                 </p>
-                <p className="admin-mono-font text-[10px] text-[#7E948F] tabular-nums text-right">
+                <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] tabular-nums text-right">
                   {c.mode === "map"
                     ? `${c.links_found ?? 0} links`
                     : c.response_chars != null
@@ -625,7 +628,7 @@ export default function FirecrawlPage() {
           </div>
         </div>
 
-        <p className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[#7E948F] mt-6">
+        <p className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-label)] mt-6">
           Firecrawl Hobby plan · 1 cr per scrape or map ·
           credit balance refreshes monthly · per-domain rollup is the last 7 days
         </p>

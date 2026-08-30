@@ -9,15 +9,15 @@ import { useState } from "react";
 
 // ── Tokens ──────────────────────────────────
 const C = {
-  primary:    "#0F1115",
-  secondary:  "#3E4C59",
-  accent:     "#00FF95",
-  bg:         "#0F1115",
-  text:       "#FFFFFF",
-  muted:      "#9BA3AF",
-  border:     "#2D333B",
-  cardBg:     "#161A1F",
-  inputBg:    "#1A1F25",
+  primary:    "var(--sr-surface-page)",
+  secondary:  "var(--sr-marine-600)",
+  accent:     "var(--sr-action)",
+  bg:         "var(--sr-surface-page)",
+  text:       "var(--sr-surface-card)",
+  muted:      "var(--sr-text-secondary)",
+  border:     "var(--sr-border-subtle)",
+  cardBg:     "var(--sr-surface-card)",
+  inputBg:    "var(--sr-surface-deep)",
 } as const;
 
 // ── SVG logo: abstract hydrofoil/sail arrow ─

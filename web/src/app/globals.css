@@ -1,347 +1,175 @@
-@import url("https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Libre+Franklin:ital,wght@0,400;0,500;0,600;0,700;1,500&family=Saira+Condensed:wght@600;700;800&display=swap");
+@import "../styles/sailratings.css";
+@import "../styles/base.css";
+@import "../styles/components.css";
 @import "tailwindcss";
 
-/* ── Söhne Font Face Declarations ─────────────────────────────────────── */
-@font-face {
-  font-family: "Soehne";
-  src: url("/fonts/soehne-leicht.woff2") format("woff2");
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Soehne";
-  src: url("/fonts/soehne-buch.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Soehne";
-  src: url("/fonts/soehne-buch-kursiv.woff2") format("woff2");
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Soehne";
-  src: url("/fonts/soehne-halbfett.woff2") format("woff2");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Soehne";
-  src: url("/fonts/soehne-halbfett-kursiv.woff2") format("woff2");
-  font-weight: 600;
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Soehne";
-  src: url("/fonts/soehne-dreiviertelfett.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Soehne";
-  src: url("/fonts/soehne-fett.woff2") format("woff2");
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Soehne";
-  src: url("/fonts/soehne-extrafett.woff2") format("woff2");
-  font-weight: 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-
-
 @theme inline {
-  --color-navy: #0A2240;
-  --color-navy-light: #163156;
-  --color-brass: #C29B61;
-  --color-brass-dark: #A6834D;
-  --color-cream: #F4F1E8;
-  --color-charcoal: #2C2C2C;
-  --color-charcoal-light: #555555;
-  --color-slate: #6B7A8F;
-  --color-border: #D1C8B7;
-  --color-border-light: #E5DFD4;
-  --color-white: #FFFFFF;
-  --color-sand: #F4F1E8;
-  --color-muted: #6B7A8F;
+  --color-abyss: var(--sr-abyss);
+  --color-paper: var(--sr-paper);
+  --color-marine-50: var(--sr-marine-50);
+  --color-marine-200: var(--sr-marine-200);
+  --color-marine-400: var(--sr-marine-400);
+  --color-marine-600: var(--sr-marine-600);
+  --color-marine-800: var(--sr-marine-800);
+  --color-marine-900: var(--sr-marine-900);
+  --color-signal: var(--sr-signal-500);
+  --color-signal-dark: var(--sr-signal-700);
+  --color-card: var(--sr-surface-card);
 
-  --font-display: "Soehne", system-ui, sans-serif;
-  --font-body: "Soehne", system-ui, sans-serif;
-  --font-mono: "Roboto Mono", "Courier New", monospace;
+  --font-display: var(--sr-font-display);
+  --font-body: var(--sr-font-body);
+  --font-mono: var(--sr-font-data);
 }
 
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-
-body {
-  background: var(--color-white);
-  color: var(--color-charcoal);
-  font-family: "Soehne", system-ui, sans-serif;
-  font-size: 16px;
-  line-height: 1.6;
-  font-weight: 400;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ── Clerk Components Integration with SailRatings UI System ────────────── */
+.cl-card {
+  background-color: var(--sr-surface-card) !important;
+  border: 1px solid var(--sr-border-strong) !important;
+  color: var(--sr-text-primary) !important;
+  box-shadow: var(--sr-shadow-floating) !important;
+  border-radius: var(--sr-radius-card) !important;
 }
 
-/* ── Gallery Frame ───────────────────────────────────────────────────── */
-.gallery-frame {
-  padding: 20px;
-  min-height: 100vh;
-}
-@media (max-width: 768px) {
-  .gallery-frame { padding: 10px; }
-}
-
-/* ── Hero Image ──────────────────────────────────────────────────────── */
-.hero-image-wrap {
-  position: absolute;
-  inset: 0;
-}
-.hero-image-wrap::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg,
-    rgba(0, 0, 0, 0.65) 0%,
-    rgba(0, 0, 0, 0.45) 40%,
-    rgba(0, 0, 0, 0.20) 100%
-  );
-  pointer-events: none;
+.cl-headerTitle {
+  color: var(--sr-paper) !important;
+  font-weight: 800 !important;
+  font-size: 1.5rem !important;
+  font-family: var(--sr-font-display) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
 }
 
-/* ── Animations ──────────────────────────────────────────────────────── */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes subtlePulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-.animate-in { animation: fadeIn 0.6s ease-out both; }
-.delay-1 { animation-delay: 100ms; }
-.delay-2 { animation-delay: 250ms; }
-.delay-3 { animation-delay: 400ms; }
-.delay-4 { animation-delay: 550ms; }
-.delay-5 { animation-delay: 700ms; }
-.streaming-pulse { animation: subtlePulse 1.5s ease-in-out infinite; }
-
-/* ── Sealed-card materialisation: paper landing on a surveyor's desk ──────
-   Three-stage choreography that runs per card on mount (cards mount one at
-   a time, so this fires naturally in sequence as the parent reveals).
-   1. paperLand: card lifts in from below, momentarily floats with a soft
-      drop shadow, then settles flat. Reads as a sheet being placed.
-   2. waxFill (clip-path on the SEALED band): brass + icon + text reveal
-      left-to-right, like ink or wax running across the band.
-   3. lockPress: the Lock icon takes a small punch at the end of the fill,
-      reading as a stamp being pressed.
-*/
-@keyframes paperLand {
-  0%   { opacity: 0; transform: translateY(14px) scale(0.988);
-         box-shadow: 0 0 0 rgba(0,0,0,0); }
-  55%  { opacity: 1; transform: translateY(-2px) scale(1.004);
-         box-shadow: 0 12px 24px -10px rgba(20, 16, 8, 0.22); }
-  100% { opacity: 1; transform: translateY(0) scale(1);
-         box-shadow: 0 1px 0 rgba(20, 16, 8, 0.05); }
-}
-.paper-land { animation: paperLand 0.85s cubic-bezier(0.22, 1, 0.36, 1) both; }
-
-@keyframes waxFill {
-  0%   { clip-path: inset(0 100% 0 0); }
-  100% { clip-path: inset(0 0 0 0); }
-}
-.wax-band-in {
-  clip-path: inset(0 100% 0 0);
-  animation: waxFill 0.95s cubic-bezier(0.65, 0, 0.35, 1) 0.55s forwards;
+.cl-headerSubtitle {
+  color: var(--sr-text-secondary) !important;
+  font-weight: 400 !important;
+  font-family: var(--sr-font-body) !important;
+  font-size: 0.875rem !important;
 }
 
-@keyframes lockPress {
-  0%   { transform: scale(1) rotate(0deg); }
-  40%  { transform: scale(0.78) rotate(-4deg); }
-  70%  { transform: scale(1.06) rotate(1deg); }
-  100% { transform: scale(1) rotate(0deg); }
-}
-.lock-press {
-  transform-origin: center;
-  animation: lockPress 0.45s cubic-bezier(0.22, 1, 0.36, 1) 1.35s both;
-}
-
-/* ── Drafting needle: a thin brass line that sweeps left→right under the
-   indicator text, then loops. Sets a slow rhythm the way a metronome would,
-   without enumerating progress (per feedback-streaming-pacing). */
-@keyframes needleSweep {
-  0%   { transform: translateX(-30%) scaleX(0.2); opacity: 0; }
-  15%  { opacity: 0.9; }
-  50%  { transform: translateX(60%) scaleX(1); opacity: 1; }
-  85%  { opacity: 0.9; }
-  100% { transform: translateX(140%) scaleX(0.2); opacity: 0; }
-}
-.drafting-needle {
-  display: block;
-  height: 1px;
-  width: 56px;
-  background: linear-gradient(90deg,
-    rgba(194,155,97,0) 0%,
-    rgba(194,155,97,0.85) 50%,
-    rgba(194,155,97,0) 100%);
-  transform-origin: left;
-  animation: needleSweep 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+/* Social Buttons & Provider Icons */
+.cl-socialButtonsBlockButton,
+.cl-socialButtonsIconButton {
+  background-color: var(--sr-surface-deep) !important;
+  border: 1px solid var(--sr-border-strong) !important;
+  color: var(--sr-text-primary) !important;
+  border-radius: var(--sr-radius-small) !important;
+  transition: background-color var(--sr-duration-fast) var(--sr-ease-out),
+              border-color var(--sr-duration-fast) var(--sr-ease-out) !important;
 }
 
-/* Cycling narration fade — used for the drafting-line copy that rotates
-   through verbs ("Drafting…", "Sealing…", "Stamping…"). 350 ms fade in/out
-   on text swap, kept short so the indicator never feels like a slideshow. */
-@keyframes draftCopyIn {
-  from { opacity: 0; transform: translateY(2px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.draft-copy-in { animation: draftCopyIn 0.35s ease-out both; }
-
-/* ── Thinking-step entry ──────────────────────────────────────────────────
-   Each step at the top of the report fades in with weight on mount. The
-   slow ease-out gives it presence — not 'a row appeared', but 'a finding
-   was noted'. Each step mounts as its own React element, so the animation
-   fires once per step. */
-@keyframes thinkingStepIn {
-  from { opacity: 0; transform: translateX(-6px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-.thinking-step { animation: thinkingStepIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
-
-/* ── Teaser Fade ─────────────────────────────────────────────────────── */
-.teaser-fade { position: relative; }
-.teaser-fade::after {
-  content: "";
-  position: absolute;
-  bottom: 0; left: 0; right: 0; height: 140px;
-  background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 55%, rgba(255,255,255,1) 100%);
-  pointer-events: none;
+.cl-socialButtonsBlockButton:hover,
+.cl-socialButtonsIconButton:hover {
+  background-color: var(--sr-surface-raised) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
 }
 
-/* ── Section Divider ──────────────────────────────────────────────────── */
-.section-divider {
-  display: flex; align-items: center; justify-content: center; gap: 16px; padding: 4px 0;
-}
-.section-divider::before, .section-divider::after {
-  content: ""; flex: 1; max-width: 80px; height: 1px; background: var(--color-border);
-}
-.section-divider .diamond {
-  width: 4px; height: 4px; background: var(--color-brass); transform: rotate(45deg); flex-shrink: 0;
+.cl-socialButtonsProviderIcon__apple {
+  filter: brightness(0) invert(1) !important;
 }
 
-/* ── Typography ──────────────────────────────────────────────────────── */
-.heading-display {
-  font-family: "Soehne", system-ui, sans-serif;
-  font-weight: 800;
-  font-style: normal;
-  line-height: 1.08;
-  letter-spacing: -0.03em;
+.cl-socialButtonsProviderIcon__facebook,
+.cl-socialButtonsProviderIcon__google {
+  filter: none !important;
 }
 
-.heading-serif {
-  font-family: "Soehne", system-ui, sans-serif;
-  font-weight: 600;
-  line-height: 1.2;
+.cl-socialButtonsBlockButtonText {
+  color: var(--sr-text-primary) !important;
+  font-weight: 500 !important;
+  font-family: var(--sr-font-body) !important;
 }
 
-.brand-wordmark {
-  font-family: "Soehne", system-ui, sans-serif;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  font-size: 16px;
+.cl-dividerLine {
+  background-color: var(--sr-border-subtle) !important;
 }
 
-.body-text {
-  font-family: "Soehne", system-ui, sans-serif;
-  font-weight: 400;
-  line-height: 1.65;
+.cl-dividerText {
+  color: var(--sr-text-tertiary) !important;
+  font-family: var(--sr-font-data) !important;
+  font-size: 0.6875rem !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase !important;
 }
 
-.data-mono {
-  font-family: "Roboto Mono", "Courier New", monospace;
-  font-weight: 500;
-  font-feature-settings: "tnum";
-  letter-spacing: -0.02em;
+.cl-formFieldLabel {
+  color: var(--sr-text-label) !important;
+  font-family: var(--sr-font-data) !important;
+  font-size: 0.6875rem !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
 }
 
-/* ── Report Modal ─────────────────────────────────────────────────────────
-   The dossier is opened over the landing page. Backdrop fades, modal lifts
-   from below. The thinking pane reads as marginalia (italic, ruled left
-   edge); the brief reads as the typeset article. */
-@keyframes dossierBackdropIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-.dossier-backdrop { animation: dossierBackdropIn 280ms ease-out both; }
-
-@keyframes dossierIn {
-  from { opacity: 0; transform: translateY(24px) scale(0.986); }
-  to   { opacity: 1; transform: translateY(0)     scale(1); }
-}
-.dossier-in { animation: dossierIn 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-
-@keyframes dossierBrassDraw {
-  from { transform: scaleX(0); }
-  to   { transform: scaleX(1); }
-}
-.dossier-brass-draw {
-  transform-origin: left center;
-  animation: dossierBrassDraw 780ms cubic-bezier(0.65, 0, 0.35, 1) both;
+.cl-formFieldInput {
+  background-color: var(--sr-surface-deep) !important;
+  border: 1px solid var(--sr-border-strong) !important;
+  color: var(--sr-paper) !important;
+  font-size: 0.875rem !important;
+  font-family: var(--sr-font-data) !important;
+  border-radius: var(--sr-radius-small) !important;
 }
 
-@keyframes dossierLabelIn {
-  from { opacity: 0; letter-spacing: 0.22em; }
-  to   { opacity: 1; letter-spacing: 0.18em; }
-}
-.dossier-label-in { animation: dossierLabelIn 520ms 480ms ease-out both; }
-
-/* Subtle paper grain on the dossier panel — keeps the cream from feeling
-   like flat CSS color. Lower opacity than print so it never reads as noise. */
-.dossier-paper {
-  background-image:
-    radial-gradient(rgba(20, 16, 8, 0.018) 1px, transparent 1px),
-    radial-gradient(rgba(20, 16, 8, 0.012) 1px, transparent 1px);
-  background-size: 3px 3px, 7px 7px;
-  background-position: 0 0, 1px 2px;
+.cl-formFieldInput:focus {
+  border-color: var(--sr-action) !important;
+  box-shadow: 0 0 0 2px rgba(255, 65, 25, 0.2) !important;
 }
 
-/* Streaming caret used in both thinking and brief panes. */
-@keyframes dossierCaret {
-  0%, 49%   { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
-.dossier-caret {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 2px;
-  background: var(--color-brass);
-  vertical-align: text-bottom;
-  animation: dossierCaret 1.05s steps(1, end) infinite;
+.cl-formFieldInput::placeholder,
+input::placeholder {
+  color: var(--sr-text-tertiary) !important;
+  opacity: 1 !important;
 }
 
-/* Marginalia rule on the thinking pane — a soft brass hairline running
-   down the left of the prose, evoking notebook ruling. */
-.dossier-marginalia {
-  border-left: 1px solid rgba(194, 155, 97, 0.45);
-  padding-left: 1.5rem;
+.cl-formButtonPrimary {
+  background-color: var(--sr-action) !important;
+  color: var(--sr-action-text) !important;
+  font-weight: 700 !important;
+  font-family: var(--sr-font-display) !important;
+  font-size: 0.9375rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  border-radius: var(--sr-radius-small) !important;
+  transition: background-color var(--sr-duration-fast) var(--sr-ease-out) !important;
 }
 
-/* ── Misc ────────────────────────────────────────────────────────────── */
-::selection { background: var(--color-brass); color: white; }
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
-input:focus-visible { outline: 2px solid var(--color-navy); outline-offset: 2px; }
+.cl-formButtonPrimary:hover {
+  background-color: var(--sr-action-pressed) !important;
+  color: var(--sr-action-pressed-text) !important;
+}
+
+.cl-footer {
+  background-color: var(--sr-abyss) !important;
+  border-top: 1px solid var(--sr-border-subtle) !important;
+  border-radius: 0 0 var(--sr-radius-card) var(--sr-radius-card) !important;
+}
+
+.cl-footerActionText,
+.cl-footer * {
+  color: var(--sr-text-secondary) !important;
+  font-family: var(--sr-font-body) !important;
+}
+
+.cl-footerActionLink,
+.cl-formHeaderPageButton {
+  color: var(--sr-link) !important;
+  font-weight: 600 !important;
+}
+
+.cl-footerActionLink:hover {
+  color: var(--sr-link-hover) !important;
+}
+
+[class*="cl-"] {
+  --cl-color-text: var(--sr-text-primary);
+  --cl-color-text-secondary: var(--sr-text-secondary);
+}
+
+.cl-socialButtonsProviderIcon__apple {
+  filter: brightness(0) invert(1) !important;
+  -webkit-filter: brightness(0) invert(1) !important;
+}
+
+.cl-socialButtonsProviderIcon__facebook,
+.cl-socialButtonsProviderIcon__google {
+  filter: none !important;
+  -webkit-filter: none !important;
+}

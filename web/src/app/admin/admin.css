@@ -2,14 +2,14 @@
 
 /* Paper Theme Base */
 .admin-theme {
-  background-color: #050C0B; /* Wait, the outer background in the design is #050C0B, the admin box is #F3F1EC */
+  background-color: var(--sr-surface-page); /* Wait, the outer background in the design is var(--sr-surface-page), the admin box is var(--sr-surface-page) */
   min-height: 100vh;
 }
 
 .admin-box {
-  background-color: #F3F1EC;
-  color: #162423;
-  font-family: 'Libre Franklin', sans-serif;
+  background-color: var(--sr-surface-page);
+  color: var(--sr-text-primary);
+  font-family: var(--sr-font-body);
   font-size: 15px;
   line-height: 1.6;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -19,31 +19,31 @@
 }
 
 .admin-nav {
-  background-color: #FBFAF6;
+  background-color: var(--sr-surface-page);
   border-bottom: 1px solid rgba(12, 95, 92, 0.25);
 }
 
 .admin-header-font {
-  font-family: 'Saira Condensed', sans-serif;
+  font-family: var(--sr-font-display);
 }
 
 .admin-mono-font {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--sr-font-data);
 }
 
 .admin-link {
-  color: #7E948F;
+  color: var(--sr-text-label);
   cursor: pointer;
   transition: color 0.15s;
 }
 
 .admin-link:hover {
-  color: #162423;
+  color: var(--sr-text-primary);
 }
 
 .admin-link-active {
-  color: #162423;
-  box-shadow: inset 0 -2px 0 #0C5F5C;
+  color: var(--sr-text-primary);
+  box-shadow: inset 0 -2px 0 var(--sr-link);
 }
 
 .admin-container {
@@ -54,16 +54,16 @@
 }
 
 .admin-table-container {
-  background: #FFFFFF;
+  background: var(--sr-surface-card);
   border: 1px solid rgba(12, 95, 92, 0.25);
   border-radius: 10px;
   overflow: hidden;
 }
 
 .admin-table-header {
-  background: #E6F0EE;
+  background: var(--sr-surface-card);
   border-bottom: 1px solid rgba(12, 95, 92, 0.25);
-  color: #52655F;
+  color: var(--sr-text-tertiary);
   padding: 10px 16px;
 }
 
@@ -73,5 +73,5 @@
   cursor: pointer;
 }
 .admin-table-row:hover {
-  background: #F6F4EE;
+  background: var(--sr-surface-interactive);
 }

@@ -1,0 +1,17 @@
+[Unit]
+Description=Sail Ratings Temporal Dev Server
+After=network.target
+
+[Service]
+Type=simple
+User=irc-data
+Group=irc-data
+WorkingDirectory=/home/irc-data/code/sailratings/api
+ExecStart=/home/irc-data/.local/bin/temporal server start-dev --ip 0.0.0.0 --ui-ip 0.0.0.0 --db-filename /home/irc-data/code/sailratings/api/data/temporal.sqlite
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/home/irc-data/logs/temporal.log
+StandardError=append:/home/irc-data/logs/temporal.log
+
+[Install]
+WantedBy=multi-user.target

@@ -8,22 +8,22 @@ import { useEffect, useState } from "react";
    ───────────────────────────────────────────── */
 
 const COLORS = {
-  primary: "#0D1117",
-  secondary: "#161B22",
-  accent: "#33BFFF",
-  bg: "#0D1117",
-  text: "#E6EDF3",
-  muted: "#8B949E",
-  border: "#30363D",
+  primary: "var(--sr-surface-page)",
+  secondary: "var(--sr-surface-card)",
+  accent: "var(--sr-marine-300)",
+  bg: "var(--sr-surface-page)",
+  text: "var(--sr-paper)",
+  muted: "var(--sr-text-secondary)",
+  border: "var(--sr-border-subtle)",
 };
 
 const PALETTE = [
-  { name: "Deep Space Black", hex: "#0D1117", role: "Primary / BG" },
-  { name: "Darker Card", hex: "#161B22", role: "Secondary" },
-  { name: "Electric Cyan", hex: "#33BFFF", role: "Accent" },
-  { name: "Off-White", hex: "#E6EDF3", role: "Text" },
-  { name: "Muted Gray", hex: "#8B949E", role: "Muted" },
-  { name: "Border Dark", hex: "#30363D", role: "Border" },
+  { name: "Deep Space Black", hex: "var(--sr-surface-page)", role: "Primary / BG" },
+  { name: "Darker Card", hex: "var(--sr-surface-card)", role: "Secondary" },
+  { name: "Electric Cyan", hex: "var(--sr-marine-300)", role: "Accent" },
+  { name: "Off-White", hex: "var(--sr-paper)", role: "Text" },
+  { name: "Muted Gray", hex: "var(--sr-text-secondary)", role: "Muted" },
+  { name: "Border Dark", hex: "var(--sr-border-subtle)", role: "Border" },
 ];
 
 /* Mini SVG: hull-line-graph logo concept */
@@ -40,24 +40,24 @@ function LogoMark({ size = 32 }: { size?: number }) {
       {/* hull curve */}
       <path
         d="M4 30 Q12 10, 20 18 Q28 26, 36 8"
-        stroke="#33BFFF"
+        stroke="var(--sr-marine-300)"
         strokeWidth="2.5"
         strokeLinecap="round"
         fill="none"
       />
       {/* data points */}
-      <circle cx="4" cy="30" r="2.5" fill="#33BFFF" />
-      <circle cx="14" cy="14" r="2.5" fill="#33BFFF" />
-      <circle cx="20" cy="18" r="2.5" fill="#33BFFF" />
-      <circle cx="28" cy="22" r="2.5" fill="#33BFFF" />
-      <circle cx="36" cy="8" r="2.5" fill="#33BFFF" />
+      <circle cx="4" cy="30" r="2.5" fill="var(--sr-marine-300)" />
+      <circle cx="14" cy="14" r="2.5" fill="var(--sr-marine-300)" />
+      <circle cx="20" cy="18" r="2.5" fill="var(--sr-marine-300)" />
+      <circle cx="28" cy="22" r="2.5" fill="var(--sr-marine-300)" />
+      <circle cx="36" cy="8" r="2.5" fill="var(--sr-marine-300)" />
       {/* baseline */}
       <line
         x1="2"
         y1="36"
         x2="38"
         y2="36"
-        stroke="#30363D"
+        stroke="var(--sr-border-subtle)"
         strokeWidth="1"
       />
     </svg>
@@ -77,7 +77,7 @@ function SparkLine() {
     >
       <polyline
         points={points}
-        stroke="#33BFFF"
+        stroke="var(--sr-marine-300)"
         strokeWidth="2"
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -90,8 +90,8 @@ function SparkLine() {
       />
       <defs>
         <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="32">
-          <stop offset="0%" stopColor="#33BFFF" />
-          <stop offset="100%" stopColor="#33BFFF" stopOpacity="0" />
+          <stop offset="0%" stopColor="var(--sr-marine-300)" />
+          <stop offset="100%" stopColor="var(--sr-marine-300)" stopOpacity="0" />
         </linearGradient>
       </defs>
     </svg>
@@ -157,7 +157,7 @@ function RadarChart() {
             const a = angleStep * i - Math.PI / 2;
             return `${cx + r * s * Math.cos(a)},${cy + r * s * Math.sin(a)}`;
           }).join(" ")}
-          stroke="#30363D"
+          stroke="var(--sr-border-subtle)"
           strokeWidth="0.5"
           fill="none"
         />
@@ -170,7 +170,7 @@ function RadarChart() {
             y1={cy}
             x2={ax.x2}
             y2={ax.y2}
-            stroke="#30363D"
+            stroke="var(--sr-border-subtle)"
             strokeWidth="0.5"
           />
           <text
@@ -178,7 +178,7 @@ function RadarChart() {
             y={ax.ly}
             textAnchor="middle"
             dominantBaseline="central"
-            fill="#8B949E"
+            fill="var(--sr-text-secondary)"
             fontSize="7"
             fontFamily="'IBM Plex Mono', monospace"
           >
@@ -189,9 +189,9 @@ function RadarChart() {
       {/* data polygon */}
       <polygon
         points={dataPoints.join(" ")}
-        fill="#33BFFF"
+        fill="var(--sr-marine-300)"
         fillOpacity="0.12"
-        stroke="#33BFFF"
+        stroke="var(--sr-marine-300)"
         strokeWidth="1.5"
       />
       {/* data dots */}
@@ -203,7 +203,7 @@ function RadarChart() {
             cx={px}
             cy={py}
             r="2.5"
-            fill="#33BFFF"
+            fill="var(--sr-marine-300)"
           />
         );
       })}
@@ -442,9 +442,9 @@ export default function BrandD() {
                   width: "6px",
                   height: "6px",
                   borderRadius: "50%",
-                  background: "#3FB950",
+                  background: "var(--sr-status-pass)",
                   display: "inline-block",
-                  boxShadow: "0 0 8px #3FB950",
+                  boxShadow: "0 0 8px var(--sr-status-pass)",
                 }}
               />
               LIVE DATA FEED &mdash; 31,247 RACES INDEXED
@@ -1126,14 +1126,14 @@ export default function BrandD() {
                       fontFamily: "'IBM Plex Mono', monospace",
                       fontSize: "13px",
                       fontWeight: 600,
-                      color: "#3FB950",
+                      color: "var(--sr-status-pass)",
                       display: "flex",
                       alignItems: "center",
                       gap: "4px",
                       justifyContent: "flex-end",
                     }}
                   >
-                    <span style={{ fontSize: "10px" }}>&#9650;</span> +0.003
+                    <span style={{ fontSize: "10px" }}>&var(--sr-status-pass);</span> +0.003
                   </div>
                   <div
                     style={{
@@ -1343,7 +1343,7 @@ export default function BrandD() {
                   width: "10px",
                   height: "10px",
                   borderRadius: "50%",
-                  background: "#F85149",
+                  background: "var(--sr-signal-500)",
                 }}
               />
               <div
@@ -1351,7 +1351,7 @@ export default function BrandD() {
                   width: "10px",
                   height: "10px",
                   borderRadius: "50%",
-                  background: "#D29922",
+                  background: "var(--sr-marine-400)",
                 }}
               />
               <div
@@ -1359,7 +1359,7 @@ export default function BrandD() {
                   width: "10px",
                   height: "10px",
                   borderRadius: "50%",
-                  background: "#3FB950",
+                  background: "var(--sr-status-pass)",
                 }}
               />
               <span
@@ -1457,7 +1457,7 @@ export default function BrandD() {
                     tcc: "1.018",
                     delta: "+0.003",
                     rank: "#14",
-                    deltaColor: "#3FB950",
+                    deltaColor: "var(--sr-status-pass)",
                   },
                   {
                     name: "STORM",
@@ -1465,7 +1465,7 @@ export default function BrandD() {
                     tcc: "1.015",
                     delta: "-0.001",
                     rank: "#18",
-                    deltaColor: "#F85149",
+                    deltaColor: "var(--sr-signal-500)",
                   },
                   {
                     name: "JOKER II",
@@ -1473,7 +1473,7 @@ export default function BrandD() {
                     tcc: "1.012",
                     delta: "+0.005",
                     rank: "#22",
-                    deltaColor: "#3FB950",
+                    deltaColor: "var(--sr-status-pass)",
                   },
                   {
                     name: "OUTRAJEOUS",
@@ -1688,9 +1688,9 @@ export default function BrandD() {
                 }}
               >
                 {[
-                  { icon: "&#9679;", text: "31,247 races analyzed" },
-                  { icon: "&#9679;", text: "4,823 active certificates" },
-                  { icon: "&#9679;", text: "Updated daily" },
+                  { icon: "&var(--sr-text-secondary);", text: "31,247 races analyzed" },
+                  { icon: "&var(--sr-text-secondary);", text: "4,823 active certificates" },
+                  { icon: "&var(--sr-text-secondary);", text: "Updated daily" },
                 ].map((badge) => (
                   <span
                     key={badge.text}

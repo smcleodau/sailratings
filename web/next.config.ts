@@ -27,6 +27,18 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_ENABLE_ADMIN:
       process.env.NEXT_PUBLIC_ENABLE_ADMIN || ENABLE_ADMIN_BY_ENV[ENV],
   },
+  async rewrites() {
+    return [
+      {
+        source: "/v1/:path*",
+        destination: "http://localhost:4100/v1/:path*",
+      },
+      {
+        source: "/api/v1/:path*",
+        destination: "http://localhost:4100/v1/:path*",
+      },
+    ];
+  },
   async headers() {
     return [
       {

@@ -8,13 +8,13 @@ import { useState } from "react";
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const COLORS = {
-  primary:    "#4A4238",
-  secondary:  "#8C8376",
-  accent:     "#D4AF37",
-  background: "#F9F6F0",
-  text:       "#4A4238",
-  muted:      "#9E9589",
-  border:     "#EBE5D9",
+  primary:    "var(--sr-ink)",
+  secondary:  "var(--sr-text-secondary)",
+  accent:     "var(--sr-marine-400)",
+  background: "var(--sr-paper)",
+  text:       "var(--sr-ink)",
+  muted:      "var(--sr-text-secondary)",
+  border:     "var(--sr-surface-deep)",
 };
 
 /* ── Compass Rose Logo (SVG) ─────────────────────────────────────────────── */
@@ -537,7 +537,7 @@ export default function BrandOptionE() {
                     transition: "background-color 0.3s ease",
                     whiteSpace: "nowrap",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#C9A430")}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--sr-marine-400)")}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = COLORS.accent)}
                 >
                   Search
@@ -1196,7 +1196,7 @@ export default function BrandOptionE() {
                   whiteSpace: "nowrap",
                   transition: "background-color 0.3s ease",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#C9A430")}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--sr-marine-400)")}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = COLORS.accent)}
               >
                 Get Started

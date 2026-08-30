@@ -7,13 +7,13 @@ export default function BrandOptionC() {
   const [searchFocused, setSearchFocused] = useState(false);
 
   const colors = {
-    primary: "#1C3A3E",
-    secondary: "#A6B1B3",
-    accent: "#D97B4F",
-    background: "#FFFEF9",
-    text: "#2C2C2C",
-    muted: "#7A7A7A",
-    border: "#EAEAEA",
+    primary: "var(--sr-marine-800)",
+    secondary: "var(--sr-marine-300)",
+    accent: "var(--sr-signal-500)",
+    background: "var(--sr-paper)",
+    text: "var(--sr-ink)",
+    muted: "var(--sr-text-secondary)",
+    border: "var(--sr-border-subtle)",
   };
 
   return (
@@ -34,7 +34,7 @@ export default function BrandOptionC() {
         body {
           background: ${colors.background};
           color: ${colors.text};
-          font-family: 'Lato', sans-serif;
+          font-family: var(--sr-font-body);
           font-weight: 400;
           font-size: 20px;
           line-height: 1.7;
@@ -44,7 +44,7 @@ export default function BrandOptionC() {
 
         ::selection {
           background: ${colors.accent};
-          color: #fff;
+          color: var(--sr-paper);
         }
 
         /* Scrollbar styling */
@@ -109,7 +109,7 @@ export default function BrandOptionC() {
         style={{
           minHeight: "100vh",
           background: colors.background,
-          fontFamily: "'Lato', sans-serif",
+          fontFamily: "var(--sr-font-body)",
           color: colors.text,
         }}
       >
@@ -122,7 +122,7 @@ export default function BrandOptionC() {
             right: 0,
             zIndex: 1000,
             background: colors.primary,
-            color: "#fff",
+            color: "var(--sr-paper)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -143,7 +143,7 @@ export default function BrandOptionC() {
               gap: "8px",
               transition: "color 0.3s ease",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--sr-paper)")}
             onMouseLeave={(e) => (e.currentTarget.style.color = colors.secondary)}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -151,7 +151,7 @@ export default function BrandOptionC() {
             </svg>
             All Options
           </a>
-          <span style={{ color: "#fff", fontWeight: 500 }}>
+          <span style={{ color: "var(--sr-paper)", fontWeight: 500 }}>
             Option C{" "}
             <span style={{ color: colors.accent, margin: "0 6px" }}>/</span>{" "}
             Editorial Premium
@@ -251,7 +251,7 @@ export default function BrandOptionC() {
                     fontFamily: "'Playfair Display', serif",
                     fontWeight: 600,
                     fontSize: "16px",
-                    color: "#fff",
+                    color: "var(--sr-paper)",
                     letterSpacing: "0.08em",
                   }}
                 >
@@ -264,7 +264,7 @@ export default function BrandOptionC() {
                     fontFamily: "'Playfair Display', serif",
                     fontWeight: 700,
                     fontSize: "22px",
-                    color: "#fff",
+                    color: "var(--sr-paper)",
                     letterSpacing: "0.05em",
                     lineHeight: 1,
                   }}
@@ -295,7 +295,7 @@ export default function BrandOptionC() {
                   style={{
                     color: "rgba(255,255,255,0.7)",
                     textDecoration: "none",
-                    fontFamily: "'Lato', sans-serif",
+                    fontFamily: "var(--sr-font-body)",
                     fontWeight: 300,
                     fontSize: "14px",
                     letterSpacing: "0.1em",
@@ -303,7 +303,7 @@ export default function BrandOptionC() {
                     transition: "color 0.3s ease",
                     position: "relative",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "var(--sr-paper)")}
                   onMouseLeave={(e) =>
                     (e.currentTarget.style.color = "rgba(255,255,255,0.7)")
                   }
@@ -327,7 +327,7 @@ export default function BrandOptionC() {
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = colors.accent;
-                  e.currentTarget.style.color = "#fff";
+                  e.currentTarget.style.color = "var(--sr-paper)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = "transparent";
@@ -382,7 +382,7 @@ export default function BrandOptionC() {
                 fontWeight: 700,
                 fontSize: "clamp(2.5rem, 4vw, 4rem)",
                 lineHeight: 1.15,
-                color: "#fff",
+                color: "var(--sr-paper)",
                 letterSpacing: "0.02em",
                 marginBottom: "28px",
                 animation: "fadeInUp 0.9s ease-out 0.7s both",
@@ -398,7 +398,7 @@ export default function BrandOptionC() {
             {/* Subheadline */}
             <p
               style={{
-                fontFamily: "'Lato', sans-serif",
+                fontFamily: "var(--sr-font-body)",
                 fontWeight: 300,
                 fontSize: "20px",
                 lineHeight: 1.8,
@@ -471,8 +471,8 @@ export default function BrandOptionC() {
                       border: "none",
                       outline: "none",
                       background: "transparent",
-                      color: "#fff",
-                      fontFamily: "'Lato', sans-serif",
+                      color: "var(--sr-paper)",
+                      fontFamily: "var(--sr-font-body)",
                       fontWeight: 300,
                       fontSize: "15px",
                       padding: "16px 16px",
@@ -483,7 +483,7 @@ export default function BrandOptionC() {
                     style={{
                       background: colors.accent,
                       border: "none",
-                      color: "#fff",
+                      color: "var(--sr-paper)",
                       fontFamily: "'Roboto Mono', monospace",
                       fontSize: "11px",
                       fontWeight: 500,
@@ -494,7 +494,7 @@ export default function BrandOptionC() {
                       transition: "all 0.3s ease",
                     }}
                     onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = "#c46a3f")
+                      (e.currentTarget.style.background = "var(--sr-signal-500)")
                     }
                     onMouseLeave={(e) =>
                       (e.currentTarget.style.background = colors.accent)
@@ -608,7 +608,7 @@ export default function BrandOptionC() {
               </h2>
               <p
                 style={{
-                  fontFamily: "'Lato', sans-serif",
+                  fontFamily: "var(--sr-font-body)",
                   fontWeight: 300,
                   fontSize: "16px",
                   lineHeight: 1.8,
@@ -718,7 +718,7 @@ export default function BrandOptionC() {
                     </div>
                     <div
                       style={{
-                        fontFamily: "'Lato', sans-serif",
+                        fontFamily: "var(--sr-font-body)",
                         fontWeight: 400,
                         fontSize: "13px",
                         color: colors.text,
@@ -791,7 +791,7 @@ export default function BrandOptionC() {
               </h2>
               <p
                 style={{
-                  fontFamily: "'Lato', sans-serif",
+                  fontFamily: "var(--sr-font-body)",
                   fontWeight: 300,
                   fontSize: "16px",
                   lineHeight: 1.8,
@@ -901,7 +901,7 @@ export default function BrandOptionC() {
                 </div>
                 <p
                   style={{
-                    fontFamily: "'Lato', sans-serif",
+                    fontFamily: "var(--sr-font-body)",
                     fontWeight: 300,
                     fontSize: "20px",
                     lineHeight: 1.8,
@@ -915,7 +915,7 @@ export default function BrandOptionC() {
                 </p>
                 <p
                   style={{
-                    fontFamily: "'Lato', sans-serif",
+                    fontFamily: "var(--sr-font-body)",
                     fontWeight: 400,
                     fontSize: "16px",
                     lineHeight: 1.7,
@@ -1106,7 +1106,7 @@ export default function BrandOptionC() {
               </h2>
               <p
                 style={{
-                  fontFamily: "'Lato', sans-serif",
+                  fontFamily: "var(--sr-font-body)",
                   fontWeight: 300,
                   fontSize: "16px",
                   lineHeight: 1.8,
@@ -1122,7 +1122,7 @@ export default function BrandOptionC() {
               {/* Boat Card */}
               <div
                 style={{
-                  background: "#fff",
+                  background: "var(--sr-paper)",
                   border: `1px solid ${colors.border}`,
                   borderRadius: "2px",
                   overflow: "hidden",
@@ -1156,7 +1156,7 @@ export default function BrandOptionC() {
                         fontFamily: "'Playfair Display', serif",
                         fontWeight: 700,
                         fontSize: "22px",
-                        color: "#fff",
+                        color: "var(--sr-paper)",
                         letterSpacing: "0.03em",
                         marginBottom: "2px",
                       }}
@@ -1277,7 +1277,7 @@ export default function BrandOptionC() {
                           </div>
                           <div
                             style={{
-                              fontFamily: "'Lato', sans-serif",
+                              fontFamily: "var(--sr-font-body)",
                               fontWeight: 400,
                               fontSize: "14px",
                               color: colors.text,
@@ -1306,7 +1306,7 @@ export default function BrandOptionC() {
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.background = colors.primary;
-                        e.currentTarget.style.color = "#fff";
+                        e.currentTarget.style.color = "var(--sr-paper)";
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.background = "transparent";
@@ -1378,7 +1378,7 @@ export default function BrandOptionC() {
               </h2>
               <p
                 style={{
-                  fontFamily: "'Lato', sans-serif",
+                  fontFamily: "var(--sr-font-body)",
                   fontWeight: 300,
                   fontSize: "16px",
                   lineHeight: 1.8,
@@ -1394,7 +1394,7 @@ export default function BrandOptionC() {
               {/* Standalone search on light background */}
               <div
                 style={{
-                  background: "#fff",
+                  background: "var(--sr-paper)",
                   border: `1px solid ${colors.border}`,
                   borderRadius: "2px",
                   padding: "40px",
@@ -1415,7 +1415,7 @@ export default function BrandOptionC() {
                   </div>
                   <div
                     style={{
-                      fontFamily: "'Lato', sans-serif",
+                      fontFamily: "var(--sr-font-body)",
                       fontWeight: 300,
                       fontSize: "14px",
                       color: colors.muted,
@@ -1465,8 +1465,8 @@ export default function BrandOptionC() {
                       flex: 1,
                       border: "none",
                       outline: "none",
-                      background: "#fff",
-                      fontFamily: "'Lato', sans-serif",
+                      background: "var(--sr-paper)",
+                      fontFamily: "var(--sr-font-body)",
                       fontWeight: 300,
                       fontSize: "15px",
                       padding: "16px",
@@ -1477,7 +1477,7 @@ export default function BrandOptionC() {
                     style={{
                       background: colors.primary,
                       border: "none",
-                      color: "#fff",
+                      color: "var(--sr-paper)",
                       fontFamily: "'Roboto Mono', monospace",
                       fontSize: "11px",
                       fontWeight: 500,
@@ -1488,7 +1488,7 @@ export default function BrandOptionC() {
                       transition: "background 0.3s ease",
                     }}
                     onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = "#264a4f")
+                      (e.currentTarget.style.background = "var(--sr-marine-800)")
                     }
                     onMouseLeave={(e) =>
                       (e.currentTarget.style.background = colors.primary)
@@ -1512,7 +1512,7 @@ export default function BrandOptionC() {
                       key={f}
                       style={{
                         background: i === 0 ? colors.primary : "transparent",
-                        color: i === 0 ? "#fff" : colors.muted,
+                        color: i === 0 ? "var(--sr-paper)" : colors.muted,
                         border: `1px solid ${
                           i === 0 ? colors.primary : colors.border
                         }`,
@@ -1611,7 +1611,7 @@ export default function BrandOptionC() {
                   fontWeight: 700,
                   fontSize: "clamp(2rem, 3.5vw, 3.2rem)",
                   lineHeight: 1.2,
-                  color: "#fff",
+                  color: "var(--sr-paper)",
                   letterSpacing: "0.02em",
                   marginBottom: "24px",
                 }}
@@ -1625,7 +1625,7 @@ export default function BrandOptionC() {
 
               <p
                 style={{
-                  fontFamily: "'Lato', sans-serif",
+                  fontFamily: "var(--sr-font-body)",
                   fontWeight: 300,
                   fontSize: "18px",
                   lineHeight: 1.8,
@@ -1651,7 +1651,7 @@ export default function BrandOptionC() {
                   style={{
                     background: colors.accent,
                     border: `1px solid ${colors.accent}`,
-                    color: "#fff",
+                    color: "var(--sr-paper)",
                     fontFamily: "'Roboto Mono', monospace",
                     fontSize: "12px",
                     fontWeight: 500,
@@ -1663,8 +1663,8 @@ export default function BrandOptionC() {
                     borderRadius: "1px",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "#c46a3f";
-                    e.currentTarget.style.borderColor = "#c46a3f";
+                    e.currentTarget.style.background = "var(--sr-signal-500)";
+                    e.currentTarget.style.borderColor = "var(--sr-signal-500)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = colors.accent;
@@ -1690,7 +1690,7 @@ export default function BrandOptionC() {
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = "rgba(255,255,255,0.6)";
-                    e.currentTarget.style.color = "#fff";
+                    e.currentTarget.style.color = "var(--sr-paper)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor =
@@ -1831,7 +1831,7 @@ export default function BrandOptionC() {
                     </div>
                     <p
                       style={{
-                        fontFamily: "'Lato', sans-serif",
+                        fontFamily: "var(--sr-font-body)",
                         fontWeight: 300,
                         fontSize: "14px",
                         lineHeight: 1.7,
@@ -1908,7 +1908,7 @@ export default function BrandOptionC() {
           </div>
           <div
             style={{
-              fontFamily: "'Lato', sans-serif",
+              fontFamily: "var(--sr-font-body)",
               fontWeight: 300,
               fontSize: "13px",
               color: colors.muted,

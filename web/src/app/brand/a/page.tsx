@@ -10,14 +10,14 @@ import Image from "next/image";
 
 // ── Brand tokens ──────────────────────────────────────────
 const C = {
-  primary:    "#0A2240",
-  secondary:  "#C29B61",
-  accent:     "#A31621",
-  bg:         "#F4F1E8",
-  text:       "#0A2240",
-  muted:      "#6B7A8F",
-  border:     "#D1C8B7",
-  white:      "#FFFFFF",
+  primary:    "var(--sr-marine-900)",
+  secondary:  "var(--sr-marine-400)",
+  accent:     "var(--sr-signal-500)",
+  bg:         "var(--sr-paper)",
+  text:       "var(--sr-marine-900)",
+  muted:      "var(--sr-text-secondary)",
+  border:     "var(--sr-border-subtle)",
+  white:      "var(--sr-surface-card)",
 } as const;
 
 // ── Cycling "IRC / ORC" in the headline ───────────────────
@@ -88,8 +88,8 @@ function CompassRose({ size = 40, color = C.secondary }: { size?: number; color?
 function Stars({ count }: { count: number }) {
   return (
     <span style={{ color: C.secondary, fontSize: 14, letterSpacing: 2 }}>
-      {"★".repeat(count)}
-      {"☆".repeat(5 - count)}
+      {"*".repeat(count)}
+      {"*".repeat(5 - count)}
     </span>
   );
 }
@@ -217,7 +217,7 @@ export default function BrandAPage() {
         .brand-a-cta-primary,
         .brand-a-cta-secondary,
         .brand-a-card {
-          transition: all 0.25s ease;
+          transition: 0.25s ease;
         }
 
         /* Scrollbar styling */
@@ -754,7 +754,7 @@ export default function BrandAPage() {
                         fontFamily: "'Source Code Pro', monospace",
                         fontSize: 18,
                         fontWeight: 500,
-                        color: item.value.includes("▼") ? "#2D8A4E" : C.primary,
+                        color: item.value.includes("▼") ? "var(--sr-status-pass)" : C.primary,
                       }}
                     >
                       {item.value}

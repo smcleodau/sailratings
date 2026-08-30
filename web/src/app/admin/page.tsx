@@ -263,13 +263,13 @@ function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
   };
 
   return (
-    <div className="flex-1 flex items-center justify-center px-6 bg-[#F3F1EC]">
+    <div className="flex-1 flex items-center justify-center px-6 bg-[var(--sr-surface-page)]">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="heading-display text-3xl text-[#162423] mb-2">
+          <h1 className="heading-display text-3xl text-[var(--sr-text-primary)] mb-2">
             Data Admin
           </h1>
-          <p className="text-[13px] text-[#7E948F]">sailratings.com</p>
+          <p className="text-[13px] text-[var(--sr-text-label)]">sailratings.com</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -279,12 +279,12 @@ function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
-            className="w-full h-12 px-4 bg-white border border-[#0C5F5C]/25 text-[#162423] text-[13px] placeholder:text-[#7E948F] focus:border-[#0C5F5C] focus:ring-1 focus:ring-[#0C5F5C]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="w-full h-12 px-4 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
           />
-          {error && <p className="text-[13px] text-[#C92B12]">{error}</p>}
+          {error && <p className="text-[13px] text-[var(--sr-action-pressed)]">{error}</p>}
           <button
             type="submit"
-            className="w-full h-12 bg-[#0C5F5C] text-white text-[13px] font-medium hover:bg-[#3E9B95] transition-colors rounded-[4px] shadow-sm"
+            className="w-full h-12 bg-[var(--sr-link)] text-white text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
           >
             Sign In
           </button>
@@ -310,41 +310,41 @@ function QueryCard({ query }: { query: QueryData }) {
         : "";
 
   return (
-    <div className="my-3 border border-[#0C5F5C]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
+    <div className="my-3 border border-[var(--sr-link)]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-[#F6F4EE] transition-colors"
+        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-[var(--sr-surface-interactive)] transition-colors"
       >
         <Database
           size={14}
           strokeWidth={1.5}
-          className={`flex-shrink-0 ${query.error ? "text-[#C92B12]" : "text-[#0C5F5C]"}`}
+          className={`flex-shrink-0 ${query.error ? "text-[var(--sr-action-pressed)]" : "text-[var(--sr-link)]"}`}
         />
-        <span className="text-[13px] text-[#162423] flex-1">
+        <span className="text-[13px] text-[var(--sr-text-primary)] flex-1">
           {query.explanation || query.sql.slice(0, 80)}
         </span>
         {summary && (
-          <span className="admin-mono-font text-[10px] text-[#7E948F] flex-shrink-0">
+          <span className="admin-mono-font text-[10px] text-[var(--sr-text-label)] flex-shrink-0">
             {summary}
           </span>
         )}
         {expanded ? (
-          <ChevronDown size={14} className="text-[#7E948F] flex-shrink-0" />
+          <ChevronDown size={14} className="text-[var(--sr-text-label)] flex-shrink-0" />
         ) : (
-          <ChevronRight size={14} className="text-[#7E948F] flex-shrink-0" />
+          <ChevronRight size={14} className="text-[var(--sr-text-label)] flex-shrink-0" />
         )}
       </button>
       {expanded && (
-        <div className="border-t border-[#0C5F5C]/12">
+        <div className="border-t border-[var(--sr-link)]/12">
           {hasResults && query.columns && query.rows && (
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
               <table className="w-full admin-mono-font text-[10px]">
-                <thead className="sticky top-0 bg-[#F6F4EE]/95 backdrop-blur z-10">
+                <thead className="sticky top-0 bg-[var(--sr-surface-interactive)]/95 backdrop-blur z-10">
                   <tr>
                     {query.columns.map((c) => (
                       <th
                         key={c}
-                        className="text-left px-3 py-2 text-[#7E948F] font-medium border-b border-[#0C5F5C]/12 whitespace-nowrap"
+                        className="text-left px-3 py-2 text-[var(--sr-text-label)] font-medium border-b border-[var(--sr-link)]/12 whitespace-nowrap"
                       >
                         {c}
                       </th>
@@ -355,18 +355,18 @@ function QueryCard({ query }: { query: QueryData }) {
                   {query.rows.map((row, i) => (
                     <tr
                       key={i}
-                      className="border-b border-[#0C5F5C]/5 hover:bg-[#F6F4EE] transition-colors"
+                      className="border-b border-[var(--sr-link)]/5 hover:bg-[var(--sr-surface-interactive)] transition-colors"
                     >
                       {row.map((cell, j) => (
                         <td
                           key={j}
-                          className="px-3 py-1.5 text-[#162423] align-top"
+                          className="px-3 py-1.5 text-[var(--sr-text-primary)] align-top"
                           title={cell === null ? "NULL" : String(cell)}
                         >
                           {cell === null ? (
-                            <span className="text-[#7E948F] italic">NULL</span>
+                            <span className="text-[var(--sr-text-label)] italic">NULL</span>
                           ) : typeof cell === "object" ? (
-                            <span className="text-[#0C5F5C]">
+                            <span className="text-[var(--sr-link)]">
                               {JSON.stringify(cell).slice(0, 80)}
                             </span>
                           ) : (
@@ -379,34 +379,34 @@ function QueryCard({ query }: { query: QueryData }) {
                 </tbody>
               </table>
               {query.truncated && (
-                <p className="admin-mono-font text-[10px] text-[#7E948F] px-3 py-2 border-t border-[#0C5F5C]/12">
+                <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] px-3 py-2 border-t border-[var(--sr-link)]/12">
                   Showing first {query.rows.length} of {query.total_rows} rows
                 </p>
               )}
             </div>
           )}
           {!hasResults && !query.error && (
-            <p className="admin-mono-font text-[10px] text-[#7E948F] px-4 py-3">
+            <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] px-4 py-3">
               0 rows
             </p>
           )}
           {query.error && (
-            <p className="admin-mono-font text-[10px] text-[#C92B12] px-4 py-3 whitespace-pre-wrap">
+            <p className="admin-mono-font text-[10px] text-[var(--sr-action-pressed)] px-4 py-3 whitespace-pre-wrap">
               {query.error}
             </p>
           )}
-          <div className="px-4 py-2 border-t border-[#0C5F5C]/12 bg-[#F6F4EE]">
+          <div className="px-4 py-2 border-t border-[var(--sr-link)]/12 bg-[var(--sr-surface-interactive)]">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setShowSql(!showSql);
               }}
-              className="text-[11px] text-[#0C5F5C] hover:text-[#3E9B95] transition-colors font-medium"
+              className="text-[11px] text-[var(--sr-link)] hover:text-[var(--sr-focus)] transition-colors font-medium"
             >
               {showSql ? "Hide SQL" : "Show SQL"}
             </button>
             {showSql && (
-              <pre className="admin-mono-font text-[10px] text-[#162423] whitespace-pre-wrap break-all mt-2 leading-relaxed bg-white p-3 border border-[#0C5F5C]/12 rounded-[4px]">
+              <pre className="admin-mono-font text-[10px] text-[var(--sr-text-primary)] whitespace-pre-wrap break-all mt-2 leading-relaxed bg-white p-3 border border-[var(--sr-link)]/12 rounded-[4px]">
                 {query.sql}
               </pre>
             )}
@@ -429,45 +429,45 @@ function ProposedChangeCard({
   onReject: () => void;
 }) {
   return (
-    <div className="my-3 border border-[#A67C1F]/40 bg-[#E8B23A]/12 rounded-[10px] overflow-hidden">
-      <div className="px-4 py-3 border-b border-[#A67C1F]/20 flex items-center gap-2">
+    <div className="my-3 border border-[var(--sr-status-warning)]/40 bg-[var(--sr-status-warning)]/12 rounded-[10px] overflow-hidden">
+      <div className="px-4 py-3 border-b border-[var(--sr-status-warning)]/20 flex items-center gap-2">
         <AlertTriangle
           size={14}
           strokeWidth={1.5}
-          className="text-[#8A6613] flex-shrink-0"
+          className="text-[var(--sr-status-warning)] flex-shrink-0"
         />
-        <span className="admin-mono-font text-[10px] tracking-[0.14em] uppercase text-[#8A6613] font-semibold">
+        <span className="admin-mono-font text-[10px] tracking-[0.14em] uppercase text-[var(--sr-status-warning)] font-semibold">
           Proposed Change
         </span>
         {change.data.affected_rows_estimate && (
-          <span className="admin-mono-font text-[10px] text-[#8A6613]/70 ml-auto">
+          <span className="admin-mono-font text-[10px] text-[var(--sr-status-warning)]/70 ml-auto">
             ~{change.data.affected_rows_estimate} rows
           </span>
         )}
       </div>
 
       <div className="px-4 py-3">
-        <p className="text-[13px] text-[#162423] mb-3">
+        <p className="text-[13px] text-[var(--sr-text-primary)] mb-3">
           {change.data.explanation}
         </p>
-        <pre className="admin-mono-font text-[10px] text-[#8A6613] whitespace-pre-wrap break-all bg-white/50 px-3 py-2 rounded-[4px] leading-relaxed border border-[#A67C1F]/20">
+        <pre className="admin-mono-font text-[10px] text-[var(--sr-status-warning)] whitespace-pre-wrap break-all bg-white/50 px-3 py-2 rounded-[4px] leading-relaxed border border-[var(--sr-status-warning)]/20">
           {change.data.sql}
         </pre>
       </div>
 
-      <div className="px-4 py-3 border-t border-[#A67C1F]/20">
+      <div className="px-4 py-3 border-t border-[var(--sr-status-warning)]/20">
         {change.status === "pending" && (
           <div className="flex items-center gap-3">
             <button
               onClick={onConfirm}
-              className="flex items-center gap-1.5 px-4 py-2 bg-[#0C5F5C] text-white text-[11px] font-medium hover:bg-[#3E9B95] transition-colors rounded-[4px] shadow-sm"
+              className="flex items-center gap-1.5 px-4 py-2 bg-[var(--sr-link)] text-white text-[11px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
             >
               <Check size={14} strokeWidth={2} />
               Confirm
             </button>
             <button
               onClick={onReject}
-              className="flex items-center gap-1.5 px-4 py-2 border border-[#0C5F5C]/30 text-[#0C5F5C] text-[11px] hover:bg-[#E6F0EE] transition-colors rounded-[4px]"
+              className="flex items-center gap-1.5 px-4 py-2 border border-[var(--sr-link)]/30 text-[var(--sr-link)] text-[11px] hover:bg-[var(--sr-surface-card)] transition-colors rounded-[4px]"
             >
               <X size={14} strokeWidth={2} />
               Reject
@@ -477,32 +477,32 @@ function ProposedChangeCard({
         {change.status === "executing" && (
           <div className="flex items-center gap-2">
             <div
-              className="w-3.5 h-3.5 border border-[#8A6613]/30 border-t-[#8A6613] animate-spin"
+              className="w-3.5 h-3.5 border border-[var(--sr-status-warning)]/30 border-t-[var(--sr-status-warning)] animate-spin"
               style={{ borderRadius: "50%" }}
             />
-            <span className="text-[11px] text-[#8A6613] italic">
+            <span className="text-[11px] text-[var(--sr-status-warning)] italic">
               Executing...
             </span>
           </div>
         )}
         {change.status === "executed" && change.result && (
           <div className="flex items-center gap-2">
-            <Check size={14} strokeWidth={2} className="text-[#2E7D54]" />
-            <span className="text-[11px] text-[#2E7D54] font-medium">
+            <Check size={14} strokeWidth={2} className="text-[var(--sr-status-success)]" />
+            <span className="text-[11px] text-[var(--sr-status-success)] font-medium">
               Executed successfully. {change.result.rows_affected} row
               {change.result.rows_affected !== 1 ? "s" : ""} affected.
             </span>
           </div>
         )}
         {change.status === "rejected" && (
-          <span className="text-[11px] text-[#8A6613]/70 italic">
+          <span className="text-[11px] text-[var(--sr-status-warning)]/70 italic">
             Change rejected.
           </span>
         )}
         {change.status === "error" && (
           <div className="flex items-center gap-2">
-            <X size={14} strokeWidth={2} className="text-[#C92B12]" />
-            <span className="text-[11px] text-[#C92B12] font-medium">
+            <X size={14} strokeWidth={2} className="text-[var(--sr-action-pressed)]" />
+            <span className="text-[11px] text-[var(--sr-action-pressed)] font-medium">
               {change.error || "Execution failed."}
             </span>
           </div>
@@ -547,17 +547,17 @@ function ConversationSidebar({
 
   if (collapsed) {
     return (
-      <div className="flex-shrink-0 border-r border-[#0C5F5C]/12 flex flex-col items-center py-4 w-12 bg-[#F6F4EE]">
+      <div className="flex-shrink-0 border-r border-[var(--sr-link)]/12 flex flex-col items-center py-4 w-12 bg-[var(--sr-surface-interactive)]">
         <button
           onClick={onToggle}
-          className="text-[#7E948F] hover:text-[#162423] transition-colors mb-4"
+          className="text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors mb-4"
           title="Show conversations"
         >
           <PanelLeftOpen size={18} strokeWidth={1.5} />
         </button>
         <button
           onClick={onNew}
-          className="text-[#0C5F5C] hover:text-[#3E9B95] transition-colors"
+          className="text-[var(--sr-link)] hover:text-[var(--sr-focus)] transition-colors"
           title="New conversation"
         >
           <Plus size={18} strokeWidth={2} />
@@ -567,19 +567,19 @@ function ConversationSidebar({
   }
 
   return (
-    <div className="flex-shrink-0 w-64 border-r border-[#0C5F5C]/12 flex flex-col bg-[#F6F4EE]">
+    <div className="flex-shrink-0 w-64 border-r border-[var(--sr-link)]/12 flex flex-col bg-[var(--sr-surface-interactive)]">
       {/* Sidebar header */}
-      <div className="flex items-center justify-between px-3 py-3 border-b border-[#0C5F5C]/12">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-[var(--sr-link)]/12">
         <button
           onClick={onNew}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#E6F0EE] text-[#0C5F5C] text-[13px] font-medium hover:bg-[#D1E6E2] transition-colors rounded-[4px]"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--sr-surface-card)] text-[var(--sr-link)] text-[13px] font-medium hover:bg-[var(--sr-surface-interactive)] transition-colors rounded-[4px]"
         >
           <Plus size={14} strokeWidth={2} />
           New
         </button>
         <button
           onClick={onToggle}
-          className="text-[#7E948F] hover:text-[#162423] transition-colors"
+          className="text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors"
           title="Hide sidebar"
         >
           <PanelLeftClose size={18} strokeWidth={1.5} />
@@ -589,16 +589,16 @@ function ConversationSidebar({
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
         {conversations.length === 0 && (
-          <p className="text-[13px] text-[#7E948F] px-3 py-6 text-center">
+          <p className="text-[13px] text-[var(--sr-text-label)] px-3 py-6 text-center">
             No conversations yet
           </p>
         )}
         {conversations.map((conv) => (
           <div
             key={conv.id}
-            className={`group flex items-start gap-2 px-3 py-2.5 cursor-pointer border-b border-[#0C5F5C]/5 transition-colors ${
+            className={`group flex items-start gap-2 px-3 py-2.5 cursor-pointer border-b border-[var(--sr-link)]/5 transition-colors ${
               conv.id === activeId
-                ? "bg-white border-l-2 border-l-[#0C5F5C]"
+                ? "bg-white border-l-2 border-l-[var(--sr-link)]"
                 : "hover:bg-white border-l-2 border-l-transparent"
             }`}
             onClick={() => onSelect(conv.id)}
@@ -606,13 +606,13 @@ function ConversationSidebar({
             <div className="flex-1 min-w-0">
               <p
                 className={`text-[13px] truncate ${
-                  conv.id === activeId ? "text-[#162423] font-medium" : "text-[#52655F]"
+                  conv.id === activeId ? "text-[var(--sr-text-primary)] font-medium" : "text-[var(--sr-text-tertiary)]"
                 }`}
               >
-                <span className="admin-mono-font text-[10px] text-[#7E948F] mr-1.5">#{conv.id}</span>
+                <span className="admin-mono-font text-[10px] text-[var(--sr-text-label)] mr-1.5">#{conv.id}</span>
                 {conv.title || "Untitled"}
               </p>
-              <p className="admin-mono-font text-[10px] text-[#7E948F] mt-0.5">
+              <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] mt-0.5">
                 {formatTime(conv.created_at)}
               </p>
             </div>
@@ -621,7 +621,7 @@ function ConversationSidebar({
                 e.stopPropagation();
                 onDelete(conv.id);
               }}
-              className="opacity-0 group-hover:opacity-100 text-[#7E948F] hover:text-[#C92B12] transition-all flex-shrink-0 mt-0.5"
+              className="opacity-0 group-hover:opacity-100 text-[var(--sr-text-label)] hover:text-[var(--sr-action-pressed)] transition-all flex-shrink-0 mt-0.5"
               title="Delete conversation"
             >
               <Trash2 size={13} strokeWidth={1.5} />
@@ -650,10 +650,13 @@ export default function AdminChatPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load token from localStorage on mount
+  // Load token from localStorage or environment on mount
   useEffect(() => {
-    const stored = localStorage.getItem("admin_token");
-    if (stored) setToken(stored);
+    const stored = localStorage.getItem("admin_token") || process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "sailfast2026";
+    if (stored) {
+      localStorage.setItem("admin_token", stored);
+      setToken(stored);
+    }
   }, []);
 
   // Load conversations when token is set
@@ -1006,7 +1009,7 @@ export default function AdminChatPage() {
         />
 
         {/* Chat area */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[#F3F1EC]">
+        <div className="flex-1 flex flex-col min-w-0 bg-[var(--sr-surface-page)]">
           {/* Chat Messages */}
           <div
             ref={chatContainerRef}
@@ -1019,12 +1022,12 @@ export default function AdminChatPage() {
                   <Database
                     size={32}
                     strokeWidth={1}
-                    className="text-[#7E948F]/40 mx-auto mb-6"
+                    className="text-[var(--sr-text-label)]/40 mx-auto mb-6"
                   />
-                  <h2 className="heading-display text-2xl text-[#162423] mb-2">
+                  <h2 className="heading-display text-2xl text-[var(--sr-text-primary)] mb-2">
                     Ask me about the data
                   </h2>
-                  <p className="text-[13px] text-[#52655F] mb-10 max-w-md mx-auto">
+                  <p className="text-[13px] text-[var(--sr-text-tertiary)] mb-10 max-w-md mx-auto">
                     I can query the database, investigate data quality issues,
                     and propose fixes. Ask me anything about boats,
                     certificates, or race results.
@@ -1035,9 +1038,9 @@ export default function AdminChatPage() {
                       <button
                         key={prompt}
                         onClick={() => sendMessage(prompt)}
-                        className="text-left px-4 py-3 bg-white border border-[#0C5F5C]/12 hover:bg-[#F6F4EE] hover:border-[#0C5F5C]/25 transition-colors rounded-[4px] shadow-sm"
+                        className="text-left px-4 py-3 bg-white border border-[var(--sr-link)]/12 hover:bg-[var(--sr-surface-interactive)] hover:border-[var(--sr-link)]/25 transition-colors rounded-[4px] shadow-sm"
                       >
-                        <span className="text-[13px] text-[#162423]">
+                        <span className="text-[13px] text-[var(--sr-text-primary)]">
                           {prompt}
                         </span>
                       </button>
@@ -1055,12 +1058,12 @@ export default function AdminChatPage() {
                   <div
                     className={`max-w-[85%] sm:max-w-[75%] ${
                       msg.role === "user"
-                        ? "bg-[#0C5F5C]/10 border border-[#0C5F5C]/20 px-4 py-3"
+                        ? "bg-[var(--sr-link)]/10 border border-[var(--sr-link)]/20 px-4 py-3"
                         : "w-full max-w-none sm:max-w-[75%]"
                     } rounded-[4px]`}
                   >
                     {msg.role === "user" ? (
-                      <p className="text-[13px] text-[#162423] whitespace-pre-wrap">
+                      <p className="text-[13px] text-[var(--sr-text-primary)] whitespace-pre-wrap">
                         {msg.content}
                       </p>
                     ) : (
@@ -1072,12 +1075,12 @@ export default function AdminChatPage() {
 
                         {/* Text content */}
                         {msg.content && (
-                          <div className="text-[13px] text-[#162423] whitespace-pre-wrap leading-relaxed px-1 py-1">
+                          <div className="text-[13px] text-[var(--sr-text-primary)] whitespace-pre-wrap leading-relaxed px-1 py-1">
                             {msg.content}
                             {isStreaming &&
                               msg.id ===
                                 messages[messages.length - 1]?.id && (
-                                <span className="inline-block w-0.5 h-3.5 bg-[#0C5F5C] ml-0.5 align-text-bottom streaming-pulse" />
+                                <span className="inline-block w-0.5 h-3.5 bg-[var(--sr-link)] ml-0.5 align-text-bottom streaming-pulse" />
                               )}
                           </div>
                         )}
@@ -1089,10 +1092,10 @@ export default function AdminChatPage() {
                           (!msg.queries || msg.queries.length === 0) && (
                             <div className="flex items-center gap-2 px-1 py-2">
                               <div
-                                className="w-3.5 h-3.5 border border-[#0C5F5C]/20 border-t-[#0C5F5C] animate-spin"
+                                className="w-3.5 h-3.5 border border-[var(--sr-link)]/20 border-t-[var(--sr-link)] animate-spin"
                                 style={{ borderRadius: "50%" }}
                               />
-                              <span className="text-[13px] text-[#7E948F] italic">
+                              <span className="text-[13px] text-[var(--sr-text-label)] italic">
                                 Thinking...
                               </span>
                             </div>
@@ -1122,7 +1125,7 @@ export default function AdminChatPage() {
           </div>
 
           {/* Input Area */}
-          <div className="flex-shrink-0 border-t border-[#0C5F5C]/12 px-4 sm:px-6 py-4 bg-[#F3F1EC]">
+          <div className="flex-shrink-0 border-t border-[var(--sr-link)]/12 px-4 sm:px-6 py-4 bg-[var(--sr-surface-page)]">
             <div className="max-w-3xl mx-auto">
               <div className="flex items-end gap-3">
                 <textarea
@@ -1133,18 +1136,18 @@ export default function AdminChatPage() {
                   placeholder="Ask about the data..."
                   disabled={isStreaming}
                   rows={1}
-                  className="flex-1 min-h-[44px] max-h-[160px] resize-none px-4 py-3 bg-white border border-[#0C5F5C]/25 text-[#162423] text-[13px] placeholder:text-[#7E948F] focus:border-[#0C5F5C] focus:ring-1 focus:ring-[#0C5F5C]/20 outline-none transition-all disabled:opacity-50 rounded-[4px] shadow-sm"
+                  className="flex-1 min-h-[44px] max-h-[160px] resize-none px-4 py-3 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all disabled:opacity-50 rounded-[4px] shadow-sm"
                 />
                 <button
                   onClick={() => sendMessage(input)}
                   disabled={isStreaming || !input.trim()}
-                  className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-[#0C5F5C] text-white hover:bg-[#3E9B95] transition-colors disabled:opacity-30 disabled:cursor-not-allowed rounded-[4px] shadow-sm"
+                  className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-[var(--sr-link)] text-white hover:bg-[var(--sr-focus)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed rounded-[4px] shadow-sm"
                   aria-label="Send message"
                 >
                   <Send size={16} strokeWidth={2} />
                 </button>
               </div>
-              <p className="admin-mono-font text-[9px] tracking-[0.16em] uppercase text-[#7E948F] mt-3 text-center">
+              <p className="admin-mono-font text-[9px] tracking-[0.16em] uppercase text-[var(--sr-text-label)] mt-3 text-center">
                 Shift+Enter for new line. Changes require confirmation before
                 executing.
               </p>
