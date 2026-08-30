@@ -19,5 +19,8 @@ node_modules/
 /logs/
 *.log
 
+# Temporal workflow runtime output
+api/*_wfs.txt
+
 # OS
 .DS_Store

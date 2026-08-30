@@ -145,7 +145,15 @@ class NotionPoller:
             except Exception as e:
                 logger.error(f"Error starting SprintManager for {page['id']}: {e}")
 
+async def main_loop():
+    poller = NotionPoller()
+    while True:
+        try:
+            await poller.poll()
+        except Exception as e:
+            logger.error(f"Error in poller loop: {e}")
+        await asyncio.sleep(60)
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    poller = NotionPoller()
-    asyncio.run(poller.poll())
+    asyncio.run(main_loop())

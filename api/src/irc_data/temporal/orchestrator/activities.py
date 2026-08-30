@@ -95,10 +95,9 @@ async def run_lane_worker_agent(worktree_path: str, task: dict, feedback: str = 
     from openhands.sdk.workspace import LocalWorkspace
     import asyncio
     
-    internal_key = os.environ.get("MARTHA_ROUTER_SERVICE_KEY")
     llm = LLM(
         model="openai/glm-5.2", 
-        api_key=internal_key,
+        api_key=os.environ.get("GEMINI_API_KEY", "dummy"),
         base_url="http://100.93.15.38:10006/api/worker-router"
     )
     workspace = LocalWorkspace(working_dir=worktree_path)
@@ -154,8 +153,8 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
     import asyncio
     
     llm = LLM(
-        model="claude-3-5-sonnet", # Cross-model review
-        api_key=os.environ.get("MARTHA_ROUTER_SERVICE_KEY"),
+        model="openai/glm-5.2", 
+        api_key=os.environ.get("GEMINI_API_KEY", "dummy"),
         base_url="http://100.93.15.38:10006/api/worker-router"
     )
     workspace = LocalWorkspace(working_dir=worktree_path)
@@ -272,7 +271,7 @@ async def run_sprint_manager_agent(task_description: str = "Review the backlog a
     
     llm = LLM(
         model="openai/glm-5.2", 
-        api_key=os.environ.get("MARTHA_ROUTER_SERVICE_KEY"),
+        api_key=os.environ.get("GEMINI_API_KEY", "dummy"),
         base_url="http://100.93.15.38:10006/api/worker-router"
     )
     workspace = LocalWorkspace(working_dir=repo_path)
@@ -310,7 +309,12 @@ async def invoke_llm(system_prompt: str, chat_history: list) -> str:
     from openai import AsyncOpenAI
     import os
     
-    internal_key = os.environ.get("OPENAI_API_KEY")
+    internal_key = (
+        os.environ.get("MARTHA_ROUTER_SERVICE_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("GEMINI_API_KEY")
+        or "dummy"
+    )
     client = AsyncOpenAI(
         api_key=internal_key,
         base_url="http://100.93.15.38:10006/api/worker-router"
