@@ -17,9 +17,22 @@ class NotionPoller:
             'Content-Type': 'application/json'
         }
         
+    MAX_CONCURRENT = int(os.environ.get("FACTORY_MAX_CONCURRENT", "5"))
+    MAX_PER_POLL = int(os.environ.get("FACTORY_MAX_PER_POLL", "5"))
+
     async def poll(self):
         temporal_address = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
         temporal_client = await TemporalClient.connect(temporal_address, namespace="sailratings")
+
+        # Count currently running workflows; skip this poll if at cap
+        running_count = 0
+        async for wf in temporal_client.list_workflows(
+            query="ExecutionStatus='Running'",
+        ):
+            running_count += 1
+        if running_count >= self.MAX_CONCURRENT:
+            logger.info(f"Skipping poll: {running_count} workflows already running (cap={self.MAX_CONCURRENT})")
+            return
 
         # Query DB
         req = urllib.request.Request(
@@ -62,8 +75,11 @@ class NotionPoller:
             spec_results = []
             
         logger.info(f"Found {len(spec_results)} epics needing specification.")
-        
-        for page in results:
+
+        slots_available = self.MAX_CONCURRENT - running_count
+        dispatched = 0
+
+        for page in results[:min(len(results), self.MAX_PER_POLL, slots_available)]:
             try:
                 # Extract title
                 title_objs = page.get('properties', {}).get('Title', {}).get('rich_text', []) \
@@ -153,6 +169,7 @@ class NotionPoller:
                     id=f"agent-task-{page['id']}",
                     task_queue="orchestrator-task-queue"
                 )
+                dispatched += 1
                 
                 # Update Notion status
                 req_update = urllib.request.Request(
