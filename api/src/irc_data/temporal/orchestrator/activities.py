@@ -191,19 +191,22 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
 @activity.defn
 async def run_playwright_e2e_tests(worktree_path: str) -> bool:
     activity.logger.info(f"Running Playwright tests in {worktree_path}")
-    web_dir = os.path.join(worktree_path, "web")
+    e2e_dir = os.path.join(worktree_path, "e2e_tests")
     proc = await asyncio.create_subprocess_shell(
         "npm install && npx playwright test",
-        cwd=web_dir,
+        cwd=e2e_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
         activity.logger.error(
-            f"Playwright tests failed (exit {proc.returncode}): {stderr.decode()}"
+            f"Playwright tests failed (exit {proc.returncode}):\n"
+            f"--- stdout ---\n{stdout.decode()}\n"
+            f"--- stderr ---\n{stderr.decode()}"
         )
         return False
+    activity.logger.info(f"Playwright tests passed:\n{stdout.decode()}")
     return True
 
 @activity.defn
