@@ -215,9 +215,13 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
     if not os.path.isdir(e2e_dir):
         activity.logger.info("No e2e_tests directory — skipping Playwright tests")
         return True
+    env = os.environ.copy()
+    env["TEST_WEB_PORT"] = "4201"
+    env["CI"] = "true"
     proc = await asyncio.create_subprocess_shell(
         "npm install && npx playwright install chromium && npx playwright test",
         cwd=e2e_dir,
+        env=env,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
