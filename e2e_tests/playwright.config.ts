@@ -69,7 +69,10 @@ export default defineConfig({
   ...(SKIP_WEBSERVER ? {} : {
     webServer: {
       command: `cd ../web && PORT=${WEB_PORT} npm run dev`,
-      url: `http://localhost:${WEB_PORT}`,
+      /* Check the sources-policy route specifically — Turbopack compiles
+         routes on first request, so checking the root URL alone is not
+         enough to guarantee /sources-policy is ready. */
+      url: `http://localhost:${WEB_PORT}/sources-policy`,
       reuseExistingServer: !process.env.CI,
       timeout: 180 * 1000,
       env: readClerkKeys(),

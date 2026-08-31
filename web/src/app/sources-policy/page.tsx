@@ -1,20 +1,13 @@
-"use client";
-
-import { useEffect, useState, useCallback } from "react";
 import {
   CheckCircle2,
   AlertTriangle,
   Shield,
-  Clock,
   FileText,
   Globe,
   Lock,
   HelpCircle,
   Ban,
-  RefreshCw,
 } from "lucide-react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
 /* ── Types ────────────────────────────────────────────────────────────── */
 
@@ -51,9 +44,9 @@ interface PolicySummary {
   sources: PolicySource[];
 }
 
-/* ── Static fallback data (matches policy.py) ─────────────────────────── */
+/* ── Static policy data (matches api/src/irc_data/sources/policy.py) ─── */
 
-const STATIC_POLICY: PolicySummary = {
+const POLICY: PolicySummary = {
   version: "interim-v0",
   approved_date: "2026-08-30",
   authority: "Stuart McLeod",
@@ -133,33 +126,7 @@ function ClassificationBadge({ classification }: { classification: string }) {
 /* ── Main Page ────────────────────────────────────────────────────────── */
 
 export default function SourcesPolicyPage() {
-  const [policy, setPolicy] = useState<PolicySummary>(STATIC_POLICY);
-  const [loading, setLoading] = useState(false);
-  const [usingApi, setUsingApi] = useState(false);
-
-  const fetchPolicy = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/sources/policy`);
-      if (res.ok) {
-        const data = await res.json();
-        setPolicy(data);
-        setUsingApi(true);
-      } else {
-        setPolicy(STATIC_POLICY);
-        setUsingApi(false);
-      }
-    } catch {
-      setPolicy(STATIC_POLICY);
-      setUsingApi(false);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPolicy();
-  }, [fetchPolicy]);
+  const policy = POLICY;
 
   return (
     <div className="p-8 max-w-[1400px] mx-auto">
