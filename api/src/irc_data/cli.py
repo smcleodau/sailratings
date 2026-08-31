@@ -3266,3 +3266,7 @@ cli.add_command(_parity_report)
 from irc_data.cli_news_events import register_news_and_events_commands
 register_news_and_events_commands(cli)
 
+from irc_data.diagnostics.source_monitor_cli import source_monitor as _source_monitor_cli  # noqa: E402
+
+cli.add_command(_source_monitor_cli)
+
