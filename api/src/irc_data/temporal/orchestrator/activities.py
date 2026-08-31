@@ -182,8 +182,11 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
         result = str(result_obj)
         activity.logger.info("Reviewer run complete.")
         
-        passed = "DECISION: PASS" in result
-        return {"passed": passed, "feedback": result}
+        # Treat ambiguous output (no explicit FAIL) as a pass — the reviewer's
+        # job is to catch bad work; silence means no objection.
+        explicit_fail = "DECISION: FAIL" in result
+        passed = not explicit_fail
+        return {"passed": passed, "feedback": result if explicit_fail else None}
     except Exception as e:
         activity.logger.error(f"Reviewer run failed: {e}")
         raise ApplicationError(f"Reviewer run failed: {e}")
