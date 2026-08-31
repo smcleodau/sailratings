@@ -215,6 +215,11 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
     if not os.path.isdir(e2e_dir):
         activity.logger.info("No e2e_tests directory — skipping Playwright tests")
         return True
+    # Kill any process holding port 4201 from a prior test run
+    await asyncio.create_subprocess_shell(
+        "fuser -k 4201/tcp 2>/dev/null; true",
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+    )
     env = os.environ.copy()
     env["TEST_WEB_PORT"] = "4201"
     env["CI"] = "true"
@@ -227,9 +232,8 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
     )
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
-        activity.logger.error(
-            f"Playwright tests failed (exit {proc.returncode}): {stderr.decode()[:2000]}"
-        )
+        combined = (stdout.decode() + "\n" + stderr.decode())[:3000]
+        activity.logger.error(f"Playwright tests failed (exit {proc.returncode}): {combined}")
         return False
     activity.logger.info(f"Playwright tests passed: {stdout.decode()[-500:]}")
     return True
