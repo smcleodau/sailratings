@@ -196,7 +196,7 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
         activity.logger.info("No e2e_tests directory — skipping Playwright tests")
         return True
     proc = await asyncio.create_subprocess_shell(
-        "npm install && npx playwright install --with-deps chromium && npx playwright test",
+        "npm install && npx playwright install chromium && npx playwright test",
         cwd=e2e_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
