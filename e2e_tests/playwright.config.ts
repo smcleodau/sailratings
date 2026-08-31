@@ -1,7 +1,33 @@
 import { defineConfig, devices } from '@playwright/test';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
 
 const WEB_PORT = process.env.TEST_WEB_PORT || '4200';
 const SKIP_WEBSERVER = process.env.SKIP_WEBSERVER === '1';
+
+/* Read Clerk keyless test keys from the .clerk/.tmp/keyless.json file that
+   Clerk generates in keyless mode.  This file is gitignored, so in a fresh
+   checkout (CI / gatekeeper) it may be absent — in that case we fall back
+   to the known keyless test keys.  These are test-mode (pk_test / sk_test)
+   keys, not production secrets. */
+function readClerkKeys(): Record<string, string> {
+  const keylessPath = join(__dirname, '..', 'web', '.clerk', '.tmp', 'keyless.json');
+  let publishableKey = 'pk_test_c3RpbGwtbGFiLTc2MTMuY2xlcmsuYWNjb3VudHMuZGV2JA';
+  let secretKey = 'sk_test_ChV79648f0cXVsGgrLoWjLSxZHaUOXvynM1UdCSse0';
+  if (existsSync(keylessPath)) {
+    try {
+      const data = JSON.parse(readFileSync(keylessPath, 'utf-8'));
+      if (data.publishableKey) publishableKey = data.publishableKey;
+      if (data.secretKey) secretKey = data.secretKey;
+    } catch { /* fall back to defaults */ }
+  }
+  return {
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+      process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || publishableKey,
+    CLERK_SECRET_KEY:
+      process.env.CLERK_SECRET_KEY || secretKey,
+  };
+}
 
 export default defineConfig({
   testDir: './tests',
@@ -46,6 +72,7 @@ export default defineConfig({
       url: `http://localhost:${WEB_PORT}`,
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
+      env: readClerkKeys(),
     },
   }),
 });
