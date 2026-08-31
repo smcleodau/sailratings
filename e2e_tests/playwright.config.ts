@@ -71,7 +71,7 @@ export default defineConfig({
       command: `cd ../web && PORT=${WEB_PORT} npm run dev`,
       url: `http://localhost:${WEB_PORT}`,
       reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
+      timeout: 180 * 1000,
       env: readClerkKeys(),
     },
   }),

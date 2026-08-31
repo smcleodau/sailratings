@@ -195,8 +195,13 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
     if not os.path.isdir(e2e_dir):
         activity.logger.info("No e2e_tests directory — skipping Playwright tests")
         return True
+    # Install e2e deps, browser, AND web deps (web/node_modules is gitignored
+    # so it won't exist in a fresh worktree).  The Playwright webServer config
+    # starts `cd ../web && npm run dev` which requires web/node_modules.
+    web_dir = os.path.join(worktree_path, "web")
     proc = await asyncio.create_subprocess_shell(
-        "npm install && npx playwright install chromium && npx playwright test",
+        "npm install && npx playwright install chromium && "
+        f"cd {web_dir} && npm install && cd {e2e_dir} && npx playwright test",
         cwd=e2e_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
