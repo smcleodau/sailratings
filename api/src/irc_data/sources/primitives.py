@@ -539,8 +539,10 @@ async def render_page(
         # Set viewport
         await page.set_viewport_size({"width": 1280, "height": 720})
 
-        # Navigate
-        await page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+        # Navigate — capture the response to extract conditional headers
+        nav_response = await page.goto(
+            url, wait_until="networkidle", timeout=timeout_ms
+        )
 
         # Wait for selector if specified
         if wait_for:
@@ -561,7 +563,6 @@ async def render_page(
         screenshot_path: str | None = None
         if screenshot:
             import tempfile
-            import os
 
             tmp = tempfile.NamedTemporaryFile(
                 suffix=".png", delete=False, prefix="sailratings_render_"
@@ -570,25 +571,24 @@ async def render_page(
             await page.screenshot(path=tmp.name, full_page=True)
             screenshot_path = tmp.name
 
-        # Get response headers (ETag, Last-Modified) if available
-        response = await page.goto(url, wait_until="networkidle", timeout=timeout_ms) \
-            if False else None  # We already navigated; just get headers if we can
-
+        # Extract conditional headers from the main navigation response
         etag = None
         last_modified = None
-        # Try to get headers from the main response
-        try:
-            # page.url is the final URL after redirects
-            pass
-        except Exception:
-            pass
+        final_url = url
+        if nav_response is not None:
+            try:
+                etag = nav_response.headers.get("ETag")
+                last_modified = nav_response.headers.get("Last-Modified")
+                final_url = str(nav_response.url) or url
+            except Exception:
+                pass
 
         await page.close()
 
         policy_version = source.policy_version if source else "interim-v0"
 
         return FetchResult(
-            url=url,
+            url=final_url,
             content=content_bytes,
             content_hash=_sha256(content_bytes),
             etag=etag,

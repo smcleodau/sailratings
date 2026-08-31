@@ -586,7 +586,12 @@ class FakePage:
 
     async def goto(self, url, **kwargs):
         self._url = url
-        return None
+        # Return a fake response with headers and URL for conditional-request support
+        from unittest.mock import MagicMock
+        resp = MagicMock()
+        resp.headers = {"ETag": '"render-etag"', "Last-Modified": "Wed, 01 Jan 2025 00:00:00 GMT"}
+        resp.url = url
+        return resp
 
     async def wait_for_selector(self, selector, **kwargs):
         pass
@@ -670,6 +675,14 @@ class TestRenderPage:
         result = await render_page("https://example.com/js-page", browser=browser)
         expected = hashlib.sha256(b"<html><body>Rendered</body></html>").hexdigest()
         assert result.content_hash == expected
+
+    @pytest.mark.asyncio
+    async def test_render_page_extracts_conditional_headers(self):
+        """render_page should extract ETag and Last-Modified from the navigation response."""
+        browser = FakeBrowser("<html><body>Rendered</body></html>")
+        result = await render_page("https://example.com/js-page", browser=browser)
+        assert result.etag == '"render-etag"'
+        assert result.last_modified == "Wed, 01 Jan 2025 00:00:00 GMT"
 
 
 # ===========================================================================
