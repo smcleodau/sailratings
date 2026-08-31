@@ -63,6 +63,23 @@ async def provision_worktree(task: dict) -> str:
     return worktree_path
 
 @activity.defn
+async def commit_agent_work(worktree_path: str, message: str = "feat: agent implementation") -> bool:
+    """Auto-commit any uncommitted changes left by the lane worker agent."""
+    proc = await asyncio.create_subprocess_shell(
+        f'git -C "{worktree_path}" add -A && '
+        f'git -C "{worktree_path}" diff --cached --quiet || '
+        f'git -C "{worktree_path}" commit -m "{message}" --author="OpenHands Agent <agent@sailratings.com>"',
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode == 0:
+        activity.logger.info(f"Auto-committed agent work in {worktree_path}")
+    else:
+        activity.logger.info(f"Nothing to commit or commit failed: {stderr.decode()[:200]}")
+    return True
+
+@activity.defn
 async def teardown_worktree(worktree_path: str) -> None:
     repo_path = "/home/irc-data/code/sailratings"
     

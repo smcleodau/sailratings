@@ -7,6 +7,7 @@ with workflow.unsafe.imports_passed_through():
     from .activities import (
         provision_worktree,
         run_lane_worker_agent,
+        commit_agent_work,
         run_reviewer_agent,
         run_sprint_manager_agent,
         run_playwright_e2e_tests,
@@ -90,11 +91,18 @@ class EpicExecutionWorkflow:
 
                 # 1. Lane Worker
                 await workflow.execute_activity(
-                    run_lane_worker_agent, 
+                    run_lane_worker_agent,
                     args=[worktree_path, task_payload, feedback],
                     start_to_close_timeout=timedelta(hours=2)
                 )
-                
+
+                # 1b. Auto-commit any uncommitted agent work
+                await workflow.execute_activity(
+                    commit_agent_work,
+                    args=[worktree_path, f"feat: agent implementation (attempt {attempt+1})"],
+                    start_to_close_timeout=timedelta(minutes=2)
+                )
+
                 # 2. E2E Tests
                 test_passed = await workflow.execute_activity(
                     run_playwright_e2e_tests, 
