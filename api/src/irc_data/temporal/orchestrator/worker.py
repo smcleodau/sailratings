@@ -10,6 +10,7 @@ from .test_invoke_llm import TestLLMWorkflow
 from .activities import (
     provision_worktree,
     run_lane_worker_agent,
+    commit_agent_work,
     run_reviewer_agent,
     run_sprint_manager_agent,
     run_playwright_e2e_tests,
@@ -43,6 +44,7 @@ async def main():
             activities=[
                 provision_worktree,
                 run_lane_worker_agent,
+                commit_agent_work,
                 run_reviewer_agent,
                 run_sprint_manager_agent,
                 run_playwright_e2e_tests,
