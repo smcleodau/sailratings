@@ -657,3 +657,88 @@ class PublicationQuarantine(Base):
     )
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+
+
+# ---------------------------------------------------------------------------
+# Replay / backfill — isolated batch, comparison, promotion (DP-02-04)
+#
+# replay_batches: one row per replay plan, keyed by plan_id (idempotency).
+# replay_artifacts: one row per parsed artifact within a batch.  Stores
+#   both the new parsed output and the old published output for
+#   comparison.  Separate from the published store — no in-place rewrite.
+# publication_receipts: one row per explicit promotion.  Records the
+#   promoted batch, the old batch (retained), and a receipt_id for audit.
+# ---------------------------------------------------------------------------
+
+
+class ReplayBatch(Base):
+    __tablename__ = "replay_batches"
+    __table_args__ = (
+        UniqueConstraint("plan_id"),
+        Index("ix_replay_batches_plan_id", "plan_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    parser_version: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending"
+    )
+    artifact_filter: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    promoted_by: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class ReplayArtifact(Base):
+    __tablename__ = "replay_artifacts"
+    __table_args__ = (
+        Index("ix_replay_artifacts_batch_id", "batch_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("replay_batches.id"))
+    artifact_url: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(Text)
+    parsed_output: Mapped[dict | None] = mapped_column(JSON)
+    old_parsed_output: Mapped[dict | None] = mapped_column(JSON)
+    parse_status: Mapped[str] = mapped_column(
+        Text, server_default="pending"
+    )
+    parse_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class PublicationReceipt(Base):
+    __tablename__ = "publication_receipts"
+    __table_args__ = (
+        UniqueConstraint("receipt_id"),
+        Index("ix_publication_receipts_batch_id", "batch_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    receipt_id: Mapped[str] = mapped_column(Text, nullable=False)
+    batch_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    plan_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    promoted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    old_batch_id: Mapped[int | None] = mapped_column(Integer)
+    old_retained: Mapped[bool] = mapped_column(server_default="true")
+    artifact_count: Mapped[int] = mapped_column(
+        Integer, server_default="0"
+    )
+    promoted_by: Mapped[str | None] = mapped_column(Text)
+    schema_version: Mapped[str] = mapped_column(
+        Text, server_default="v1"
+    )
