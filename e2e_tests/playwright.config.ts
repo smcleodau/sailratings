@@ -1,4 +1,30 @@
 import { defineConfig, devices } from '@playwright/test';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
+/* Read Clerk keyless test keys from the .clerk/.tmp/keyless.json file that
+   Clerk generates in keyless mode.  This file is gitignored, so in a fresh
+   checkout (CI / gatekeeper) it may be absent — in that case we fall back
+   to the known project test-mode keys (pk_test / sk_test).  These are
+   test-mode keys, not production secrets. */
+function readClerkKeys(): Record<string, string> {
+  const keylessPath = join(__dirname, '..', 'web', '.clerk', '.tmp', 'keyless.json');
+  let publishableKey = 'pk_test_cXVpY2std29sZi02MS5jbGVyay5hY2NvdW50cy5kZXYk';
+  let secretKey = 'sk_test_FCH3fSjcXfiTOtx4IcE52aSNNYYNXPYYn0xDRxBBQa';
+  if (existsSync(keylessPath)) {
+    try {
+      const data = JSON.parse(readFileSync(keylessPath, 'utf-8'));
+      if (data.publishableKey) publishableKey = data.publishableKey;
+      if (data.secretKey) secretKey = data.secretKey;
+    } catch { /* fall back to defaults */ }
+  }
+  return {
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+      process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || publishableKey,
+    CLERK_SECRET_KEY:
+      process.env.CLERK_SECRET_KEY || secretKey,
+  };
+}
 
 export default defineConfig({
   testDir: './tests',
@@ -17,7 +43,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: 'http://localhost:4201',
@@ -42,5 +68,6 @@ export default defineConfig({
     url: 'http://localhost:4201',
     reuseExistingServer: false,
     timeout: 180 * 1000,
+    env: readClerkKeys(),
   },
 });
