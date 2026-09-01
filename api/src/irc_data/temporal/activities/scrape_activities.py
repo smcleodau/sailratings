@@ -81,3 +81,78 @@ async def generate_boat_events() -> str:
 async def scrape_boat_news() -> str:
     """Scrape boat news via Firecrawl and Claude."""
     return run_cli_command(["scrape-news"])
+
+@activity.defn
+async def monitor_source_health() -> str:
+    """Run the source monitor check for all baselined sources.
+
+    Iterates over every row in ``source_baselines`` and re-fetches the
+    canonical URL, comparing the result against the stored fingerprint.
+    Material deviations quarantine publication and open incidents.
+    """
+    import json
+    import httpx
+    from irc_data.db.connection import get_engine
+    from irc_data.diagnostics.source_monitor import (
+        check_source,
+        list_baselines,
+    )
+
+    engine = get_engine()
+    baselines = list_baselines(engine)
+
+    if not baselines:
+        return "no baselines configured"
+
+    results = []
+    headers = {"User-Agent": "SailRatings/1.0 (+https://sailratings.com)"}
+
+    for b in baselines:
+        source_id = b["source_id"]
+        url = b["url"]
+        expected_ct = b.get("content_type") or "text/html"
+
+        content = None
+        fetch_success = True
+        http_status = None
+        content_type = expected_ct
+
+        try:
+            resp = httpx.get(url, headers=headers, timeout=30, follow_redirects=True)
+            http_status = resp.status_code
+            content_type = resp.headers.get("content-type", expected_ct)
+            # Normalise content-type (strip charset etc.).
+            content_type = content_type.split(";")[0].strip()
+            if 200 <= resp.status_code < 300:
+                content = resp.text
+            else:
+                fetch_success = False
+        except Exception:
+            fetch_success = False
+            http_status = None
+
+        event = check_source(
+            engine,
+            source_id,
+            url,
+            content=content,
+            fetch_success=fetch_success,
+            http_status=http_status,
+            content_type=content_type,
+        )
+
+        results.append({
+            "source_id": source_id,
+            "url": url,
+            "status": event.status,
+            "material": event.material,
+            "quarantined": event.quarantined,
+            "incident_id": event.incident_id,
+        })
+
+    material_count = sum(1 for r in results if r["material"])
+    return json.dumps({
+        "checked": len(results),
+        "material_deviations": material_count,
+        "results": results,
+    })

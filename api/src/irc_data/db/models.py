@@ -554,3 +554,106 @@ class BoatEvent(Base):
     )
 
     boat: Mapped["Boat"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Source monitor — change & breakage detection (DP-01-05 / SPEC-012 §6)
+#
+# Baselines store the last-known-good fingerprint per (source_id, url).
+# Health events record the outcome of every comparison check_source() runs.
+# Incidents are opened on material deviations and carry representative
+# artifacts. Publication quarantines block downstream publishing while an
+# incident is open.
+# ---------------------------------------------------------------------------
+
+
+class SourceBaseline(Base):
+    __tablename__ = "source_baselines"
+    __table_args__ = (
+        UniqueConstraint("source_id", "url"),
+        Index("ix_source_baselines_source_id", "source_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    fetch_success: Mapped[bool] = mapped_column(server_default="true")
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    content_type: Mapped[str | None] = mapped_column(Text)
+    content_hash: Mapped[str | None] = mapped_column(Text)
+    structure_signature: Mapped[str | None] = mapped_column(Text)
+    record_count: Mapped[int | None] = mapped_column(Integer)
+    parser_yield: Mapped[int | None] = mapped_column(Integer)
+    content_length: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class SourceIncident(Base):
+    __tablename__ = "source_incidents"
+    __table_args__ = (
+        Index("ix_source_incidents_source_id", "source_id"),
+        Index("ix_source_incidents_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str | None] = mapped_column(Text)
+    incident_type: Mapped[str] = mapped_column(Text, nullable=False)
+    detected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="open")
+    deviations: Mapped[list | None] = mapped_column(JSON)
+    sample_records: Mapped[list | None] = mapped_column(JSON)
+    content_excerpt: Mapped[str | None] = mapped_column(Text)
+    previous_hash: Mapped[str | None] = mapped_column(Text)
+    current_hash: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class SourceHealthEvent(Base):
+    __tablename__ = "source_health_events"
+    __table_args__ = (
+        Index("ix_source_health_events_source_id", "source_id"),
+        Index("ix_source_health_events_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str | None] = mapped_column(Text)
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    material: Mapped[bool] = mapped_column(server_default="false")
+    deviations: Mapped[list | None] = mapped_column(JSON)
+    diff_ratio: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    baseline_hash: Mapped[str | None] = mapped_column(Text)
+    current_hash: Mapped[str | None] = mapped_column(Text)
+    incident_id: Mapped[int | None] = mapped_column(Integer)
+    quarantined: Mapped[bool] = mapped_column(server_default="false")
+    event_payload: Mapped[dict | None] = mapped_column(JSON)
+
+
+class PublicationQuarantine(Base):
+    __tablename__ = "publication_quarantine"
+    __table_args__ = (
+        UniqueConstraint("source_id"),
+        Index("ix_publication_quarantine_source_id", "source_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    incident_id: Mapped[int | None] = mapped_column(Integer)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")

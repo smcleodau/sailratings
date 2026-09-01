@@ -127,3 +127,19 @@ class DailyNewsWorkflow:
         )
 
         return {"status": "completed"}
+
+@workflow.defn
+class SourceHealthWorkflow:
+    @workflow.run
+    async def run(self) -> dict:
+        """Runs the source health monitor (DP-01-05).
+
+        Compares each baselined source's current fetch against its
+        stored fingerprint.  Material deviations quarantine publication
+        and create source incidents.
+        """
+        result = await workflow.execute_activity(
+            scrape_activities.monitor_source_health,
+            start_to_close_timeout=timedelta(minutes=30),
+        )
+        return {"status": "completed", "result": result}
