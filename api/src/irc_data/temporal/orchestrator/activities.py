@@ -123,7 +123,7 @@ async def run_lane_worker_agent(worktree_path: str, task: dict, feedback: str = 
     import asyncio
     
     llm = LLM(
-        model=get_model_hint(MODEL_CODING_FAST),
+        model=f"openai/{get_model_hint(MODEL_CODING_FAST)}",
         api_key=os.environ.get("LITELLM_API_KEY"),
         base_url=os.environ.get("LITELLM_BASE_URL"),
     )
@@ -180,7 +180,7 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
     import asyncio
     
     llm = LLM(
-        model=get_model_hint(MODEL_REVIEW_INDEPENDENT),
+        model=f"openai/{get_model_hint(MODEL_REVIEW_INDEPENDENT)}",
         api_key=os.environ.get("LITELLM_API_KEY"),
         base_url=os.environ.get("LITELLM_BASE_URL"),
     )
@@ -364,7 +364,7 @@ async def run_sprint_manager_agent(task_description: str = "Review the backlog a
     import asyncio
     
     llm = LLM(
-        model=get_model_hint(MODEL_CODING_DEEP),
+        model=f"openai/{get_model_hint(MODEL_CODING_DEEP)}",
         api_key=os.environ.get("LITELLM_API_KEY"),
         base_url=os.environ.get("LITELLM_BASE_URL"),
     )
