@@ -882,7 +882,7 @@ class TestRawArtifactV1:
         fetch_result = await fetch_html("https://example.com/page", client=client)
         artifact = RawArtifactV1.from_fetch_result(fetch_result, source_slug="sailsys", content_type="text/html")
         assert isinstance(artifact, RawArtifactV1)
-        assert artifact.url == fetch_result.url
+        assert artifact.requested_uri == fetch_result.url
         assert artifact.source_slug == "sailsys"
         assert artifact.content_type == "text/html"
         assert artifact.content_hash == fetch_result.content_hash
@@ -897,7 +897,7 @@ class TestRawArtifactV1:
         fetch_result = await fetch_html("https://example.com/page", client=client)
         artifact = RawArtifactV1.from_fetch_result(fetch_result, source_slug="sailsys", content_type="text/html")
         d = artifact.to_dict()
-        assert d["url"] == fetch_result.url
+        assert d["requested_uri"] == fetch_result.url
         assert d["source_slug"] == "sailsys"
         assert d["content_type"] == "text/html"
         assert d["content_hash"] == fetch_result.content_hash
