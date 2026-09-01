@@ -3,17 +3,9 @@
 This package implements:
 
 * **DP-01-02** — the responsible-collection policy and enforcement gate.
-  Every byte the platform collects must pass through the
-  ``CollectionGate`` which asserts an approved policy version, a valid
-  source record, robots.txt compliance, rate limits, and
-  collection-window rules.
-
-* **DP-01-03** — the reusable source adapter SDK.  Adapters inherit
-  from :class:`SourceAdapter`, discover URLs, fetch them with rate-
-  limiting / retry / conditional requests / content hashing, and emit
-  raw :class:`RawCaptureRequestV1` envelopes.  The
-  :class:`AdapterCheckpointV1` contract enables interrupted runs to
-  resume.
+* **DP-01-03** — the reusable source adapter SDK.
+* **DP-01-04** — acquisition primitives (DataSourceRecordV1, ORM DataSource,
+  can_collect, can_discover, resolve_and_assert_approved).
 
 Public API::
 
@@ -50,10 +42,17 @@ Public API::
         DiscoveredItem,
         HealthProbeResult,
         ParseHint,
-        # Registry
+        # Registry (DP-01-03 + DP-01-04)
         get_source,
         get_all_sources,
         seed_sources,
+        # Acquisition primitives (DP-01-04)
+        DataSourceRecordV1,
+        DataSource,
+        can_collect,
+        can_discover,
+        resolve_and_assert_approved,
+        list_sources,
         # Fake adapter (testing)
         FakeHttpServer,
         FakeSourceAdapter,
@@ -115,7 +114,21 @@ from irc_data.sources.registry import (
     all_sources,
     approved_sources,
     register_source,
+    # DP-01-04 acquisition primitives
+    assert_approved,
+    can_collect,
+    can_discover,
+    list_sources,
+    resolve_and_assert_approved,
+    DataSource,
+    LEGAL_STATUSES,
+    SEED_COUNT,
+    HOLD_SOURCES,
 )
+
+# DP-01-04 — Pydantic schema
+from irc_data.sources.models import DataSourceRecordV1
+
 from irc_data.sources.fake_adapter import (
     FakeHttpServer,
     FakeSourceAdapter,
@@ -172,6 +185,18 @@ __all__ = [
     "StubSourceAdapter",
     "make_fake_adapter",
     "make_fake_server",
+    # DP-01-04 acquisition primitives
+    "DataSourceRecordV1",
+    "DataSource",
+    "LEGAL_STATUSES",
+    "assert_approved",
+    "can_collect",
+    "can_discover",
+    "list_sources",
+    "resolve_and_assert_approved",
+    # Seed constants
+    "SEED_COUNT",
+    "HOLD_SOURCES",
     # Backward-compat
     "Checkpoint",
     "PolicyAwareHttpClient",
