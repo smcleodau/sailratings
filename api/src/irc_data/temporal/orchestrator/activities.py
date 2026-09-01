@@ -7,6 +7,16 @@ from datetime import timedelta
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from .llm_client import (
+    get_async_client,
+    get_model_hint,
+    build_metadata,
+    LLMTelemetry,
+    MODEL_CODING_FAST,
+    MODEL_CODING_DEEP,
+    MODEL_REVIEW_INDEPENDENT,
+)
+
 @activity.defn
 async def provision_worktree(task: dict) -> str:
     # Extract task id and branch name
@@ -113,9 +123,9 @@ async def run_lane_worker_agent(worktree_path: str, task: dict, feedback: str = 
     import asyncio
     
     llm = LLM(
-        model=os.environ.get("LLM_MODEL", "openai/glm-5.2"),
-        api_key=os.environ.get("LLM_API_KEY", os.environ.get("GEMINI_API_KEY", "dummy")),
-        base_url=os.environ.get("LLM_BASE_URL", "http://100.93.15.38:10006/api/worker-router")
+        model=get_model_hint(MODEL_CODING_FAST),
+        api_key=os.environ.get("LITELLM_API_KEY"),
+        base_url=os.environ.get("LITELLM_BASE_URL"),
     )
     workspace = LocalWorkspace(working_dir=worktree_path)
 
@@ -170,9 +180,9 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
     import asyncio
     
     llm = LLM(
-        model=os.environ.get("LLM_MODEL", "openai/glm-5.2"),
-        api_key=os.environ.get("LLM_API_KEY", os.environ.get("GEMINI_API_KEY", "dummy")),
-        base_url=os.environ.get("LLM_BASE_URL", "http://100.93.15.38:10006/api/worker-router")
+        model=get_model_hint(MODEL_REVIEW_INDEPENDENT),
+        api_key=os.environ.get("LITELLM_API_KEY"),
+        base_url=os.environ.get("LITELLM_BASE_URL"),
     )
     workspace = LocalWorkspace(working_dir=worktree_path)
 
@@ -354,9 +364,9 @@ async def run_sprint_manager_agent(task_description: str = "Review the backlog a
     import asyncio
     
     llm = LLM(
-        model="openai/glm-5.2", 
-        api_key=os.environ.get("GEMINI_API_KEY", "dummy"),
-        base_url="http://100.93.15.38:10006/api/worker-router"
+        model=get_model_hint(MODEL_CODING_DEEP),
+        api_key=os.environ.get("LITELLM_API_KEY"),
+        base_url=os.environ.get("LITELLM_BASE_URL"),
     )
     workspace = LocalWorkspace(working_dir=repo_path)
     
@@ -390,35 +400,42 @@ async def run_sprint_manager_agent(task_description: str = "Review the backlog a
 
 @activity.defn
 async def invoke_llm(system_prompt: str, chat_history: list) -> str:
-    from openai import AsyncOpenAI
-    import os
-    
-    internal_key = (
-        os.environ.get("MARTHA_ROUTER_SERVICE_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-        or os.environ.get("GEMINI_API_KEY")
-        or "dummy"
-    )
-    client = AsyncOpenAI(
-        api_key=internal_key,
-        base_url="http://100.93.15.38:10006/api/worker-router"
-    )
-    
+    ctx = activity.info()
+    model = get_model_hint(MODEL_CODING_FAST)
+    client = get_async_client()
+
     messages = [{"role": "system", "content": system_prompt}]
     for msg in chat_history:
         messages.append({"role": msg["role"], "content": msg["content"]})
-        
-    try:
-        response = await client.chat.completions.create(
-            model="openai/glm-5.2",
-            messages=messages,
-            temperature=0.7
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        import traceback
-        activity.logger.error(f"LLM Error: {traceback.format_exc()}")
-        return f"Error connecting to LLM: {str(e)}"
+
+    meta = build_metadata(
+        role="sprint-manager",
+        lane="conversation",
+        workflow_id=ctx.workflow_id,
+        run_id=ctx.workflow_run_id,
+        attempt=ctx.attempt,
+        model_hint=model,
+    )
+
+    with LLMTelemetry(role="sprint-manager", model=model) as tel:
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.7,
+                extra_body={"metadata": meta},
+            )
+            usage = response.usage or type("U", (), {"prompt_tokens": 0, "completion_tokens": 0})()
+            tel.record_response(
+                prompt_tokens=getattr(usage, "prompt_tokens", 0),
+                completion_tokens=getattr(usage, "completion_tokens", 0),
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            import traceback
+            tel.record_response(error=str(e))
+            activity.logger.error(f"LLM Error: {traceback.format_exc()}")
+            return f"Error connecting to LLM: {str(e)}"
 
 @activity.defn
 async def fetch_board_state() -> str:
