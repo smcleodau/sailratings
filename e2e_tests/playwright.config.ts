@@ -1,4 +1,33 @@
 import { defineConfig, devices } from '@playwright/test';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
+const WEB_PORT = process.env.TEST_WEB_PORT || '4201';
+const SKIP_WEBSERVER = process.env.SKIP_WEBSERVER === '1';
+
+/* Read Clerk keyless test keys from the .clerk/.tmp/keyless.json file that
+   Clerk generates in keyless mode.  This file is gitignored, so in a fresh
+   checkout (CI / gatekeeper) it may be absent — in that case we fall back
+   to the known keyless test keys.  These are test-mode (pk_test / sk_test)
+   keys, not production secrets. */
+function readClerkKeys(): Record<string, string> {
+  const keylessPath = join(__dirname, '..', 'web', '.clerk', '.tmp', 'keyless.json');
+  let publishableKey = 'pk_test_c3RpbGwtbGFiLTc2MTMuY2xlcmsuYWNjb3VudHMuZGV2JA';
+  let secretKey = 'sk_test_ChV79648f0cXVsGgrLoWjLSxZHaUOXvynM1UdCSse0';
+  if (existsSync(keylessPath)) {
+    try {
+      const data = JSON.parse(readFileSync(keylessPath, 'utf-8'));
+      if (data.publishableKey) publishableKey = data.publishableKey;
+      if (data.secretKey) secretKey = data.secretKey;
+    } catch { /* fall back to defaults */ }
+  }
+  return {
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+      process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || publishableKey,
+    CLERK_SECRET_KEY:
+      process.env.CLERK_SECRET_KEY || secretKey,
+  };
+}
 
 export default defineConfig({
   testDir: './tests',
@@ -16,11 +45,11 @@ export default defineConfig({
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+  reporter: 'list',
+  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:4201',
+    baseURL: `http://localhost:${WEB_PORT}`,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -37,17 +66,16 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
-  webServer: {
-<<<<<<< HEAD
-    command: 'cd ../web && PORT=4201 npm run dev',
-    url: 'http://localhost:4201',
-    reuseExistingServer: false,
-    timeout: 180 * 1000,
-=======
-    command: 'cd ../web && npm run dev',
-    url: 'http://localhost:4200',
-    reuseExistingServer: true,
-    timeout: 120 * 1000,
->>>>>>> feature/3ac37ffe-f467-808c-a617-c73e1ceb633c
-  },
+  ...(SKIP_WEBSERVER ? {} : {
+    webServer: {
+      command: `cd ../web && PORT=${WEB_PORT} npm run dev`,
+      /* Check the sources-policy route specifically — Turbopack compiles
+         routes on first request, so checking the root URL alone is not
+         enough to guarantee /sources-policy is ready. */
+      url: `http://localhost:${WEB_PORT}/sources-policy`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 180 * 1000,
+      env: readClerkKeys(),
+    },
+  }),
 });
