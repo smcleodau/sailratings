@@ -290,27 +290,85 @@ class FetchResult:
 
 @dataclass
 class RawArtifactV1:
-    """The persisted artifact contract (version 1).
+    """The persisted artifact contract (version 1) — DP-02-01.
 
     Adapters produce ``FetchResult`` objects which are normalised into
     ``RawArtifactV1`` before storage.  This is the *only* shape that
     downstream consumers (parsers, normalisation pipelines) should
     accept.
+
+    Raw objects are **content-addressed and immutable**.  The raw bytes
+    live at ``object_location`` — a content-addressed path derived from
+    ``content_hash``.  The ``content`` field is kept for convenience
+    (in-process passing) but is **not** persisted to the database; the
+    canonical bytes are always read back from ``object_location`` and
+    verified against ``content_hash``.
+
+    Duplicate captures of the same bytes reference the same underlying
+    raw object while retaining their own :class:`ProvenanceRefV1`
+    retrieval events (different ``fetched_at``, ``requested_uri``,
+    etc.).
+
+    Envelope fields (SPEC-013 / DP-02-01):
+
+    * **source** (``source_slug``) — the governed source the content
+      was collected from.
+    * **requested URI** (``requested_uri``) — the URL the adapter
+      asked for.
+    * **resolved URI** (``resolved_uri``) — the final URL after
+      redirects / normalisation.
+    * **retrieval time** (``fetched_at``) — ISO-8601 timestamp.
+    * **policy version** (``policy_version``) — the collection policy
+      version.
+    * **headers subset** (``headers_subset``) — a curated subset of
+      response headers (ETag, Last-Modified, Content-Type, …).
+    * **status** (``status_code``) — HTTP status code.
+    * **content hash** (``content_hash``) — SHA-256 hex digest of
+      the raw bytes.
+    * **object location** (``object_location``) — content-addressed
+      path to the immutable blob.
+    * **adapter version** (``adapter_version``) — version of the
+      adapter that produced this artifact.
+    * **lineage** (``lineage``) — list of upstream artifact hashes
+      this artifact was derived from (empty for a fresh fetch).
     """
 
-    url: str
-    source_slug: str
-    content_type: str
-    content_hash: str
-    fetched_at: str
-    policy_version: str
-    content: bytes = b""
-    etag: str | None = None
-    last_modified: str | None = None
+    # -- Required identity fields -------------------------------------------
+    content_hash: str          # SHA-256 hex — the content address
+    source_slug: str           # governed source (e.g. "sailsys")
+    fetched_at: str            # ISO-8601 retrieval timestamp
+    policy_version: str        # collection policy version
+
+    # -- URIs ---------------------------------------------------------------
+    requested_uri: str = ""   # URL the adapter asked for
+    resolved_uri: str = ""    # final URL after redirects
+
+    # -- Content addressing -------------------------------------------------
+    object_location: str = "" # content-addressed blob path
+    byte_size: int = 0        # size of the raw bytes
+    content_type: str = ""    # Content-Type header value
+
+    # -- Provenance ---------------------------------------------------------
+    adapter_version: str = ""       # version of the producing adapter
+    headers_subset: dict[str, str] = field(default_factory=dict)
+    lineage: list[str] = field(default_factory=list)  # upstream content_hash list
+
+    # -- HTTP / conditional request metadata -------------------------------
     status_code: int = 200
     not_modified: bool = False
+    etag: str | None = None
+    last_modified: str | None = None
+
+    # -- In-process convenience (NOT persisted to DB) -----------------------
+    content: bytes = b""  # raw bytes — for in-process passing only
     screenshot_path: str | None = None
+
+    # -- Schema versioning -------------------------------------------------
     schema_version: str = "1"
+
+    # ------------------------------------------------------------------
+    # Constructors
+    # ------------------------------------------------------------------
 
     @classmethod
     def from_fetch_result(
@@ -318,36 +376,105 @@ class RawArtifactV1:
         fetch_result: FetchResult,
         source_slug: str,
         content_type: str,
+        adapter_version: str = "",
+        object_location: str = "",
+        lineage: list[str] | None = None,
+        headers_subset: dict[str, str] | None = None,
     ) -> RawArtifactV1:
-        """Build a ``RawArtifactV1`` from a ``FetchResult``."""
+        """Build a ``RawArtifactV1`` from a :class:`FetchResult`.
+
+        Parameters
+        ----------
+        fetch_result
+            The low-level HTTP fetch result.
+        source_slug
+            The governed source slug.
+        content_type
+            The Content-Type header value.
+        adapter_version
+            Version string of the adapter that produced this artifact.
+        object_location
+            Content-addressed path where the raw bytes are stored.
+            If empty, the caller should set it after persisting to the
+            :class:`~irc_data.sources.provenance.RawObjectStore`.
+        lineage
+            List of upstream artifact hashes this artifact was derived
+            from.
+        headers_subset
+            A curated subset of response headers.
+        """
         return cls(
-            url=fetch_result.url,
-            source_slug=source_slug,
-            content_type=content_type,
-            content=fetch_result.content,
             content_hash=fetch_result.content_hash,
+            source_slug=source_slug,
             fetched_at=fetch_result.fetched_at,
             policy_version=fetch_result.policy_version,
-            etag=fetch_result.etag,
-            last_modified=fetch_result.last_modified,
+            requested_uri=fetch_result.url,
+            resolved_uri=fetch_result.url,
+            object_location=object_location,
+            byte_size=len(fetch_result.content),
+            content_type=content_type,
+            adapter_version=adapter_version,
+            headers_subset=headers_subset or {},
+            lineage=lineage or [],
             status_code=fetch_result.status_code,
             not_modified=fetch_result.not_modified,
+            etag=fetch_result.etag,
+            last_modified=fetch_result.last_modified,
+            content=fetch_result.content,
             screenshot_path=fetch_result.screenshot_path,
         )
+
+    # ------------------------------------------------------------------
+    # Provenance projection
+    # ------------------------------------------------------------------
+
+    def to_provenance_ref(self) -> Any:
+        """Return a :class:`ProvenanceRefV1` view of this artifact.
+
+        The provenance ref carries the *envelope* metadata without the
+        raw bytes — it is the handoff contract for downstream consumers
+        that need to know *where* the evidence is and *how* it was
+        obtained, but do not need the bytes inline.
+        """
+        from irc_data.sources.provenance import ProvenanceRefV1
+
+        return ProvenanceRefV1(
+            content_hash=self.content_hash,
+            source=self.source_slug,
+            requested_uri=self.requested_uri,
+            resolved_uri=self.resolved_uri,
+            retrieved_at=self.fetched_at,
+            policy_version=self.policy_version,
+            headers_subset=dict(self.headers_subset),
+            status=self.status_code,
+            object_location=self.object_location,
+            adapter_version=self.adapter_version,
+            lineage=list(self.lineage),
+        )
+
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a plain dict (excluding raw ``content`` bytes)."""
         return {
             "schema_version": self.schema_version,
-            "url": self.url,
-            "source_slug": self.source_slug,
-            "content_type": self.content_type,
             "content_hash": self.content_hash,
+            "source_slug": self.source_slug,
             "fetched_at": self.fetched_at,
             "policy_version": self.policy_version,
-            "etag": self.etag,
-            "last_modified": self.last_modified,
+            "requested_uri": self.requested_uri,
+            "resolved_uri": self.resolved_uri,
+            "object_location": self.object_location,
+            "byte_size": self.byte_size,
+            "content_type": self.content_type,
+            "adapter_version": self.adapter_version,
+            "headers_subset": dict(self.headers_subset),
+            "lineage": list(self.lineage),
             "status_code": self.status_code,
             "not_modified": self.not_modified,
+            "etag": self.etag,
+            "last_modified": self.last_modified,
             "screenshot_path": self.screenshot_path,
         }
