@@ -221,6 +221,12 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
         "fuser -k 4201/tcp 2>/dev/null; true",
         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
     )
+    # Remove any stale node_modules symlink in web dir — Turbopack rejects symlinks
+    # pointing outside the project root, which agents sometimes create to speed up installs
+    await asyncio.create_subprocess_shell(
+        f'[ -L "{web_dir}/node_modules" ] && rm "{web_dir}/node_modules" || true',
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+    )
     env = os.environ.copy()
     env["TEST_WEB_PORT"] = "4201"
     env["CI"] = "true"
@@ -256,6 +262,12 @@ async def create_pull_request(worktree_path: str) -> None:
         raise ApplicationError(f"Could not determine branch name in {worktree_path}")
 
     activity.logger.info(f"Merging {branch} into develop")
+
+    # Ensure we are on develop before merging (main repo HEAD may be on a feature branch)
+    await asyncio.create_subprocess_shell(
+        f'git -C "{repo_path}" checkout develop',
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
 
     # Merge into develop in the main repo
     merge_cmd = (
