@@ -342,6 +342,105 @@ def scrape_certs(ctx, search, all_targets, exhaustive):
     console.print(f"[green]Downloaded {len(downloaded)} certificate PDFs.[/green]")
 
 
+@scrape.command(name="pdf-certs")
+@click.option(
+    "--max-fetches",
+    type=int,
+    default=5000,
+    help="Maximum total HTTP requests per run (default 5,000)",
+)
+@click.option(
+    "--no-window",
+    is_flag=True,
+    help="Skip the nightly collection-window check (useful for manual runs)",
+)
+@click.option(
+    "--no-kill-switch",
+    is_flag=True,
+    help="Skip the per-source kill-switch check",
+)
+@click.option(
+    "--store-path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Override the raw object store path (default: data/raw/irc_pdfs)",
+)
+@click.pass_context
+def scrape_pdf_certs(ctx, max_fetches, no_window, no_kill_switch, store_path):
+    """Raw-capture IRC certificate PDFs from ircrating.org (DP-00-05).
+
+    Enumerates all known cert numbers from the platform DB, fetches each
+    certificate PDF via the public search widget, and stores raw bytes in the
+    content-addressed raw object store under data/raw/irc_pdfs/.
+
+    Policy: interim-v0. Polite: 1 req/2s, nightly window 01:00-06:00 UK,
+    max 5,000 fetches/night.
+    """
+    import json as _json
+
+    from irc_data.scrapers.irc_pdf import (
+        enumerate_cert_nos_from_db,
+        enumerate_cert_nos_from_tcc_dir,
+        get_default_store,
+        scrape_irc_pdfs,
+        RawObjectStore,
+    )
+    from irc_data.config import TCC_LISTINGS_DIR
+
+    engine = ctx.obj.get("engine")
+
+    # Resolve store
+    if store_path:
+        store = RawObjectStore(str(store_path))
+    else:
+        store = get_default_store()
+
+    console.print(f"[bold]IRC PDF Capture (DP-00-05)[/bold]")
+    console.print(f"  Store: {store.root}")
+
+    # Enumerate cert numbers
+    cert_nos = []
+    if engine is not None:
+        try:
+            cert_nos = enumerate_cert_nos_from_db(engine)
+            console.print(f"  Cert numbers from DB: {len(cert_nos):,}")
+        except Exception as exc:
+            console.print(f"[yellow]DB enumeration failed ({exc}), trying TCC dir[/yellow]")
+
+    if not cert_nos:
+        cert_nos = enumerate_cert_nos_from_tcc_dir(TCC_LISTINGS_DIR)
+        console.print(f"  Cert numbers from TCC dir: {len(cert_nos):,}")
+
+    if not cert_nos:
+        console.print("[red]No cert numbers found. Run 'irc-data scrape tcc' first.[/red]")
+        return
+
+    console.print(f"  Max fetches: {max_fetches:,}")
+    console.print(f"  Window enforcement: {'off' if no_window else 'on'}")
+
+    ledger = scrape_irc_pdfs(
+        cert_nos=cert_nos,
+        store=store,
+        max_fetches=max_fetches,
+        enforce_window=not no_window,
+        check_kill_switch=not no_kill_switch and engine is not None,
+        db_engine=engine if not no_kill_switch else None,
+    )
+
+    console.print(f"\n[bold]Run complete:[/bold]")
+    console.print(f"  Status:    {ledger.status}")
+    console.print(f"  Found:     {ledger.certs_found:,}")
+    console.print(f"  New:       {ledger.certs_new:,}")
+    console.print(f"  Unchanged: {ledger.certs_unchanged:,}")
+    console.print(f"  Fetches:   {ledger.fetch_count:,}")
+    console.print(f"  Errors:    {len(ledger.errors):,}")
+
+    if ledger.errors:
+        console.print("\n[yellow]Recent errors:[/yellow]")
+        for err in ledger.errors[:5]:
+            console.print(f"  cert {err['cert_no']}: {err['message']}")
+
+
 @scrape.command(name="wayback")
 @click.option("--boat", help="Filter by sail number")
 @click.pass_context
