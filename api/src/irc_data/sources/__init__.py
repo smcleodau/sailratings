@@ -6,6 +6,8 @@ This package implements:
 * **DP-01-03** — the reusable source adapter SDK.
 * **DP-01-04** — acquisition primitives (DataSourceRecordV1, ORM DataSource,
   can_collect, can_discover, resolve_and_assert_approved).
+* **DP-01-05** — source change/breakage detection (classify_source,
+  resolve_source, CollectionRules, SourceDecisionV1).
 
 Public API::
 
@@ -24,6 +26,22 @@ Public API::
         SourceRecord,
         RobotsRules,
         parse_robots_txt,
+        # DP-01-05 policy additions
+        POLICY_APPROVED_DATE,
+        POLICY_AUTHORITY,
+        POLICY_AUTHORITY_EMAIL,
+        POLICY_USER_AGENT,
+        ContentType,
+        CollectionRules,
+        SourceDecisionV1,
+        CollectionWindowClosedError,
+        classify_source,
+        get_policy_summary,
+        resolve_source,
+        is_within_collection_window,
+        is_path_allowed,
+        is_path_disallowed,
+        is_current_policy_version,
         # Envelopes (DP-01-03)
         RawCaptureRequestV1,
         AdapterCheckpointV1,
@@ -74,6 +92,22 @@ from irc_data.sources.policy import (
     assert_policy_current,
     assert_source_approved,
     assert_source_collectable,
+    # DP-01-05 additions
+    POLICY_APPROVED_DATE,
+    POLICY_AUTHORITY,
+    POLICY_AUTHORITY_EMAIL,
+    POLICY_USER_AGENT,
+    ContentType,
+    CollectionRules,
+    SourceDecisionV1,
+    CollectionWindowClosedError,
+    classify_source,
+    get_policy_summary,
+    resolve_source,
+    is_within_collection_window,
+    is_path_allowed,
+    is_path_disallowed,
+    is_current_policy_version,
 )
 from irc_data.sources.gate import CollectionGate, GateDecision, SourceRecord
 from irc_data.sources.robots import RobotsRules, parse_robots_txt
@@ -155,6 +189,22 @@ __all__ = [
     "SourceRecord",
     "RobotsRules",
     "parse_robots_txt",
+    # DP-01-05 policy additions
+    "POLICY_APPROVED_DATE",
+    "POLICY_AUTHORITY",
+    "POLICY_AUTHORITY_EMAIL",
+    "POLICY_USER_AGENT",
+    "ContentType",
+    "CollectionRules",
+    "SourceDecisionV1",
+    "CollectionWindowClosedError",
+    "classify_source",
+    "get_policy_summary",
+    "resolve_source",
+    "is_within_collection_window",
+    "is_path_allowed",
+    "is_path_disallowed",
+    "is_current_policy_version",
     # DP-01-03 envelopes
     "RawCaptureRequestV1",
     "AdapterCheckpointV1",

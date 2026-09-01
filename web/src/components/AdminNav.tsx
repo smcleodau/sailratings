@@ -28,6 +28,11 @@ const SECTIONS = [
     match: (p: string) => p.startsWith("/admin/scrapers"),
   },
   {
+    href: "/sources-policy",
+    label: "Sources",
+    match: (p: string) => p.startsWith("/sources-policy"),
+  },
+  {
     href: "/admin/discovery",
     label: "Discovery",
     match: (p: string) => p.startsWith("/admin/discovery"),

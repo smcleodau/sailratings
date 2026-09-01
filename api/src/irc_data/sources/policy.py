@@ -1,17 +1,19 @@
 """Responsible collection policy and source classification (DP-01-02).
 
-This module defines ``CollectionPolicyDecisionV1`` — the handoff / output
-contract for DP-01-02.  It encodes:
+This module defines:
 
-* Source classification: **public**, **authenticated**, **licensed**,
-  **prohibited**, and **unclear**.
-* Enforcement rules: robots.txt, rate limiting, attribution, takedown,
-  personal-data, and retention.
-* Policy versioning — the adapter SDK cannot run without an approved policy
-  version.
+* ``CollectionPolicyDecisionV1`` — the global responsible-collection policy
+  config (rule blocks for robots, rate limiting, attribution, takedown,
+  personal-data, and retention).
+* ``SourceDecisionV1`` — per-source output contract (DP-01-05 addition);
+  produced by ``resolve_source()`` when a source passes all gates.
+* ``CollectionRules`` — per-source enforcement rules (DP-01-05 addition).
+* ``ContentType`` — dominant content type enum (DP-01-05 addition).
+* Emergency disable helpers, collection window checks, and policy summary.
 
-The policy is a pure-Python data structure so it can be unit-tested without
-a database.  The companion ``gate`` module applies it at runtime.
+Policy versioning — the adapter SDK cannot run without an approved policy
+version.  Policy text: ``docs/INTERIM-POLICY.md`` (interim-v0).
+Spec: SPEC-012 §3.
 
 Backward-compatibility helpers ``assert_policy_current``,
 ``assert_source_approved``, and ``assert_source_collectable`` are retained
@@ -22,15 +24,30 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from datetime import date
-from typing import Sequence
+from datetime import date, datetime, timezone
+from typing import Any, Sequence
 
 
 # ---------------------------------------------------------------------------
-# Policy version
+# Policy constants
 # ---------------------------------------------------------------------------
 
 CURRENT_POLICY_VERSION = "interim-v0"
+"""The policy version that every active ``data_sources`` row must reference."""
+
+POLICY_APPROVED_DATE = "2026-08-30"
+"""Human-readable approval date of the current policy."""
+
+POLICY_AUTHORITY = "Stuart McLeod"
+"""The human authority who approved the interim policy."""
+
+POLICY_AUTHORITY_EMAIL = "stuart@sailratings.com"
+"""Contact address for takedown / complaint requests."""
+
+POLICY_USER_AGENT = (
+    "SailRatings/1.0 (+https://sailratings.com; contact=stuart@sailratings.com)"
+)
+"""The User-Agent string that every HTTP request from this platform must send."""
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +90,16 @@ class SourceClass(str, enum.Enum):
     UNCLEAR = "unclear"
 
 
+class ContentType(str, enum.Enum):
+    """The dominant content type a source serves."""
+
+    HTML = "html"
+    API = "api"
+    PDF = "pdf"
+    FILE = "file"
+    FEED = "feed"
+
+
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
@@ -81,17 +108,20 @@ class SourceClass(str, enum.Enum):
 class PolicyVersionMismatchError(Exception):
     """Raised when a source references a policy version ≠ CURRENT_POLICY_VERSION."""
 
-    def __init__(self, slug: str, source_version: str | None = None, message: str | None = None):
+    def __init__(self, slug: str, source_version: str | None = None, message: str | None = None, current_version: str | None = None):
         self.slug = slug
         self.source_version = source_version
+        self.current_version = current_version or CURRENT_POLICY_VERSION
         if message:
             super().__init__(message)
-        else:
+        elif source_version is not None:
             super().__init__(
                 f"Source '{slug}' references policy_version='{source_version}', "
-                f"current is '{CURRENT_POLICY_VERSION}'. "
+                f"current is '{self.current_version}'. "
                 f"Update the source record or the policy."
             )
+        else:
+            super().__init__(f"Source '{slug}' has stale policy version")
 
 
 class SourceNotApprovedError(Exception):
@@ -118,8 +148,46 @@ class ProhibitedCollectionError(Exception):
         super().__init__(msg)
 
 
+class CollectionWindowClosedError(Exception):
+    """Raised when collection is attempted outside the permitted window."""
+
+    def __init__(self, slug: str, detail: str = ""):
+        self.slug = slug
+        self.detail = detail
+        msg = f"Collection window closed for '{slug}'"
+        if detail:
+            msg += f": {detail}"
+        super().__init__(msg)
+
+
 # ---------------------------------------------------------------------------
-# Policy rule blocks
+# CollectionRules — per-source enforcement rules (DP-01-05)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CollectionRules:
+    """Per-source enforcement rules derived from the policy."""
+
+    respect_robots: bool = True
+    rate_limit_seconds: float = 2.0
+    rate_jitter_seconds: float = 1.0
+    collection_window_start: int = 1  # 01:00 local
+    collection_window_end: int = 6   # 06:00 local
+    use_conditional_requests: bool = True
+    max_object_size_mb: int = 25
+    max_fetches_per_night: int = 5_000
+    max_total_mb_per_night: int = 500
+    user_agent: str = POLICY_USER_AGENT
+    attribution_header: str | None = None
+    no_auth_circumvention: bool = True
+    no_personal_data: bool = True
+    retention_days: int | None = None
+    takedown_contact: str = POLICY_AUTHORITY_EMAIL
+
+
+# ---------------------------------------------------------------------------
+# Policy rule blocks (DP-01-02/03)
 # ---------------------------------------------------------------------------
 
 
@@ -148,9 +216,7 @@ class RateRule:
 class AttributionRule:
     """How to identify ourselves and attribute collection."""
 
-    user_agent: str = (
-        "SailRatings/1.0 (+https://sailratings.com; contact=stuart@sailratings.com)"
-    )
+    user_agent: str = POLICY_USER_AGENT
     attribution_header: str = "X-SailRatings-Source"
     require_source_header: bool = True
 
@@ -165,7 +231,7 @@ class TakedownRule:
     quarantine_path: str = "data/raw/quarantine"
     derived_review_hours: int = 48
     incident_type: str = "takedown_request"
-    contact: str = "stuart@sailratings.com"
+    contact: str = POLICY_AUTHORITY_EMAIL
 
 
 @dataclass(frozen=True)
@@ -237,7 +303,7 @@ class SourceClassification:
 
 
 # ---------------------------------------------------------------------------
-# The deliverable: CollectionPolicyDecisionV1
+# CollectionPolicyDecisionV1 — global policy config (DP-01-02/03)
 # ---------------------------------------------------------------------------
 
 
@@ -245,16 +311,18 @@ class SourceClassification:
 class CollectionPolicyDecisionV1:
     """DP-01-02 deliverable — the responsible-collection policy decision.
 
-    This is the **handoff / output contract** for DP-01-02.  It bundles every
-    rule block and provides helper methods for evaluating sources.
-
-    The policy is immutable (frozen=True) so it can be safely shared across
+    This is the **global policy config** bundled with every rule block.
+    It is immutable (frozen=True) so it can be safely shared across
     threads and workflows without accidental mutation.
+
+    Note: DP-01-05 defines a per-source ``SourceDecisionV1`` (alias
+    ``CollectionPolicyDecisionV1`` in that branch) for the output of
+    ``resolve_source()``.  Both exist in this merged module.
     """
 
     version: str = CURRENT_POLICY_VERSION
     approved_on: date = field(default_factory=lambda: date(2026, 8, 30))
-    authority: str = "Stuart McLeod, SailRatings founder"
+    authority: str = POLICY_AUTHORITY
 
     robots: RobotsRule = field(default_factory=RobotsRule)
     rate: RateRule = field(default_factory=RateRule)
@@ -266,11 +334,8 @@ class CollectionPolicyDecisionV1:
 
     # --- classification table -------------------------------------------
 
-    #: Mapping of source slug → SourceClass for all interim-v0 sources.
-    #: This is the canonical classification table shipped with the policy.
     source_classes: dict[str, SourceClass] = field(
         default_factory=lambda: {
-            # Public results / ratings — freely published
             "sailsys": SourceClass.PUBLIC,
             "topyacht": SourceClass.PUBLIC,
             "irc-tcc": SourceClass.PUBLIC,
@@ -279,15 +344,12 @@ class CollectionPolicyDecisionV1:
             "manage2sail": SourceClass.PUBLIC,
             "sailwave": SourceClass.PUBLIC,
             "sailing-news": SourceClass.PUBLIC,
-            # Certificates — publicly accessible PDFs
             "irc-certs": SourceClass.PUBLIC,
-            # Hold sources — unclear rights
             "clubspot": SourceClass.UNCLEAR,
             "kwindoo": SourceClass.UNCLEAR,
         }
     )
 
-    #: Legal status per slug (mirrors the data_sources seed rows).
     legal_statuses: dict[str, LegalStatus] = field(
         default_factory=lambda: {
             "sailsys": LegalStatus.APPROVED,
@@ -304,26 +366,16 @@ class CollectionPolicyDecisionV1:
         }
     )
 
-    #: Domains where login walls / auth are encountered and require explicit
-    #: authorisation before any collection.
     authenticated_domains: tuple[str, ...] = (
-        "app.sailsys.com.au",  # auth-gated admin areas (public results are open)
+        "app.sailsys.com.au",
     )
 
-    #: Domains explicitly prohibited (robots disallow + ToS).
     prohibited_domains: tuple[str, ...] = ()
 
     # --- evaluation helpers ----------------------------------------------
 
     def classify(self, slug: str | None, domain: str | None = None) -> SourceClassification:
-        """Classify a source (and optionally a domain) for collection.
-
-        Resolution order:
-        1. If *domain* is in ``prohibited_domains`` → prohibited.
-        2. If *domain* is in ``authenticated_domains`` → authenticated.
-        3. If *slug* has a known classification → use it.
-        4. Otherwise → unclear (defer to human review).
-        """
+        """Classify a source (and optionally a domain) for collection."""
         if domain:
             domain_lower = domain.lower()
             for d in self.prohibited_domains:
@@ -406,6 +458,66 @@ class CollectionPolicyDecisionV1:
 
 
 # ---------------------------------------------------------------------------
+# SourceDecisionV1 — per-source output contract (DP-01-05)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SourceDecisionV1:
+    """Per-source output contract produced by ``resolve_source()``.
+
+    This is the DP-01-05 deliverable: when a source passes all policy gates,
+    ``resolve_source()`` returns a ``SourceDecisionV1`` with ``allowed=True``
+    and the enforcement rules the adapter must follow.
+    """
+
+    slug: str
+    display_name: str
+    base_url: str
+    category: str
+    policy_version: str
+    legal_status: str
+    source_class: str
+    content_type: str
+    allowed: bool
+    rules: CollectionRules
+    robots_disallow: list[str] = field(default_factory=list)
+    reason: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "slug": self.slug,
+            "display_name": self.display_name,
+            "base_url": self.base_url,
+            "category": self.category,
+            "policy_version": self.policy_version,
+            "legal_status": self.legal_status,
+            "source_class": self.source_class,
+            "content_type": self.content_type,
+            "allowed": self.allowed,
+            "robots_disallow": self.robots_disallow,
+            "reason": self.reason,
+            "rules": {
+                "respect_robots": self.rules.respect_robots,
+                "rate_limit_seconds": self.rules.rate_limit_seconds,
+                "rate_jitter_seconds": self.rules.rate_jitter_seconds,
+                "collection_window_start": self.rules.collection_window_start,
+                "collection_window_end": self.rules.collection_window_end,
+                "use_conditional_requests": self.rules.use_conditional_requests,
+                "max_object_size_mb": self.rules.max_object_size_mb,
+                "max_fetches_per_night": self.rules.max_fetches_per_night,
+                "max_total_mb_per_night": self.rules.max_total_mb_per_night,
+                "user_agent": self.rules.user_agent,
+                "attribution_header": self.rules.attribution_header,
+                "no_auth_circumvention": self.rules.no_auth_circumvention,
+                "no_personal_data": self.rules.no_personal_data,
+                "retention_days": self.rules.retention_days,
+                "takedown_contact": self.rules.takedown_contact,
+            },
+        }
+
+
+# ---------------------------------------------------------------------------
 # Module-level singleton (for easy import)
 # ---------------------------------------------------------------------------
 
@@ -414,16 +526,161 @@ ACTIVE_POLICY: CollectionPolicyDecisionV1 = CollectionPolicyDecisionV1()
 
 
 # ---------------------------------------------------------------------------
+# Collection window helpers (DP-01-05)
+# ---------------------------------------------------------------------------
+
+
+def is_within_collection_window(
+    hour: int | None = None,
+    *,
+    start: int = 1,
+    end: int = 6,
+) -> bool:
+    """Return True if *hour* (0–23) is within the nightly collection window.
+
+    If *hour* is ``None``, the current UTC hour is used.
+    """
+    if hour is None:
+        hour = datetime.now(timezone.utc).hour
+    return start <= hour < end
+
+
+# ---------------------------------------------------------------------------
+# Robots helpers (DP-01-05)
+# ---------------------------------------------------------------------------
+
+
+def is_path_disallowed(source: Any, path: str) -> bool:
+    """Return True if *path* matches a robots.txt disallow rule for *source*."""
+    disallow = getattr(source, "robots_disallow", []) or []
+    for pattern in disallow:
+        if path.startswith(pattern):
+            return True
+    return False
+
+
+def is_path_allowed(source: Any, path: str) -> bool:
+    """Return True if *path* is allowed by robots.txt for *source*."""
+    return not is_path_disallowed(source, path)
+
+
+# ---------------------------------------------------------------------------
+# Policy summary (DP-01-05)
+# ---------------------------------------------------------------------------
+
+
+def get_policy_summary(sources: list | None = None) -> dict[str, Any]:
+    """Return a summary of the current policy for the API and UI."""
+    from irc_data.sources.registry import get_in_memory_sources, LegalStatus as _LS
+
+    if sources is None:
+        sources = get_in_memory_sources()
+
+    approved = [s for s in sources if getattr(s, "legal_status", None) in (LegalStatus.APPROVED, "approved", _LS.APPROVED)]
+    hold = [s for s in sources if getattr(s, "legal_status", None) in (LegalStatus.HOLD, "hold", _LS.HOLD)]
+    return {
+        "version": CURRENT_POLICY_VERSION,
+        "approved_date": POLICY_APPROVED_DATE,
+        "authority": POLICY_AUTHORITY,
+        "authority_email": POLICY_AUTHORITY_EMAIL,
+        "user_agent": POLICY_USER_AGENT,
+        "issue_label": "DP-01-02",
+        "spec_reference": "SPEC-012",
+        "counts": {
+            "approved": len(approved),
+            "hold": len(hold),
+            "blocked": len(sources) - len(approved) - len(hold),
+            "total": len(sources),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# classify_source helper (DP-01-05)
+# ---------------------------------------------------------------------------
+
+
+def classify_source(source: Any) -> tuple[str, str]:
+    """Return ``(source_class, classification_label)`` for *source*.
+
+    Returns ``("public", "approved")`` etc.
+    """
+    legal_status = getattr(source, "legal_status", None)
+    source_class = getattr(source, "source_class", SourceClass.PUBLIC.value)
+    enabled = getattr(source, "enabled", True)
+
+    status_val = legal_status.value if hasattr(legal_status, "value") else (legal_status or "")
+    sc_val = source_class.value if hasattr(source_class, "value") else (source_class or "")
+
+    if status_val == "approved" and enabled:
+        return sc_val, "approved"
+    if status_val == "hold":
+        return sc_val, "hold"
+    if status_val == "blocked":
+        return sc_val, "blocked"
+    return sc_val, "unknown"
+
+
+# ---------------------------------------------------------------------------
+# resolve_source — DP-01-05's per-source policy resolution
+# ---------------------------------------------------------------------------
+
+
+def resolve_source(slug: str, db: Any = None) -> SourceDecisionV1:
+    """Resolve a source through every policy gate.
+
+    Returns a :class:`SourceDecisionV1` when the source passes all checks.
+    Raises ``PolicyVersionMismatchError`` or ``SourceNotApprovedError`` if not.
+    """
+    from irc_data.sources.registry import get_source as _get_source
+
+    source = _get_source(db, slug)
+
+    # Policy version gate
+    pv = getattr(source, "policy_version", None)
+    if pv != CURRENT_POLICY_VERSION:
+        raise PolicyVersionMismatchError(slug, pv)
+
+    # Approval gate
+    enabled = getattr(source, "enabled", True)
+    legal_status = getattr(source, "legal_status", None)
+    status_val = legal_status.value if hasattr(legal_status, "value") else (legal_status or "")
+
+    if not enabled:
+        raise SourceNotApprovedError(slug, reason="source is disabled (kill switch active)")
+    if status_val != "approved":
+        raise SourceNotApprovedError(slug, reason=f"legal_status={status_val}")
+
+    quarantined = getattr(source, "quarantine_until", None)
+    if quarantined:
+        raise SourceNotApprovedError(slug, reason="source is quarantined")
+
+    rules = CollectionRules()
+    if slug == "irc-certs":
+        rules.attribution_header = "X-SailRatings-Source: irc-certs"
+
+    return SourceDecisionV1(
+        slug=slug,
+        display_name=getattr(source, "display_name", slug),
+        base_url=getattr(source, "base_url", ""),
+        category=getattr(source, "category", ""),
+        policy_version=pv or CURRENT_POLICY_VERSION,
+        legal_status=status_val,
+        source_class=getattr(source, "source_class", SourceClass.PUBLIC.value),
+        content_type=getattr(source, "content_type", ContentType.HTML.value),
+        allowed=True,
+        rules=rules,
+        robots_disallow=list(getattr(source, "robots_disallow", []) or []),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Backward-compatibility helpers (used by existing scrapers)
 # ---------------------------------------------------------------------------
 
 
-def assert_policy_current(source) -> None:
-    """Raise ``PolicyVersionMismatchError`` if the source's policy is stale.
-
-    Accepts any object with ``policy_version`` and ``slug`` attributes
-    (both ``DataSource`` and ``SourceRecord`` work).
-    """
+def assert_policy_current(source: Any) -> None:
+    """Raise ``PolicyVersionMismatchError`` if the source's policy is stale."""
     version = getattr(source, "policy_version", None)
     slug = getattr(source, "slug", "<unknown>")
     if version != CURRENT_POLICY_VERSION:
@@ -437,12 +694,8 @@ def assert_policy_current(source) -> None:
         )
 
 
-def assert_source_approved(source) -> None:
-    """Raise ``SourceNotApprovedError`` if the source is not collectable.
-
-    Checks both ``enabled`` and ``legal_status``.  Accepts both
-    ``DataSource`` (string legal_status) and ``SourceRecord`` (enum).
-    """
+def assert_source_approved(source: Any) -> None:
+    """Raise ``SourceNotApprovedError`` if the source is not collectable."""
     slug = getattr(source, "slug", "<unknown>")
     enabled = getattr(source, "enabled", True)
     legal_status = getattr(source, "legal_status", None)
@@ -450,7 +703,6 @@ def assert_source_approved(source) -> None:
     if not enabled:
         raise SourceNotApprovedError(slug, reason="source is disabled (kill switch)")
 
-    # legal_status may be a string or LegalStatus enum
     status_val = legal_status.value if hasattr(legal_status, "value") else legal_status
     if status_val != "approved":
         raise SourceNotApprovedError(
@@ -459,10 +711,12 @@ def assert_source_approved(source) -> None:
         )
 
 
-def assert_source_collectable(source) -> None:
-    """Full policy gate: version + approval + enabled.
-
-    Convenience function combining all checks.
-    """
+def assert_source_collectable(source: Any) -> None:
+    """Full policy gate: version + approval + enabled."""
     assert_policy_current(source)
     assert_source_approved(source)
+
+
+def is_current_policy_version(version: str) -> bool:
+    """Return True if *version* matches ``CURRENT_POLICY_VERSION``."""
+    return version == CURRENT_POLICY_VERSION
