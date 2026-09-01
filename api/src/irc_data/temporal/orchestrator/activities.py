@@ -220,35 +220,47 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
 
 @activity.defn
 async def run_playwright_e2e_tests(worktree_path: str) -> bool:
+    import fcntl
     activity.logger.info(f"Running Playwright tests in {worktree_path}")
     e2e_dir = os.path.join(worktree_path, "e2e_tests")
     if not os.path.isdir(e2e_dir):
         activity.logger.info("No e2e_tests directory — skipping Playwright tests")
         return True
     web_dir = os.path.join(worktree_path, "web")
-    # Kill any process holding port 4201 from a prior test run
-    await asyncio.create_subprocess_shell(
-        "fuser -k 4201/tcp 2>/dev/null; true",
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+    # Serialise all E2E runs — only one can hold port 4201 at a time
+    lock_path = "/tmp/playwright-port-4201.lock"
+    lock_file = open(lock_path, "w")
+    activity.logger.info("Waiting for E2E port lock…")
+    await asyncio.get_event_loop().run_in_executor(
+        None, lambda: fcntl.flock(lock_file, fcntl.LOCK_EX)
     )
-    # Remove any stale node_modules symlink in web dir — Turbopack rejects symlinks
-    # pointing outside the project root, which agents sometimes create to speed up installs
-    await asyncio.create_subprocess_shell(
-        f'[ -L "{web_dir}/node_modules" ] && rm "{web_dir}/node_modules" || true',
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-    )
-    env = os.environ.copy()
-    env["TEST_WEB_PORT"] = "4201"
-    env["CI"] = "true"
-    proc = await asyncio.create_subprocess_shell(
-        "npm install && npx playwright install chromium && "
-        f"cd {web_dir} && npm install && cd {e2e_dir} && npx playwright test",
-        cwd=e2e_dir,
-        env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
+    activity.logger.info("Acquired E2E port lock")
+    try:
+        # Kill any process holding port 4201 from a prior test run
+        await asyncio.create_subprocess_shell(
+            "fuser -k 4201/tcp 2>/dev/null; true",
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )
+        # Remove any stale node_modules symlink — Turbopack rejects out-of-root symlinks
+        await asyncio.create_subprocess_shell(
+            f'[ -L "{web_dir}/node_modules" ] && rm "{web_dir}/node_modules" || true',
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )
+        env = os.environ.copy()
+        env["TEST_WEB_PORT"] = "4201"
+        env["CI"] = "true"
+        proc = await asyncio.create_subprocess_shell(
+            "npm install && npx playwright install chromium && "
+            f"cd {web_dir} && npm install && cd {e2e_dir} && npx playwright test",
+            cwd=e2e_dir,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+    finally:
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        lock_file.close()
     if proc.returncode != 0:
         combined = (stdout.decode() + "\n" + stderr.decode())[:3000]
         activity.logger.error(f"Playwright tests failed (exit {proc.returncode}): {combined}")

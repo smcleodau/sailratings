@@ -38,9 +38,16 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
+<<<<<<< HEAD
     command: 'cd ../web && PORT=4201 npm run dev',
     url: 'http://localhost:4201',
     reuseExistingServer: false,
     timeout: 180 * 1000,
+=======
+    command: 'cd ../web && npm run dev',
+    url: 'http://localhost:4200',
+    reuseExistingServer: true,
+    timeout: 120 * 1000,
+>>>>>>> feature/3ac37ffe-f467-808c-a617-c73e1ceb633c
   },
 });

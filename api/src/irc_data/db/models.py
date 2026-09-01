@@ -6,7 +6,6 @@ from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
-    BigInteger,
     Date,
     DateTime,
     ForeignKey,
@@ -661,81 +660,85 @@ class PublicationQuarantine(Base):
 
 
 # ---------------------------------------------------------------------------
-# Raw objects & retrieval events — content-addressed artifact store (DP-02-01)
+# Replay / backfill — isolated batch, comparison, promotion (DP-02-04)
 #
-# ``raw_objects``      — the immutable, content-addressed blob registry.
-#                         SHA-256 hash is the primary key.  Raw bytes live
-#                         in the filesystem RawObjectStore; this table records
-#                         metadata (size, content type, location, creation).
-#
-# ``retrieval_events`` — one row per capture.  Duplicate captures of the same
-#                         content reference the same raw_objects row while
-#                         retaining their own provenance (retrieval time,
-#                         requested URI, status, lineage, …).
-#
-# See SPEC-013 / DP-02-01.
+# replay_batches: one row per replay plan, keyed by plan_id (idempotency).
+# replay_artifacts: one row per parsed artifact within a batch.  Stores
+#   both the new parsed output and the old published output for
+#   comparison.  Separate from the published store — no in-place rewrite.
+# publication_receipts: one row per explicit promotion.  Records the
+#   promoted batch, the old batch (retained), and a receipt_id for audit.
 # ---------------------------------------------------------------------------
 
 
-class RawObject(Base):
-    """Immutable, content-addressed raw object (DP-02-01).
-
-    The ``content_hash`` (SHA-256 hex) is the primary key — it *is* the
-    content address.  Raw bytes are stored in the filesystem
-    :class:`~irc_data.sources.provenance.RawObjectStore` at
-    ``object_location``; this table records the metadata.
-    """
-
-    __tablename__ = "raw_objects"
+class ReplayBatch(Base):
+    __tablename__ = "replay_batches"
     __table_args__ = (
-        Index("ix_raw_objects_content_hash", "content_hash", unique=True),
+        UniqueConstraint("plan_id"),
+        Index("ix_replay_batches_plan_id", "plan_id"),
     )
 
-    content_hash: Mapped[str] = mapped_column(Text, primary_key=True)
-    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    content_type: Mapped[str | None] = mapped_column(Text)
-    object_location: Mapped[str] = mapped_column(Text, nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    parser_version: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending"
+    )
+    artifact_filter: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    promoted_by: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class ReplayArtifact(Base):
+    __tablename__ = "replay_artifacts"
+    __table_args__ = (
+        Index("ix_replay_artifacts_batch_id", "batch_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("replay_batches.id"))
+    artifact_url: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(Text)
+    parsed_output: Mapped[dict | None] = mapped_column(JSON)
+    old_parsed_output: Mapped[dict | None] = mapped_column(JSON)
+    parse_status: Mapped[str] = mapped_column(
+        Text, server_default="pending"
+    )
+    parse_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
 
-class RetrievalEvent(Base):
-    """One retrieval event per capture — the provenance envelope (DP-02-01).
-
-    When the same content is fetched again (e.g. a page that hasn't
-    changed), no new ``raw_objects`` row is created, but a **new**
-    ``retrieval_events`` row is inserted — preserving the distinct
-    retrieval time, requested URI, status, and lineage.
-    """
-
-    __tablename__ = "retrieval_events"
+class PublicationReceipt(Base):
+    __tablename__ = "publication_receipts"
     __table_args__ = (
-        Index("ix_retrieval_events_content_hash", "content_hash"),
-        Index("ix_retrieval_events_source", "source"),
-        Index("ix_retrieval_events_retrieved_at", "retrieved_at"),
+        UniqueConstraint("receipt_id"),
+        Index("ix_publication_receipts_batch_id", "batch_id"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    content_hash: Mapped[str] = mapped_column(
-        ForeignKey("raw_objects.content_hash", ondelete="RESTRICT"),
-        nullable=False,
+    id: Mapped[int] = mapped_column(primary_key=True)
+    receipt_id: Mapped[str] = mapped_column(Text, nullable=False)
+    batch_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    plan_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    promoted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
-    source: Mapped[str] = mapped_column(Text, nullable=False)
-    requested_uri: Mapped[str | None] = mapped_column(Text)
-    resolved_uri: Mapped[str | None] = mapped_column(Text)
-    retrieved_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+    old_batch_id: Mapped[int | None] = mapped_column(Integer)
+    old_retained: Mapped[bool] = mapped_column(server_default="true")
+    artifact_count: Mapped[int] = mapped_column(
+        Integer, server_default="0"
     )
-    policy_version: Mapped[str] = mapped_column(Text, nullable=False)
-    headers_subset: Mapped[dict | None] = mapped_column(JSON)
-    status: Mapped[int | None] = mapped_column(Integer)
-    object_location: Mapped[str] = mapped_column(Text, nullable=False)
-    adapter_version: Mapped[str | None] = mapped_column(Text)
-    lineage: Mapped[list | None] = mapped_column(JSON)
+    promoted_by: Mapped[str | None] = mapped_column(Text)
     schema_version: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default="1"
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        Text, server_default="v1"
     )

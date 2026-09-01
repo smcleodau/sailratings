@@ -7,6 +7,7 @@ from temporalio.worker import Worker, UnsandboxedWorkflowRunner
 from .workflows import EpicExecutionWorkflow, SprintManagerWorkflow, TaskExecutionWorkflow
 from .swarm import SwarmOrchestratorWorkflow
 from .test_invoke_llm import TestLLMWorkflow
+from ..replay.replay_workflows import ReplayWorkflow, BackfillWorkflow
 from .activities import (
     provision_worktree,
     run_lane_worker_agent,
@@ -21,6 +22,15 @@ from .activities import (
     add_notion_comment,
     invoke_llm,
     fetch_board_state,
+)
+from ..replay.replay_activities import (
+    init_replay_tables_activity,
+    create_batch_activity,
+    select_artifacts_activity,
+    run_parser_activity,
+    compare_batches_activity,
+    count_batch_artifacts_activity,
+    promote_batch_activity,
 )
 
 async def main():
@@ -40,6 +50,8 @@ async def main():
                 TaskExecutionWorkflow,
                 SwarmOrchestratorWorkflow,
                 TestLLMWorkflow,
+                ReplayWorkflow,
+                BackfillWorkflow,
             ],
             activities=[
                 provision_worktree,
@@ -55,6 +67,13 @@ async def main():
                 add_notion_comment,
                 invoke_llm,
                 fetch_board_state,
+                init_replay_tables_activity,
+                create_batch_activity,
+                select_artifacts_activity,
+                run_parser_activity,
+                compare_batches_activity,
+                count_batch_artifacts_activity,
+                promote_batch_activity,
             ],
             workflow_runner=UnsandboxedWorkflowRunner(),
         )
