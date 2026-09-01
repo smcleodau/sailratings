@@ -657,3 +657,53 @@ class PublicationQuarantine(Base):
     )
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+
+
+# ---------------------------------------------------------------------------
+# Field-level provenance / lineage (DP-02-05)
+#
+# Each row is a node in the lineage chain:
+#   canonical_field → transformed_value → extracted_span → raw_artifact
+# The ``parent_id`` column creates the directed edge (parent = upstream).
+# ---------------------------------------------------------------------------
+
+
+class FieldProvenance(Base):
+    __tablename__ = "field_provenance"
+    __table_args__ = (
+        Index("ix_field_provenance_entity_field", "entity", "field"),
+        Index("ix_field_provenance_record_id", "record_id"),
+        Index("ix_field_provenance_parent_id", "parent_id"),
+        Index("ix_field_provenance_source_slug", "source_slug"),
+        Index("ix_field_provenance_content_hash", "content_hash"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    node_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity: Mapped[str] = mapped_column(String(128), nullable=False)
+    field: Mapped[str | None] = mapped_column(String(128))
+    value: Mapped[str | None] = mapped_column(Text)
+    record_id: Mapped[int | None] = mapped_column(Integer)
+    # Source / artifact linkage
+    source_slug: Mapped[str | None] = mapped_column(String(128))
+    content_hash: Mapped[str | None] = mapped_column(String(64))
+    url: Mapped[str | None] = mapped_column(Text)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Extraction metadata
+    model_version: Mapped[str | None] = mapped_column(String(64))
+    rule_version: Mapped[str | None] = mapped_column(String(64))
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
+    # Span (extracted_span nodes)
+    span_text: Mapped[str | None] = mapped_column(Text)
+    span_start: Mapped[int | None] = mapped_column(Integer)
+    span_end: Mapped[int | None] = mapped_column(Integer)
+    # Edge to parent (upstream node in the chain)
+    parent_id: Mapped[int | None] = mapped_column(Integer)
+    edge_type: Mapped[str | None] = mapped_column(String(32))
+    # Timestamps
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
