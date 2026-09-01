@@ -240,8 +240,46 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
 
 @activity.defn
 async def create_pull_request(worktree_path: str) -> None:
-    activity.logger.info(f"Creating pull request for {worktree_path}")
-    pass
+    activity.logger.info(f"Auto-merging {worktree_path} into develop")
+    repo_path = "/home/irc-data/code/sailratings"
+
+    # Get the branch name from the worktree
+    proc = await asyncio.create_subprocess_shell(
+        f'git -C "{worktree_path}" branch --show-current',
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await proc.communicate()
+    branch = stdout.decode().strip()
+    if not branch:
+        raise ApplicationError(f"Could not determine branch name in {worktree_path}")
+
+    activity.logger.info(f"Merging {branch} into develop")
+
+    # Merge into develop in the main repo
+    merge_cmd = (
+        f'git -C "{repo_path}" merge --no-ff "{branch}" '
+        f'-m "feat: factory merge {branch} into develop (gatekeeper approved)"'
+    )
+    proc = await asyncio.create_subprocess_shell(
+        merge_cmd,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ApplicationError(f"Merge failed: {stderr.decode()[:1000]}")
+
+    activity.logger.info(f"Merged {branch}. Pushing develop to origin.")
+
+    # Push develop
+    proc = await asyncio.create_subprocess_shell(
+        f'git -C "{repo_path}" push origin develop',
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ApplicationError(f"Push failed: {stderr.decode()[:1000]}")
+
+    activity.logger.info(f"Successfully merged and pushed {branch}.")
 
 @activity.defn
 async def notify_admin_hitl(details: dict) -> None:
