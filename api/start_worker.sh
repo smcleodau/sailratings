@@ -17,9 +17,9 @@ mkdir -p /home/irc-data/logs
 exec /home/irc-data/.local/bin/op run \
     --environment 5ux2t36klqustptq3lxu6djem4,vzhxzxt7mgb4tolyepo5wqzcz4 \
     -- env \
-        LLM_MODEL="${LLM_MODEL}" \
-        LLM_API_KEY="${LLM_API_KEY}" \
-        LLM_BASE_URL="${LLM_BASE_URL}" \
+        LITELLM_BASE_URL="${LITELLM_BASE_URL}" \
+        LITELLM_API_KEY="${LITELLM_API_KEY}" \
+        LITELLM_MODEL_HINT="${LITELLM_MODEL_HINT:-coding-fast}" \
         OH_PERSISTENCE_DIR="${OH_PERSISTENCE_DIR}" \
         OPENHANDS_SUPPRESS_BANNER=1 \
         PYTHONPATH=src \
