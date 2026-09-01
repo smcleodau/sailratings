@@ -55,3 +55,6 @@ where = ["src"]
 asyncio_mode = "strict"
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
