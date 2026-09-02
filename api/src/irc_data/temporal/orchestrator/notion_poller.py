@@ -100,11 +100,11 @@ class NotionPoller:
 
         for page in eligible[:min(len(eligible), self.MAX_PER_POLL, slots_available)]:
             try:
-                # Extract title
-                title_objs = page.get('properties', {}).get('Title', {}).get('rich_text', []) \
-                    or page.get('properties', {}).get('ID', {}).get('title', [])
+                # Extract title — Roadmap uses type:title on 'Title', type:rich_text on 'ID'
+                title_objs = (page.get('properties', {}).get('Title', {}).get('title', [])
+                    or page.get('properties', {}).get('ID', {}).get('rich_text', []))
                 title = title_objs[0].get('text', {}).get('content', '') if title_objs else "Untitled"
-                
+
                 # Fetch children
                 req_children = urllib.request.Request(f"https://api.notion.com/v1/blocks/{page['id']}/children", headers=self.headers)
                 res_children = urllib.request.urlopen(req_children)
@@ -205,10 +205,10 @@ class NotionPoller:
         # Trigger Specification Agents for Epics
         for page in spec_results:
             try:
-                title_objs = page.get('properties', {}).get('Title', {}).get('rich_text', []) \
-                    or page.get('properties', {}).get('ID', {}).get('title', [])
+                title_objs = (page.get('properties', {}).get('Title', {}).get('title', [])
+                    or page.get('properties', {}).get('ID', {}).get('rich_text', []))
                 title = title_objs[0].get('text', {}).get('content', '') if title_objs else "Untitled"
-                
+
                 req_children = urllib.request.Request(f"https://api.notion.com/v1/blocks/{page['id']}/children", headers=self.headers)
                 res_children = urllib.request.urlopen(req_children)
                 children = json.loads(res_children.read()).get('results', [])
