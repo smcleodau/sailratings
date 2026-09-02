@@ -3543,3 +3543,7 @@ from irc_data.diagnostics.source_monitor_cli import source_monitor as _source_mo
 
 cli.add_command(_source_monitor_cli)
 
+from irc_data.diagnostics.reconciliation_cli import reconcile as _reconcile_cli  # noqa: E402
+
+cli.add_command(_reconcile_cli)
+
