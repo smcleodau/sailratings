@@ -57,6 +57,13 @@ async def main() -> None:
     address = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "sailratings")
 
+    # Imported lazily (inside main) so loading this module has no heavy
+    # dependency chain and to avoid any circular-import risk at import time.
+    from irc_data.temporal.activities import raw_capture_ys_m2s_activities
+    from irc_data.temporal.workflows.raw_capture_ys_m2s_workflow import (
+        NightlyRawCaptureYsM2sWorkflow,
+    )
+
     try:
         client = await Client.connect(address, namespace=namespace)
 
@@ -82,7 +89,11 @@ async def main() -> None:
         worker = Worker(
             client,
             task_queue=SOURCE_RUN_TASK_QUEUE,
-            workflows=[SourceRunWorkflow, ScheduleSyncLoopWorkflow],
+            workflows=[
+                SourceRunWorkflow,
+                ScheduleSyncLoopWorkflow,
+                NightlyRawCaptureYsM2sWorkflow,
+            ],
             activities=[
                 ledger_activities.fetch_source_record,
                 ledger_activities.open_source_run,
@@ -96,6 +107,10 @@ async def main() -> None:
                 scrape_activities.scrape_topyacht,
                 scrape_activities.scrape_boat_news,
                 scrape_activities.scrape_certs_exhaustive,
+                # DP-00-03 raw capture (Yacht Scoring + Manage2Sail)
+                raw_capture_ys_m2s_activities.list_sources_activity,
+                raw_capture_ys_m2s_activities.capture_source_activity,
+                raw_capture_ys_m2s_activities.write_ledger_activity,
             ],
             workflow_runner=UnsandboxedWorkflowRunner(),
         )

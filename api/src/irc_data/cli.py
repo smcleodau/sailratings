@@ -444,10 +444,23 @@ def scrape_pdf_certs(ctx, max_fetches, no_window, no_kill_switch, store_path):
 @scrape.command(name="raw-capture")
 @click.option(
     "--source",
-    type=click.Choice(["sailwave", "sailing-news", "all"]),
+    type=click.Choice(
+        [
+            "sailwave",
+            "sailing-news",
+            "yachtscoring",
+            "manage2sail",
+            "dp-00-03",
+            "dp-00-04",
+            "all",
+        ]
+    ),
     default="all",
     show_default=True,
-    help="Which DP-00-04 source to capture",
+    help=(
+        "Which raw-capture source to run. 'dp-00-03' = Yacht Scoring + "
+        "Manage2Sail; 'dp-00-04' = Sailwave + sailing news; 'all' = both tracks."
+    ),
 )
 @click.option(
     "--max-fetches",
@@ -480,43 +493,118 @@ def scrape_pdf_certs(ctx, max_fetches, no_window, no_kill_switch, store_path):
 @click.option(
     "--url",
     multiple=True,
-    help="Explicit Sailwave result URL to capture (repeatable; skips discovery)",
+    help="Explicit result URL to capture (repeatable; skips discovery)",
+)
+@click.option(
+    "--canary",
+    is_flag=True,
+    help="DP-00-03 canary mode: cap discovery to a few pages per source "
+    "(live canary night, stays well inside rate caps)",
+)
+@click.option(
+    "--max-discovery-pages",
+    type=int,
+    default=None,
+    help="Cap on discovered result pages per source (DP-00-03)",
+)
+@click.option(
+    "--etag-cache-file",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Persist conditional-request cache (ETag/Last-Modified) for DP-00-03 "
+    "sources (default: data/raw/<source>/.etag_cache.json)",
 )
 @click.pass_context
-def scrape_raw_capture(ctx, source, max_fetches, no_window, no_kill_switch, store_path, feed, url):
-    """Raw-capture Sailwave result files and approved news feeds (DP-00-04).
+def scrape_raw_capture(
+    ctx, source, max_fetches, no_window, no_kill_switch, store_path, feed, url,
+    canary, max_discovery_pages, etag_cache_file,
+):
+    """Raw archival capture for the DP-00 interim raw-capture tracks.
+
+    DP-00-03: Yacht Scoring + Manage2Sail race-results pages (raw archives,
+    no parsing).  DP-00-04: Sailwave result files + approved news feeds.
 
     Fetch → hash → store into the content-addressed raw object store.
     Envelope: RawArtifactV0 = bytes + SHA-256 + URL + fetch time + policy
-    version 'interim-v0'.  Idempotent on re-run (304 / hash dedup).
+    version 'v1.0'.  Idempotent on re-run (304 / hash dedup).
 
-    Policy: interim-v0.  Polite: 1 req/2s + jitter, nightly window
-    01:00–06:00, max 5,000 fetches/night.  Sources held under §2 of the
-    policy (ClubSpot, Kwindoo) are never fetched.
+    Policy: v1.0 (interim-v0 politeness rules §3).  Polite: 1 req/2s +
+    jitter, nightly window 01:00–06:00, max 5,000 fetches/night.  Sources
+    held under §2 of the policy (ClubSpot, Kwindoo) are never fetched.
     """
     from irc_data.scrapers.raw_capture import (
-        DP_00_04_SOURCES,
-        RawObjectStore,
         capture_news_feeds,
         capture_sailwave,
-        get_default_store,
+    )
+    from irc_data.scrapers.raw_capture import (
+        get_default_store as _default_store_04,
+    )
+    from irc_data.scrapers.raw_capture_ys_m2s import (
+        DP_00_03_SOURCES,
+        RawObjectStore,
+        capture_source,
+        load_etag_file,
+        save_etag_file,
+    )
+    from irc_data.scrapers.raw_capture_ys_m2s import (
+        get_default_store as _default_store_03,
     )
 
     engine = ctx.obj.get("engine")
 
-    sources = list(DP_00_04_SOURCES) if source == "all" else [source]
+    dp004 = ("sailwave", "sailing-news")
+    if source == "all":
+        sources = list(DP_00_03_SOURCES) + list(dp004)
+    elif source == "dp-00-03":
+        sources = list(DP_00_03_SOURCES)
+    elif source == "dp-00-04":
+        sources = list(dp004)
+    else:
+        sources = [source]
 
-    console.print("[bold]Raw Capture (DP-00-04)[/bold]")
+    console.print("[bold]Raw Capture (DP-00-03 / DP-00-04)[/bold]")
     console.print(f"  Sources: {', '.join(sources)}")
     console.print(f"  Max fetches: {max_fetches:,}")
     console.print(f"  Window enforcement: {'off' if no_window else 'on'}")
+    if canary:
+        console.print("  [cyan]Canary mode: discovery capped per source[/cyan]")
 
     overall_status = "ok"
     for slug in sources:
-        store = RawObjectStore(str(store_path / slug)) if store_path else get_default_store(slug)
+        is_dp003 = slug in DP_00_03_SOURCES
+        store = (
+            RawObjectStore(str(store_path / slug))
+            if store_path
+            else (_default_store_03(slug) if is_dp003 else _default_store_04(slug))
+        )
         console.print(f"\n[bold]→ {slug}[/bold]  store={store.root}")
 
-        if slug == "sailwave":
+        if is_dp003:
+            # Load the conditional-request cache (file) for plain-HTTP runs.
+            # Default lives alongside the content-addressed store root.
+            cache_path = (
+                Path(etag_cache_file)
+                if etag_cache_file
+                else (Path(store.root) / ".etag_cache.json")
+            )
+            etag_cache = load_etag_file(cache_path)
+
+            ledger = capture_source(
+                slug,
+                store,
+                urls=list(url) if url else None,
+                max_fetches=max_fetches,
+                max_discovery_pages=max_discovery_pages,
+                canary=canary,
+                enforce_window=not no_window,
+                check_kill_switch=not no_kill_switch,
+                db_engine=engine if not no_kill_switch else None,
+                etag_cache=etag_cache,
+            )
+            # Persist the updated conditional-request cache for the next night.
+            if cache_path:
+                save_etag_file(cache_path, ledger.etag_cache)
+        elif slug == "sailwave":
             ledger = capture_sailwave(
                 store,
                 urls=list(url) if url else None,
