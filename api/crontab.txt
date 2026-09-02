@@ -21,6 +21,9 @@ OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --en
 # Daily TCC listing CSV download at 06:00 UTC
 0 6 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape tcc" >> $LOG_DIR/tcc_$(date +\%F).log 2>&1
 
+# Nightly IRC certificate PDF raw capture at 01:00 UTC (inside 01:00–06:00 UK window)
+0 1 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape pdf-certs" >> $LOG_DIR/irc_pdf_$(date +\%F).log 2>&1
+
 # Weekly cert discovery (Sunday 07:00 UTC)
 0 7 * * 0    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape certs --exhaustive" >> $LOG_DIR/certs_$(date +\%F).log 2>&1
 
