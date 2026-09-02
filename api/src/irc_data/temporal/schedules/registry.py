@@ -118,6 +118,12 @@ class ScheduleRegistry:
 
         ``source`` may be an ORM ``DataSource`` row or any object with
         ``slug``/``base_url``/``cadence`` attributes.
+
+        OPS-01-01: the workflow-level retry policy is derived from the
+        register's per-source ``retry_policy`` field (``max_attempts`` +
+        ``backoff_seconds`` from ``docs/SCHEDULING-POLICY.md``), falling
+        back to :data:`_SOURCE_RUN_RETRY` when the row predates the
+        scheduling-policy columns.
         """
         slug = source.slug
         interval = cadence_to_timedelta(getattr(source, "cadence", None) or "nightly")
@@ -128,7 +134,7 @@ class ScheduleRegistry:
             args=[slug, "scheduled"],  # run_key filled by workflow via its id
             id=f"source-run-{slug}",
             task_queue=self.task_queue,
-            retry_policy=_SOURCE_RUN_RETRY,
+            retry_policy=self._retry_policy_for(source),
         )
 
         return Schedule(
@@ -147,6 +153,36 @@ class ScheduleRegistry:
                 paused=paused,
             ),
         )
+
+    @staticmethod
+    def _retry_policy_for(source: Any) -> RetryPolicy:
+        """Resolve the Temporal ``RetryPolicy`` from the register row.
+
+        Reads the OPS-01-01 ``retry_policy`` register field
+        (``{"max_attempts": int, "backoff_seconds": […]}``).  Falls back to
+        :data:`_SOURCE_RUN_RETRY` when the field is absent or malformed so
+        legacy rows still schedule safely.
+        """
+        raw = getattr(source, "retry_policy", None)
+        if isinstance(raw, dict):
+            try:
+                from irc_data.sources.scheduling import RetryPolicy as _RP
+
+                rp = _RP.from_value(raw)
+                initial = timedelta(seconds=rp.backoff_seconds[0])
+                maximum = timedelta(seconds=rp.backoff_seconds[-1])
+                return RetryPolicy(
+                    initial_interval=initial,
+                    backoff_coefficient=(
+                        rp.backoff_seconds[1] / rp.backoff_seconds[0]
+                        if len(rp.backoff_seconds) > 1 else 1.0
+                    ),
+                    maximum_interval=maximum,
+                    maximum_attempts=rp.max_attempts,
+                )
+            except Exception:
+                pass
+        return _SOURCE_RUN_RETRY
 
     # ------------------------------------------------------------------
     # Public API — upsert / pause / sync

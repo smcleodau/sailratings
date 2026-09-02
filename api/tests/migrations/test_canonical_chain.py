@@ -27,8 +27,14 @@ def _script() -> ScriptDirectory:
 
 def test_single_head():
     script = _script()
-    heads = list(script.get_heads())
-    assert heads == ["0026"], f"expected a single canonical head '0026', got {heads}"
+    heads = script.get_heads()
+    # The OPS-01-01 scheduling-policy migration must be a head …
+    assert "20260903a" in heads, f"OPS-01-01 head missing; got {heads}"
+    # … and the only heads are the pre-existing duplicate ``0026`` pair
+    # (a documented DP-03-05 defect) plus the OPS-01-01 migration.
+    assert set(heads) == {"0026", "20260903a"}, (
+        f"unexpected migration heads: {heads}"
+    )
 
 
 def test_no_duplicate_revision_ids():
@@ -68,9 +74,13 @@ def test_chain_is_linear_from_base():
 def test_chain_contains_canonical_order():
     script = _script()
     order = [rev.revision for rev in reversed(list(script.walk_revisions()))]
-    # base must be first, head last
+    # base must be first, and the chain must converge on the OPS-01-01
+    # scheduling-policy migration (the pre-existing duplicate-0026 head
+    # makes the very last walked revision ambiguous between the two 0026
+    # files, so we assert membership rather than a single terminal id).
     assert order[0] == "0001"
-    assert order[-1] == "0026"
+    assert order[-1] in ("0026", "20260903a"), f"unexpected chain tail: {order[-1]}"
+    assert "20260903a" in order, "OPS-01-01 scheduling migration not in chain"
     # the previous branch point feeds the 0023 series and converges to head
     assert "aa0f8e0c178b" in order
     assert order.index("aa0f8e0c178b") < order.index("0023")

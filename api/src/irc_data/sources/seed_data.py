@@ -14,6 +14,12 @@ from __future__ import annotations
 
 from irc_data.sources.models import DataSourceRecordV1
 from irc_data.sources.registry import CURRENT_POLICY_VERSION
+from irc_data.sources.scheduling import (
+    CADENCE_CLASS_DEFAULTS,
+    CadenceClass,
+    SCHEDULING_POLICY,
+    classify_cadence,
+)
 
 _P = CURRENT_POLICY_VERSION  # shorthand
 
@@ -38,6 +44,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=2.0,
         notes="Australian race management; publicly published results.",
     ),
     DataSourceRecordV1(
@@ -56,6 +65,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=30.0,
     ),
     DataSourceRecordV1(
         slug="irc-tcc",
@@ -73,6 +85,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_admin",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=30.0,
     ),
     DataSourceRecordV1(
         slug="orc",
@@ -90,6 +105,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_admin",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=30.0,
     ),
     DataSourceRecordV1(
         slug="yachtscoring",
@@ -107,6 +125,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
     ),
     DataSourceRecordV1(
         slug="manage2sail",
@@ -124,6 +145,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="planned",
         robots_status="unchecked",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
     ),
     DataSourceRecordV1(
         slug="sailwave",
@@ -141,6 +165,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
     ),
     DataSourceRecordV1(
         slug="sailing-news",
@@ -159,6 +186,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="rss_syndication",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=6.0,
     ),
     DataSourceRecordV1(
         slug="irc-certs",
@@ -177,6 +207,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_admin",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="weekly_certificates",
+        staleness_budget_hours=192.0,
         notes="Approved interim-v0 2026-08-30; derived data only in public API.",
     ),
     DataSourceRecordV1(
@@ -195,6 +228,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
     ),
     DataSourceRecordV1(
         slug="rorc",
@@ -212,6 +248,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="manual",
+        staleness_budget_hours=87600.0,
     ),
     DataSourceRecordV1(
         slug="isora",
@@ -229,6 +268,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=192.0,
     ),
     DataSourceRecordV1(
         slug="cowesweek",
@@ -246,6 +288,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="annual_identifiers",
+        staleness_budget_hours=8880.0,
     ),
     DataSourceRecordV1(
         slug="sydney-hobart",
@@ -263,6 +308,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01) — annual December event
+        cadence_class="annual_identifiers",
+        staleness_budget_hours=8880.0,
     ),
     DataSourceRecordV1(
         slug="rhkyc",
@@ -280,6 +328,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="active",
         robots_status="allowed",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01) — weekly Wed 10:00 UTC ops cadence
+        cadence_class="daily_results",
+        staleness_budget_hours=192.0,
     ),
     DataSourceRecordV1(
         slug="wayback-irc",
@@ -333,6 +384,9 @@ _APPROVED: list[DataSourceRecordV1] = [
         adapter_status="planned",
         robots_status="unchecked",
         licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
     ),
 ]
 
@@ -552,6 +606,38 @@ SEED_SOURCES: list[DataSourceRecordV1] = _APPROVED + _HOLD + _UNKNOWN
 for _s in SEED_SOURCES:
     if not _s.policy_version:
         _s.policy_version = _P
+
+# ---------------------------------------------------------------------------
+# Scheduling policy stamping (OPS-01-01 / docs/SCHEDULING-POLICY.md sched-v1.0)
+# ---------------------------------------------------------------------------
+# Every register row must carry explicit scheduling values so that "how
+# often, how late is too late" is visible per source.  Explicit per-source
+# values above win; anything unset is filled from the cadence-class design
+# defaults plus the collection-policy nightly window (01:00–06:00) and the
+# global cooldown (4 h) / takedown-ack (4 h) constants.  After stamping,
+# the full register (including hold/unknown rows) passes
+# ``irc_data.sources.registry.validate_scheduling(include_inactive=True)``,
+# so a source can be re-activated without a schema/config change.
+for _s in SEED_SOURCES:
+    _cc = CadenceClass(_s.cadence_class) if _s.cadence_class else classify_cadence(_s.cadence)
+    _d = CADENCE_CLASS_DEFAULTS[_cc]
+    if not _s.cadence_class:
+        _s.cadence_class = _cc.value
+    if _s.staleness_budget_hours is None:
+        _s.staleness_budget_hours = float(_d["staleness_budget_hours"])
+    if _s.nightly_window_start is None:
+        _s.nightly_window_start = SCHEDULING_POLICY.nightly_window[0]
+    if _s.nightly_window_end is None:
+        _s.nightly_window_end = SCHEDULING_POLICY.nightly_window[1]
+    if _s.retry_policy is None:
+        _s.retry_policy = {
+            "max_attempts": int(_d["retry_max_attempts"]),
+            "backoff_seconds": list(_d["retry_backoff_seconds"]),
+        }
+    if _s.cooldown_hours is None:
+        _s.cooldown_hours = float(_d["cooldown_hours"])
+    if _s.kill_switch_ack_hours is None:
+        _s.kill_switch_ack_hours = SCHEDULING_POLICY.kill_switch.ack_window_hours
 
 
 def _print_register() -> None:
