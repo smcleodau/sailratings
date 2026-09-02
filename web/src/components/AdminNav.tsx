@@ -20,7 +20,13 @@ const SECTIONS = [
         !p.startsWith("/admin/corrections") &&
         !p.startsWith("/admin/scrapers") &&
         !p.startsWith("/admin/discovery") &&
-        !p.startsWith("/admin/firecrawl")),
+        !p.startsWith("/admin/firecrawl") &&
+        !p.startsWith("/admin/identity")),
+  },
+  {
+    href: "/admin/identity",
+    label: "Identity",
+    match: (p: string) => p.startsWith("/admin/identity"),
   },
   {
     href: "/admin/scrapers",
