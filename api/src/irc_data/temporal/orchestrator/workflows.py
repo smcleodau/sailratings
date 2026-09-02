@@ -103,11 +103,11 @@ class EpicExecutionWorkflow:
                     start_to_close_timeout=timedelta(minutes=2)
                 )
 
-                # 2. E2E Tests
+                # 2. E2E Tests — 45 min: npm install + playwright install + web npm install + tests
                 test_passed = await workflow.execute_activity(
-                    run_playwright_e2e_tests, 
+                    run_playwright_e2e_tests,
                     worktree_path,
-                    start_to_close_timeout=timedelta(minutes=15)
+                    start_to_close_timeout=timedelta(minutes=45)
                 )
                 
                 if not test_passed:
