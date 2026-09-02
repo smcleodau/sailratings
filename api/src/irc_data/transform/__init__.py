@@ -91,6 +91,30 @@ from irc_data.transform.contract_suite import (
     TransformationContractSuite,
     run_sample_pipeline_contract,
 )
+from irc_data.transform.irc_tcc_mapping import (
+    ASSERTION_TYPE as IRC_TCC_ASSERTION_TYPE,
+    CANONICAL_FIELDS_NOT_PROVIDED,
+    CANONICAL_UNITS,
+    FIELD_MAPPINGS,
+    MAPPING_VERSION as IRC_TCC_MAPPING_VERSION,
+    SOURCE_SLUG as IRC_TCC_SOURCE_SLUG,
+    UNSUPPORTED_SOURCE_FIELDS,
+    IRCTCCListingTransformer,
+    MissingSemantics,
+    RejectReason,
+    UnitSemantics,
+    audit_mapping_coverage,
+    field_mapping_table,
+)
+from irc_data.transform.lineage import (
+    LineageIndex,
+    LineageReport,
+    ResolvedSpan,
+    index_batch,
+    resolve_span,
+    trace_assertion,
+    verify_lineage,
+)
 
 __all__ = [
     # Contract
@@ -128,4 +152,26 @@ __all__ = [
     # Contract suite
     "TransformationContractSuite",
     "run_sample_pipeline_contract",
+    # DP-06-03 irc-tcc mapping
+    "IRC_TCC_SOURCE_SLUG",
+    "IRC_TCC_ASSERTION_TYPE",
+    "IRC_TCC_MAPPING_VERSION",
+    "UnitSemantics",
+    "CANONICAL_UNITS",
+    "MissingSemantics",
+    "RejectReason",
+    "FIELD_MAPPINGS",
+    "UNSUPPORTED_SOURCE_FIELDS",
+    "CANONICAL_FIELDS_NOT_PROVIDED",
+    "audit_mapping_coverage",
+    "field_mapping_table",
+    "IRCTCCListingTransformer",
+    # DP-06-03 lineage query
+    "ResolvedSpan",
+    "LineageReport",
+    "resolve_span",
+    "trace_assertion",
+    "verify_lineage",
+    "LineageIndex",
+    "index_batch",
 ]
