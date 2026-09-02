@@ -648,9 +648,36 @@ async def list_scrapers(
                 "optional": False,
             })
 
+    # Watchdog alert state (OPS-01-04): active alerts mirror what the
+    # 15-minute watchdog has emailed about; history is the retained log.
+    from irc_data.scrape_watchdog import (
+        ensure_watchdog_table,
+        get_active_alerts,
+        get_alert_history,
+    )
+
+    alerts_active: list[dict] = []
+    alerts_history: list[dict] = []
+    try:
+        with engine.begin() as conn:
+            ensure_watchdog_table(conn)
+            alerts_active = [
+                {k: _jsonable(v) for k, v in a.items()}
+                for a in get_active_alerts(conn)
+            ]
+            alerts_history = [
+                {k: _jsonable(v) for k, v in a.items()}
+                for a in get_alert_history(conn, limit=50)
+            ]
+    except Exception:
+        # Alert log must never take the dashboard down with it.
+        alerts_active, alerts_history = [], []
+
     return {
         "as_of": now.isoformat(),
         "sources": out,
+        "alerts_active": alerts_active,
+        "alerts_history": alerts_history,
     }
 
 
