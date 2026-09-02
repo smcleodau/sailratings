@@ -1,6 +1,6 @@
 """Temporal activities for the IRC certificate PDF capture workflow (DP-00-05).
 
-Policy: interim-v0 (DP-00-01)
+Policy: v1.0 (DP-01-02; supersedes interim-v0 / DP-00-01)
 
 Activities:
   enumerate_certs_activity          — list cert numbers from DB

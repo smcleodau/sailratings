@@ -1,6 +1,6 @@
 """Temporal activities for the DP-00-04 nightly raw-capture workflow.
 
-Policy: interim-v0 (DP-00-01)
+Policy: v1.0 (DP-01-02; supersedes interim-v0 / DP-00-01)
 
 Activities
 ----------

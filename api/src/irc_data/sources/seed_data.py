@@ -7,7 +7,7 @@ distribution is intentional and load-bearing for the register tests:
 * ``hold``       — at least 2 (ClubSpot, Kwindoo: discovery metadata only)
 * ``unknown``    — at least 1 (rights not yet reviewed)
 
-See SPEC-012 §2.2 and docs/INTERIM-POLICY.md §2.
+See SPEC-012 §2.2 and docs/SOURCE-POLICY.md §2–§3 (v1.0).
 """
 
 from __future__ import annotations

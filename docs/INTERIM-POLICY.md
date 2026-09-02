@@ -1,5 +1,13 @@
 # SailRatings Interim Data Collection Policy
 
+> **SUPERSEDED — historical reference only.**
+> This document was superseded on 2026-09-02 by
+> [`docs/SOURCE-POLICY.md`](SOURCE-POLICY.md) **v1.0** (DP-01-02,
+> Notion `3cc37ffe-f467-81ae-ae10-fef420851113`). The current approved
+> policy version is `v1.0` (`CURRENT_POLICY_VERSION` in
+> `api/src/irc_data/sources/policy.py`). Do not cite `interim-v0` for new
+> collection; source rows referencing `interim-v0` fail the policy gate.
+
 **Version:** interim-v0  
 **Approved:** 2026-08-30  
 **Authority:** Stuart McLeod, SailRatings founder  

@@ -53,7 +53,7 @@ def _seed_source(slug: str, *, enabled: bool = True, cadence: str = "nightly") -
                      legal_status, enabled, cadence, adapter_status)
                 VALUES
                     (:slug, 'OPS-01-02 IT', 'https://ops0102.example.com', 'results',
-                     'interim-v0', 'approved', :enabled, :cadence, 'active')
+                     'v1.0', 'approved', :enabled, :cadence, 'active')
                 ON CONFLICT (slug) DO UPDATE SET
                     enabled = EXCLUDED.enabled,
                     cadence = EXCLUDED.cadence,

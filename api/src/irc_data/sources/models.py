@@ -104,7 +104,7 @@ try:
             description="'approved' | 'hold' | 'blocked' | 'unknown'.",
         )
         policy_version: str = Field(
-            default="interim-v0",
+            default="v1.0",
             description="Policy version this source was approved under.",
         )
         terms_status: str = Field(
@@ -221,7 +221,7 @@ class DataSource:
     base_url: str
     category: str
     adapter_class: str | None = None
-    policy_version: str = "interim-v0"
+    policy_version: str = "v1.0"
     legal_status: str = "approved"  # 'approved' | 'hold' | 'blocked'
     robots_checked_at: datetime | None = None
     robots_disallow: list[str] = field(default_factory=list)
@@ -271,7 +271,7 @@ class FetchResult:
     etag: str | None = None
     last_modified: str | None = None
     fetched_at: str = ""  # ISO-8601
-    policy_version: str = "interim-v0"
+    policy_version: str = "v1.0"
     status_code: int = 200
     not_modified: bool = False
     screenshot_path: str | None = None  # render_page only

@@ -107,7 +107,7 @@ class FetchResult:
     etag: str | None = None
     last_modified: str | None = None
     fetched_at: str = field(default_factory=_now_iso)
-    policy_version: str = "interim-v0"
+    policy_version: str = "v1.0"
 
     @classmethod
     def from_response(
@@ -116,7 +116,7 @@ class FetchResult:
         content: bytes,
         etag: str | None = None,
         last_modified: str | None = None,
-        policy_version: str = "interim-v0",
+        policy_version: str = "v1.0",
     ) -> "FetchResult":
         """Build a :class:`FetchResult` from an HTTP response body."""
         return cls(
@@ -148,7 +148,7 @@ class FetchResult:
             etag=d.get("etag"),
             last_modified=d.get("last_modified"),
             fetched_at=d.get("fetched_at", _now_iso()),
-            policy_version=d.get("policy_version", "interim-v0"),
+            policy_version=d.get("policy_version", "v1.0"),
         )
 
 
@@ -204,7 +204,7 @@ class RawCaptureRequestV1:
     etag: str | None = None
     last_modified: str | None = None
     fetched_at: str = field(default_factory=_now_iso)
-    policy_version: str = "interim-v0"
+    policy_version: str = "v1.0"
     status: FetchStatus = FetchStatus.FETCHED
 
     # ------------------------------------------------------------------
@@ -243,7 +243,7 @@ class RawCaptureRequestV1:
         content_hash: str,
         etag: str | None = None,
         last_modified: str | None = None,
-        policy_version: str = "interim-v0",
+        policy_version: str = "v1.0",
     ) -> "RawCaptureRequestV1":
         """Build an envelope for a 304 Not Modified response."""
         return cls(
@@ -291,7 +291,7 @@ class RawCaptureRequestV1:
             etag=d.get("etag"),
             last_modified=d.get("last_modified"),
             fetched_at=d.get("fetched_at", _now_iso()),
-            policy_version=d.get("policy_version", "interim-v0"),
+            policy_version=d.get("policy_version", "v1.0"),
             status=FetchStatus(d.get("status", "fetched")),
         )
 
@@ -335,7 +335,7 @@ class AdapterCheckpointV1:
     """
 
     source_slug: str
-    policy_version: str = "interim-v0"
+    policy_version: str = "v1.0"
     completed_urls: list[str] = field(default_factory=list)
     content_hashes: dict[str, str] = field(default_factory=dict)
     next_url: str | None = None
@@ -393,7 +393,7 @@ class AdapterCheckpointV1:
     def from_dict(cls, d: dict) -> "AdapterCheckpointV1":
         return cls(
             source_slug=d["source_slug"],
-            policy_version=d.get("policy_version", "interim-v0"),
+            policy_version=d.get("policy_version", "v1.0"),
             completed_urls=list(d.get("completed_urls", [])),
             content_hashes=dict(d.get("content_hashes", {})),
             next_url=d.get("next_url"),

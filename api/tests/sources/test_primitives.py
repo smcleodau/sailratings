@@ -158,7 +158,7 @@ class TestFetchHtml:
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=VALID_HTML, headers={"Content-Type": "text/html"}))
         client = make_client(transport)
         result = await fetch_html("https://app.sailsys.com.au/results", client=client, source=src)
-        assert result.policy_version == "interim-v0"
+        assert result.policy_version == "v1.0"
         await client.aclose()
 
     @pytest.mark.asyncio
@@ -642,7 +642,7 @@ class TestPaginate:
         results = []
         async for r in paginate("https://app.sailsys.com.au/results", next_fn, client=client, source=src):
             results.append(r)
-        assert results[0].policy_version == "interim-v0"
+        assert results[0].policy_version == "v1.0"
         await client.aclose()
 
     @pytest.mark.asyncio
@@ -757,7 +757,7 @@ class TestRenderPage:
         src = get_source("sailsys")
         browser = FakeBrowser()
         result = await render_page("https://app.sailsys.com.au/results", source=src, browser=browser)
-        assert result.policy_version == "interim-v0"
+        assert result.policy_version == "v1.0"
 
     @pytest.mark.asyncio
     async def test_render_page_robots_disallow(self):

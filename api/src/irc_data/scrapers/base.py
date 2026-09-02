@@ -41,7 +41,7 @@ def get_http_client(**kwargs) -> httpx.AsyncClient:
     """Create an httpx async client with sensible defaults.
 
     The User-Agent is set per the responsible-collection policy
-    (DP-01-02 / docs/INTERIM-POLICY.md §6).  Never override with a
+    (DP-01-02 / docs/SOURCE-POLICY.md §8).  Never override with a
     browser User-Agent or blank User-Agent.
     """
     from irc_data.sources.policy import ACTIVE_POLICY

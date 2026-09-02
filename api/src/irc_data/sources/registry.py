@@ -270,7 +270,7 @@ def can_discover(source: Any) -> bool:
     """True iff discovery metadata (URL/title/date) may be logged.
 
     Approved, hold and unknown sources may be discovered. Blocked and
-    disabled sources may not (INTERIM-POLICY §2.2).
+    disabled sources may not (SOURCE-POLICY.md §2).
     """
     enabled = getattr(source, "enabled", True)
     legal_status = getattr(source, "legal_status", None)
@@ -301,7 +301,7 @@ _SEED_SOURCES: list[tuple[str, str, str, str, str, str]] = [
      "RSS/Atom feeds; explicitly published for syndication"),
     ("irc-certs", "IRC Certificate PDFs", "https://ircrating.org/pdfdirectory",
      "certificates", "approved",
-     "Publicly accessible; core platform data (see INTERIM-POLICY §4)"),
+     "Publicly accessible; core platform data (see SOURCE-POLICY.md §6)"),
     ("clubspot", "ClubSpot", "https://clubspot.com", "results", "hold",
      "Rights ruling pending; ToS review incomplete"),
     ("kwindoo", "Kwindoo", "https://www.kwindoo.com", "results", "hold",
@@ -574,7 +574,7 @@ def seed_sources(
                 text(
                     "INSERT INTO data_sources (slug, display_name, base_url, category, "
                     "policy_version, legal_status, notes, enabled) "
-                    "VALUES (:slug, :name, :url, :cat, 'interim-v0', :status, :notes, true) "
+                    f"VALUES (:slug, :name, :url, :cat, '{CURRENT_POLICY_VERSION}', :status, :notes, true) "
                     "ON CONFLICT (slug) DO NOTHING"
                 ),
                 {"slug": slug, "name": name, "url": url, "cat": category,

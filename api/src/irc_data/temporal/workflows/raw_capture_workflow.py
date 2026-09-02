@@ -1,6 +1,6 @@
 """Temporal workflow for nightly Sailwave + sailing-news raw capture (DP-00-04).
 
-Policy: interim-v0 (DP-00-01)
+Policy: v1.0 (DP-01-02; supersedes interim-v0 / DP-00-01)
 
 Nightly schedule: 01:30 UTC (inside the 01:00–06:00 collection window),
 after the IRC certificate PDF capture at 01:00.
@@ -40,7 +40,7 @@ HEARTBEAT_TIMEOUT = timedelta(minutes=5)
 class NightlyRawCaptureWorkflow:
     """Nightly raw capture for DP-00-04 sources (Sailwave + sailing news).
 
-    Policy: interim-v0.  Triggered at 01:30 UTC by the scheduler.
+    Policy: v1.0.  Triggered at 01:30 UTC by the scheduler.
     """
 
     @workflow.run
@@ -102,7 +102,7 @@ def _aggregate(ledgers: list[dict]) -> dict:
     """Aggregate per-source ledgers into a single run summary."""
     total = {
         "source_slug": "dp-00-04",
-        "policy_version": "interim-v0",
+        "policy_version": "v1.0",
         "urls_attempted": 0,
         "urls_fetched": 0,
         "urls_new": 0,

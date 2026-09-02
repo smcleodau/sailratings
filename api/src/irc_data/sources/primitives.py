@@ -148,7 +148,7 @@ def _check_robots(url: str, source: Any) -> None:
 
 
 def _policy_version(source: DataSource | None) -> str:
-    return source.policy_version if source else "interim-v0"
+    return source.policy_version if source else "v1.0"
 
 
 def _not_modified_result(

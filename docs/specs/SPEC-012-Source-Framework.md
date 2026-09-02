@@ -1,7 +1,7 @@
 # SPEC-012: Data Platform Source Framework
 
 **Covers:** DP-01-01 through DP-01-05  
-**Policy authority:** `docs/INTERIM-POLICY.md` (interim-v0, approved 2026-08-30)  
+**Policy authority:** `docs/SOURCE-POLICY.md` (v1.0, approved 2026-09-02; supersedes `docs/INTERIM-POLICY.md` interim-v0)  
 **Supersedes:** SPEC-13 §2–§3 (operational cadence and rate-limiting now governed here)
 
 ---
@@ -27,7 +27,7 @@ CREATE TABLE data_sources (
     base_url        TEXT NOT NULL,
     category        TEXT NOT NULL,                 -- 'results', 'ratings', 'certificates', 'news'
     adapter_class   TEXT,                          -- dotted Python path
-    policy_version  TEXT NOT NULL DEFAULT 'interim-v0',
+    policy_version  TEXT NOT NULL DEFAULT 'v1.0',
     legal_status    TEXT NOT NULL DEFAULT 'approved',
                                                    -- 'approved' | 'hold' | 'blocked'
     robots_checked_at TIMESTAMPTZ,
@@ -40,7 +40,7 @@ CREATE TABLE data_sources (
 );
 ```
 
-### 2.2 Seed entries (interim-v0 approved sources)
+### 2.2 Seed entries (v1.0 approved sources)
 
 | slug | display_name | category | legal_status |
 |---|---|---|---|
@@ -74,12 +74,12 @@ constraint ensuring `legal_status IN ('approved', 'hold', 'blocked')`.
 
 ## 3. Responsible Collection Policy (DP-01-02)
 
-Full policy text lives in `docs/INTERIM-POLICY.md`. The code enforces it.
+Full policy text lives in `docs/SOURCE-POLICY.md` (v1.0). The code enforces it.
 
 ### 3.1 Policy version gate
 
 ```python
-CURRENT_POLICY_VERSION = "interim-v0"
+CURRENT_POLICY_VERSION = "v1.0"
 
 def assert_policy_current(source: DataSource):
     if source.policy_version != CURRENT_POLICY_VERSION:
@@ -121,7 +121,7 @@ set `enabled = FALSE`, quarantine existing captures for that source
 
 ### 3.5 IRC Certificate PDFs — specific guidance
 
-Status: **approved** (interim-v0, 2026-08-30).  
+Status: **approved** (v1.0, 2026-09-02; originally interim-v0, 2026-08-30).  
 Rationale: published for racing administration, publicly accessible, core
 platform data. Capture with:
 - Attribution header: `X-SailRatings-Source: irc-certs`
