@@ -82,3 +82,53 @@ async def test_harvest_tcc_finds_multiple_years(tmp_path, monkeypatch):
     for a in archives:
         assert a["path"].exists(), f"file missing: {a['path']}"
         assert a["path"].read_bytes().startswith(b"CertNo")
+
+
+@pytest.mark.asyncio
+async def test_harvest_skips_html_snapshots(tmp_path, monkeypatch):
+    """The 'online-tcc-listings/' CDX pattern matches the WordPress listing
+    *page*; Wayback serves its HTML shell, not a CSV.  Those must be
+    rejected rather than persisted as a bogus ``tcc_*.csv``."""
+
+    pattern_timestamps: dict[str, list[tuple[int, str]]] = {
+        "https://ircrating.org/irc-racing/online-tcc-listings/": [
+            (2020, "20200412154949"),
+        ],
+        "https://ircrating.org/wp-content/uploads/*/tcc-listing*.csv": [
+            (2021, "20210515101010"),
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/cdx/search/cdx" in request.url.path:
+            url_pat = request.url.params.get("url", "")
+            snaps = pattern_timestamps.get(url_pat, [])
+            return httpx.Response(200, content=_cdx_rows_for(url_pat, snaps))
+        if "id_/" in str(request.url):
+            url = str(request.url)
+            if "online-tcc-listings" in url:
+                return httpx.Response(
+                    200, content=b"<!doctype html><html><head></head></html>"
+                )
+            return httpx.Response(200, content=b"CertNo,BoatName\n1,X\n")
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+
+    def fake_client(**kwargs):
+        kwargs.pop("transport", None)
+        return httpx.AsyncClient(transport=transport, **kwargs)
+
+    monkeypatch.setattr("irc_data.scrapers.wayback.get_http_client", fake_client)
+
+    async def _no_wait(self):  # pragma: no cover
+        return None
+
+    monkeypatch.setattr("irc_data.scrapers.base.RateLimiter.wait", _no_wait)
+
+    archives = await harvest_tcc_archives(
+        start_year=2019, end_year=2022, out_dir=tmp_path
+    )
+    # Only the genuine CSV snapshot is kept; the HTML one is skipped.
+    assert len(archives) == 1
+    assert archives[0]["path"].read_bytes().startswith(b"CertNo")

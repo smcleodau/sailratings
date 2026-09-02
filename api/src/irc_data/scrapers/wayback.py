@@ -187,6 +187,22 @@ async def harvest_tcc_archives(
                         f"{len(snap.content)} bytes; skipping"
                     )
                     continue
+                # The "online-tcc-listings/" CDX pattern matches the WordPress
+                # listing *page*, not a CSV — Wayback serves its HTML shell
+                # (which loads the real data via AJAX).  Persisting that as
+                # ``tcc_*.csv`` yields files that parse to zero rows, so
+                # reject non-CSV payloads here.  A genuine listing starts with
+                # a header row of comma-separated column names (Boat Name /
+                # Sail No / Cert No / TCC ...), never "<!doctype html".
+                head = snap.content[:512].lstrip(b"\xef\xbb\xbf \t\r\n").lower()
+                if head.startswith(b"<") and (
+                    b"<html" in head or b"<!doctype" in head or b"<head" in head
+                ):
+                    print(
+                        f"  Snapshot {snap_url} is HTML (the listing page), "
+                        f"not a CSV; skipping"
+                    )
+                    continue
                 target.write_bytes(snap.content)
                 results.append(
                     {
