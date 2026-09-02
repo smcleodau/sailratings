@@ -1,14 +1,22 @@
 """Thin wrapper around the Firecrawl API.
 
-We use Firecrawl for two things:
+We use Firecrawl for three things:
 
 - `scrape_url(url)` — fetch a single page, return clean markdown
 - `map_site(url, limit)` — discover sub-URLs from a seed
+- `crawl_site(url, limit)` — crawl a site and return full page contents
 
-Every call is logged to the `firecrawl_calls` table so the
-/justin/firecrawl dashboard can report burn rate, per-domain success,
-and recent activity. Logging is best-effort and never raises — a DB
-hiccup in telemetry must not break a scrape.
+Every call is logged to the `firecrawl_calls` table (via the
+provider-agnostic ledger in `crawl_telemetry`) so the /justin/firecrawl
+dashboard can report burn rate, per-domain success, and recent activity.
+Logging is best-effort and never raises — a DB hiccup in telemetry must
+not break a scrape.
+
+Every call also passes through the credit-budget gate
+(`crawl_telemetry.check_throttle`) *before* hitting the API: at the soft
+cap, discovery-class callers are refused; at the hard cap everything but
+manual calls is refused with `CrawlBudgetExhausted`. That's the "never
+run out of crawl budget silently" guarantee from OPS-01-05.
 
 The wrapper degrades gracefully when `FIRECRAWL_API_KEY` is unset — it
 raises `FirecrawlUnavailable` rather than crashing midway through a CLI
@@ -23,15 +31,37 @@ import os
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
 
-from sqlalchemy import text
+from irc_data.discovery.crawl_telemetry import (
+    CrawlBudgetExhausted,
+    check_throttle,
+    domain_of as _domain_of,
+    log_call as _log_call,
+)
 
 logger = logging.getLogger(__name__)
+
+# Re-exported so callers can catch either failure mode from one import.
+__all__ = [
+    "CrawlBudgetExhausted",
+    "FirecrawlUnavailable",
+    "ScrapeResult",
+    "scrape_url",
+    "map_site",
+    "crawl_site",
+    "get_credit_usage",
+]
 
 
 class FirecrawlUnavailable(RuntimeError):
     """Raised when FIRECRAWL_API_KEY is missing or the SDK isn't installed."""
+
+
+def _enforce_budget(mode: str, url: str, caller: str | None) -> None:
+    """Soft/hard credit-cap gate. Raises CrawlBudgetExhausted when throttled."""
+    decision = check_throttle(mode=mode, url=url, caller=caller)
+    if not decision.allowed:
+        raise CrawlBudgetExhausted(decision.reason)
 
 
 @dataclass
@@ -58,14 +88,6 @@ def _client():
     return Firecrawl(api_key=api_key)
 
 
-def _domain_of(url: str) -> str:
-    try:
-        host = urlparse(url).hostname or ""
-        return host.lower().lstrip("www.")
-    except Exception:
-        return ""
-
-
 def _credits_from_response(resp: Any) -> int | None:
     """Pull credits_used off whichever shape the SDK returned."""
     if resp is None:
@@ -86,48 +108,9 @@ def _credits_from_response(resp: Any) -> int | None:
         return None
 
 
-def _log_call(
-    *,
-    mode: str,
-    url: str,
-    status: str,
-    duration_ms: int,
-    credits: int | None,
-    response_chars: int | None = None,
-    links_found: int | None = None,
-    error_message: str | None = None,
-    caller: str | None = None,
-) -> None:
-    """Best-effort write to firecrawl_calls. Never raises."""
-    try:
-        from irc_data.db.connection import get_engine
-        engine = get_engine()
-        with engine.begin() as conn:
-            conn.execute(text("""
-                INSERT INTO firecrawl_calls
-                  (mode, url, domain, status, credits, duration_ms,
-                   response_chars, links_found, error_message, caller)
-                VALUES
-                  (:mode, :url, :domain, :status, :credits, :duration_ms,
-                   :response_chars, :links_found, :error_message, :caller)
-            """), {
-                "mode": mode,
-                "url": url,
-                "domain": _domain_of(url),
-                "status": status,
-                "credits": credits if credits is not None else 1,
-                "duration_ms": duration_ms,
-                "response_chars": response_chars,
-                "links_found": links_found,
-                "error_message": (error_message or "")[:500] or None,
-                "caller": caller or os.environ.get("FIRECRAWL_CALLER", "discovery"),
-            })
-    except Exception:  # noqa: BLE001 — telemetry must never break a scrape
-        logger.exception("firecrawl_calls insert failed (non-fatal)")
-
-
 def scrape_url(url: str, *, caller: str | None = None) -> ScrapeResult:
     """Scrape a single URL and return cleaned markdown + title."""
+    _enforce_budget("scrape", url, caller)
     fc = _client()
     t0 = time.monotonic()
     try:
@@ -163,6 +146,7 @@ def map_site(seed_url: str, limit: int = 50, *, search: str | None = None, calle
     Use this when handed a calendar / results-index page — Firecrawl walks
     the site and returns every reachable URL we should consider.
     """
+    _enforce_budget("map", seed_url, caller)
     fc = _client()
     t0 = time.monotonic()
     try:
@@ -204,6 +188,65 @@ def map_site(seed_url: str, limit: int = 50, *, search: str | None = None, calle
         caller=caller,
     )
     return links
+
+
+def crawl_site(seed_url: str, limit: int = 10, *, caller: str | None = None) -> dict[str, Any]:
+    """Crawl a site from a seed, scraping pages as it goes.
+
+    Unlike `map_site` (URL discovery only), Firecrawl's crawl endpoint
+    returns full page content per URL — the right tool when we know we want
+    every page under a results index. Logged as mode='crawl' in the ledger
+    with one row for the whole job (pages scraped → ``links_found``).
+    """
+    _enforce_budget("crawl", seed_url, caller)
+    fc = _client()
+    t0 = time.monotonic()
+    try:
+        resp = fc.crawl(seed_url, limit=limit, scrape_options={"formats": ["markdown"]})
+    except Exception as e:
+        _log_call(
+            mode="crawl", url=seed_url, status="error",
+            duration_ms=int((time.monotonic() - t0) * 1000),
+            credits=None, links_found=0,
+            error_message=str(e), caller=caller,
+        )
+        raise
+
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    # SDK returns either a dict with 'data' or an object with .data; each
+    # page entry carries markdown + metadata like scrape() results.
+    pages = (
+        resp.get("data") if isinstance(resp, dict)
+        else getattr(resp, "data", None)
+    ) or []
+    out: list[dict[str, Any]] = []
+    for page in pages:
+        if isinstance(page, dict):
+            md = page.get("markdown") or ""
+            meta = page.get("metadata") or {}
+            page_url = (meta.get("sourceURL") or meta.get("url")
+                        or page.get("url") or seed_url)
+            title = meta.get("title")
+        else:
+            md = getattr(page, "markdown", "") or ""
+            meta = getattr(page, "metadata", None)
+            page_url = (
+                getattr(meta, "sourceURL", None) or getattr(meta, "url", None)
+                or getattr(page, "url", None) or seed_url
+            )
+            title = getattr(meta, "title", None) if meta is not None else None
+        out.append({"url": page_url, "markdown": md, "title": title})
+
+    _log_call(
+        mode="crawl", url=seed_url,
+        status="ok" if out else "empty",
+        duration_ms=duration_ms,
+        credits=_credits_from_response(resp),
+        response_chars=sum(len(p["markdown"]) for p in out),
+        links_found=len(out),
+        caller=caller,
+    )
+    return {"seed_url": seed_url, "pages": out, "page_count": len(out)}
 
 
 def get_credit_usage() -> dict[str, Any] | None:
