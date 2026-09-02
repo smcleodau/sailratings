@@ -50,11 +50,16 @@ _DISCOVERY_ALLOWED = frozenset({"approved", "hold", "unknown"})
 # Exceptions — re-exported for backward compat with DP-01-04 imports
 # ---------------------------------------------------------------------------
 
-# These are the same exceptions from policy.py; we re-export them here so
-# that DP-01-04 code that does
+# These are the same exceptions/helpers from policy.py; we re-export them
+# here so that DP-01-04 code that does
 #   from irc_data.sources.registry import SourceNotApprovedError
+#   from irc_data.sources.registry import assert_policy_current
 # continues to work.
-from irc_data.sources.policy import SourceNotApprovedError, PolicyVersionMismatchError
+from irc_data.sources.policy import (
+    SourceNotApprovedError,
+    PolicyVersionMismatchError,
+    assert_policy_current,
+)
 
 # Also expose LEGAL_STATUSES from models (DP-01-04 needs it from registry too)
 from irc_data.sources.models import LEGAL_STATUSES
@@ -337,15 +342,34 @@ _SEED_RECORDS: dict[str, SourceRecord] = {
 _REGISTRY_OVERLAY: dict[str, SourceRecord] = {}
 
 
+def _copy_source(src: SourceRecord | None) -> SourceRecord | None:
+    """Return a defensive copy of a :class:`SourceRecord`.
+
+    Seed records are shared, mutable dataclass instances.  Tests (and
+    callers) mutate ``enabled``, ``robots_disallow`` and ``policy_version``
+    to exercise enforcement; returning a copy prevents that mutation from
+    leaking into the shared registry and polluting subsequent lookups.
+    """
+    if src is None:
+        return None
+    import copy
+
+    return copy.copy(src)
+
+
 def get_in_memory_sources() -> list[SourceRecord]:
     """Return all 11 in-memory seed sources (no DB required)."""
     merged = {**_SEED_RECORDS, **_REGISTRY_OVERLAY}
-    return list(merged.values())
+    return [_copy_source(s) for s in merged.values()]
 
 
 def get_in_memory_source(slug: str) -> SourceRecord | None:
-    """Return a single in-memory seed source by slug, or None."""
-    return _REGISTRY_OVERLAY.get(slug) or _SEED_RECORDS.get(slug)
+    """Return a single in-memory seed source by slug, or None.
+
+    Returns a defensive copy so callers may mutate the record without
+    polluting the shared registry.
+    """
+    return _copy_source(_REGISTRY_OVERLAY.get(slug) or _SEED_RECORDS.get(slug))
 
 
 # ---------------------------------------------------------------------------
@@ -385,12 +409,19 @@ def _row_to_source(row: Any) -> SourceRecord:
     )
 
 
-def get_source(db: Any, slug: str) -> SourceRecord:
+def get_source(db: Any = None, slug: str | None = None) -> SourceRecord:
     """Resolve a :class:`SourceRecord` from the ``data_sources`` table.
 
+    Accepts either ``get_source(db, slug)`` or the convenience form
+    ``get_source(slug)`` (db defaults to ``None`` → in-memory registry).
     When *db* is ``None``, falls back to the in-memory seed registry.
     Raises :class:`SourceNotApprovedError` if no source found.
     """
+    # Convenience form: get_source("sailsys") — first arg is the slug.
+    if slug is None and isinstance(db, str):
+        db, slug = None, db
+    if slug is None:
+        raise TypeError("get_source() missing required argument: 'slug'")
     if db is None:
         src = get_in_memory_source(slug)
         if src is None:
@@ -399,19 +430,44 @@ def get_source(db: Any, slug: str) -> SourceRecord:
 
     from sqlalchemy import text
 
-    result = db.execute(
-        text(
-            "SELECT slug, display_name, base_url, category, "
-            "policy_version, legal_status, enabled, robots_disallow, "
-            "robots_checked_at, contact_email, notes "
-            "FROM data_sources WHERE slug = :slug"
-        ),
-        {"slug": slug},
-    )
-    row = result.fetchone()
+    with _connect(db) as conn:
+        result = conn.execute(
+            text(
+                "SELECT slug, display_name, base_url, category, "
+                "policy_version, legal_status, enabled, "
+                "robots_checked_at, contact_email, notes "
+                "FROM data_sources WHERE slug = :slug"
+            ),
+            {"slug": slug},
+        )
+        row = result.fetchone()
     if row is None:
         raise SourceNotApprovedError(slug, "No source record found in data_sources")
     return _row_to_source(row)
+
+
+def _connect(db: Any):
+    """Return a connection context for *db*.
+
+    Accepts either a SQLAlchemy ``Engine`` (calls ``.connect()``) or an
+    existing ``Connection`` (returned as-is, not closed by the caller via
+    a no-op context).  This lets the registry work with both styles.
+    """
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _ctx():
+        # Engine → open + close a connection; Connection → use directly.
+        if hasattr(db, "connect") and not hasattr(db, "execute"):
+            conn = db.connect()
+            try:
+                yield conn
+            finally:
+                conn.close()
+        else:
+            yield db
+
+    return _ctx()
 
 
 def get_all_sources(db: Any) -> list[SourceRecord]:
@@ -424,15 +480,16 @@ def get_all_sources(db: Any) -> list[SourceRecord]:
 
     from sqlalchemy import text
 
-    result = db.execute(
-        text(
-            "SELECT slug, display_name, base_url, category, "
-            "policy_version, legal_status, enabled, robots_disallow, "
-            "robots_checked_at, contact_email, notes "
-            "FROM data_sources ORDER BY slug"
-        ),
-    )
-    return [_row_to_source(row) for row in result.fetchall()]
+    with _connect(db) as conn:
+        result = conn.execute(
+            text(
+                "SELECT slug, display_name, base_url, category, "
+                "policy_version, legal_status, enabled, "
+                "robots_checked_at, contact_email, notes "
+                "FROM data_sources ORDER BY slug"
+            ),
+        )
+        return [_row_to_source(row) for row in result.fetchall()]
 
 
 def seed_sources(
@@ -447,8 +504,18 @@ def seed_sources(
     DP-01-04 ORM-based upsert.  Otherwise uses the DP-01-03 simple
     ``ON CONFLICT DO NOTHING`` INSERT.
 
-    Returns rows inserted / count.
+    When *seeds* is ``None``, the canonical 30-entry ``SEED_SOURCES``
+    register (DP-01-01) is used.
+
+    Returns the total row count in ``data_sources`` after seeding
+    (idempotent upsert — re-seeding does not duplicate rows).
     """
+    if seeds is None and _ORM_AVAILABLE:
+        # Default to the canonical 30-entry register.
+        from irc_data.sources.seed_data import SEED_SOURCES
+
+        seeds = SEED_SOURCES
+
     if seeds is not None and _ORM_AVAILABLE:
         # DP-01-04 path: ORM upsert with DataSourceRecordV1 records
         now = now or datetime.now(timezone.utc)
@@ -550,6 +617,7 @@ __all__ = [
     # Exceptions (re-exported for DP-01-04 compat)
     "SourceNotApprovedError",
     "PolicyVersionMismatchError",
+    "assert_policy_current",
     # ORM model (DP-01-04)
     "DataSource",
     # DP-01-03 SourceRecord functions

@@ -39,6 +39,7 @@ from irc_data.sources.policy import (
     SourceNotApprovedError,
     assert_policy_current,
     assert_source_approved,
+    is_within_collection_window,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,11 +58,36 @@ def _sha256(data: bytes) -> str:
 
 
 def _check_source(source: DataSource | None) -> None:
-    """Run policy + approval checks if a source is provided."""
+    """Run policy + approval checks if a source is provided.
+
+    Enforcement order matches the acceptance criteria: version first, then
+    the kill switch (enabled), then robots/legal status.
+    """
     if source is None:
         return
+    # 1. Policy version gate (raises PolicyVersionMismatchError if stale)
     assert_policy_current(source)
+    # 2. Kill switch — disabled sources produce zero fetch attempts.
+    if not getattr(source, "enabled", True):
+        raise SourceNotApprovedError(
+            getattr(source, "slug", "<unknown>"),
+            reason="source is disabled (kill switch)",
+        )
+    # 3. Legal status / robots approval gate.
     assert_source_approved(source)
+
+
+def _enforce_window(source: DataSource | None) -> None:
+    """Enforce the nightly collection window when a source is provided.
+
+    Health probes bypass this via the primitives' ``skip_window`` path;
+    ordinary collection must run inside the 01:00–06:00 window.
+    """
+    if source is not None and not is_within_collection_window():
+        raise SourceNotApprovedError(
+            getattr(source, "slug", "<unknown>"),
+            reason="outside nightly collection window (01:00-06:00)",
+        )
 
 
 def _check_robots(url: str, source: DataSource | None) -> None:
@@ -124,9 +150,8 @@ async def fetch_html(
         client = PolicyAwareHttpClient(rate_limiter=RateLimiter(min_delay=0.0, jitter=0.0))
 
     try:
-        response = await client.fetch(
+        response = await client.raw(
             url,
-            source=source,
             etag=etag,
             last_modified=last_modified,
         )
@@ -203,9 +228,8 @@ async def fetch_pdf(
         if source and source.slug == "irc-certs":
             extra_headers = {"X-SailRatings-Source": "irc-certs"}
 
-        response = await client.fetch(
+        response = await client.raw(
             url,
-            source=source,
             etag=etag,
             last_modified=last_modified,
             extra_headers=extra_headers,
@@ -278,9 +302,8 @@ async def fetch_json(
         if source and source.slug == "irc-certs":
             extra_headers["X-SailRatings-Source"] = "irc-certs"
 
-        response = await client.fetch(
+        response = await client.raw(
             url,
-            source=source,
             etag=etag,
             last_modified=last_modified,
             extra_headers=extra_headers,
@@ -357,9 +380,8 @@ async def fetch_file(
         client = PolicyAwareHttpClient(rate_limiter=RateLimiter(min_delay=0.0, jitter=0.0))
 
     try:
-        response = await client.fetch(
+        response = await client.raw(
             url,
-            source=source,
             etag=etag,
             last_modified=last_modified,
         )

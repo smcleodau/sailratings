@@ -71,6 +71,19 @@ class SourceRecord:
     contact_email: str | None = None
     notes: str | None = None
 
+    def is_disallowed(self, url: str) -> bool:
+        """Return ``True`` if *url* matches any cached robots disallow path."""
+        path = urlparse(url).path or "/"
+        for rule in self.robots_disallow:
+            if not rule:
+                continue
+            # Wildcard root "/" disallows everything.
+            if rule == "/":
+                return True
+            if path.startswith(rule):
+                return True
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Gate decision

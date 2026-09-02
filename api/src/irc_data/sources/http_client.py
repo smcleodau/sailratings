@@ -73,8 +73,12 @@ class HttpClientError(Exception):
     """Base exception for HTTP-client failures."""
 
 
-class ObjectTooLargeError(HttpClientError):
-    """Raised when a response body exceeds the size cap."""
+class ObjectTooLargeError(HttpClientError, ValueError):
+    """Raised when a response body exceeds the size cap.
+
+    Subclasses :class:`ValueError` so existing callers that catch
+    ``ValueError`` for size-cap violations continue to work.
+    """
 
     def __init__(self, url: str, size: int, max_size: int):
         self.url = url
@@ -139,6 +143,10 @@ class HttpClient:
         Maximum retry attempts for transient 5xx errors.
     backoff
         Backoff sequence (seconds) between retries.
+    rate_limiter
+        Optional :class:`RateLimiter` (backward-compat).  When provided,
+        its ``min_delay`` / ``jitter`` override the policy rate rule so
+        tests can disable or tune the built-in per-domain rate limiting.
     """
 
     def __init__(
@@ -147,12 +155,21 @@ class HttpClient:
         policy: CollectionPolicyDecisionV1 | None = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
         backoff: tuple[float, ...] = DEFAULT_BACKOFF,
+        rate_limiter: Any = None,
     ):
         self.policy = policy or ACTIVE_POLICY
         self.max_retries = max_retries
         self.backoff = backoff
         self._client = client
         self._owns_client = client is None
+
+        # Backward-compat: honour an injected RateLimiter's delay/jitter.
+        if rate_limiter is not None:
+            self._rate_min_delay = float(getattr(rate_limiter, "min_delay", 0.0))
+            self._rate_jitter = float(getattr(rate_limiter, "jitter", 0.0))
+        else:
+            self._rate_min_delay = self.policy.rate.min_delay_seconds
+            self._rate_jitter = self.policy.rate.jitter_seconds
 
         # Per-domain rate limiting (monotonic timestamp of last request)
         self._rate_last_request: dict[str, float] = {}
@@ -248,12 +265,11 @@ class HttpClient:
 
     async def _rate_limit_wait(self, domain: str) -> float:
         """Enforce per-domain rate limit.  Returns seconds slept."""
-        rate = self.policy.rate
         domain_lower = domain.lower()
         now = time.monotonic()
         last = self._rate_last_request.get(domain_lower, 0.0)
         elapsed = now - last
-        delay = rate.min_delay_seconds + random.uniform(0, rate.jitter_seconds)
+        delay = self._rate_min_delay + random.uniform(0, self._rate_jitter)
 
         if elapsed < delay:
             sleep_time = delay - elapsed
@@ -292,6 +308,51 @@ class HttpClient:
         6. SHA-256 hashes the body.
         7. Enforces the object-size cap.
         """
+        response = await self.raw(
+            url,
+            etag=etag,
+            last_modified=last_modified,
+            extra_headers=extra_headers,
+            skip_rate_limit=skip_rate_limit,
+        )
+
+        # 304 — clean success, content unchanged
+        if response.status_code == 304:
+            return NotModified(
+                url=url,
+                etag=response.headers.get("ETag") or etag,
+                last_modified=response.headers.get("Last-Modified") or last_modified,
+            )
+
+        # Success — build FetchResult (size cap enforced in raw())
+        return FetchResult.from_response(
+            url=str(response.url) if response.url else url,
+            content=response.content,
+            etag=response.headers.get("ETag"),
+            last_modified=response.headers.get("Last-Modified"),
+            policy_version=self.policy.version,
+        )
+
+    async def raw(
+        self,
+        url: str,
+        *,
+        etag: str | None = None,
+        last_modified: str | None = None,
+        extra_headers: dict[str, str] | None = None,
+        skip_rate_limit: bool = False,
+    ) -> httpx.Response:
+        """Fetch *url* and return the raw :class:`httpx.Response`.
+
+        Applies the same policy mechanics as :meth:`fetch` — User-Agent
+        validation, per-domain rate limiting, conditional-request headers,
+        retry with backoff, and the object-size cap — but returns the raw
+        ``httpx.Response`` so callers (e.g. acquisition primitives) can
+        inspect Content-Type and validate format before hashing/storing.
+
+        A 304 response is returned as-is (caller treats it as clean
+        success).  A ``429`` response honouring ``Retry-After`` is retried.
+        """
         headers = self._build_headers(etag, last_modified, extra_headers)
         self._validate_user_agent(headers)
 
@@ -312,14 +373,17 @@ class HttpClient:
 
                 # 304 — clean success, content unchanged
                 if response.status_code == 304:
-                    return NotModified(
-                        url=url,
-                        etag=response.headers.get("ETag") or etag,
-                        last_modified=response.headers.get("Last-Modified") or last_modified,
-                    )
+                    return response
 
-                # Retryable 5xx
-                if response.status_code in RETRYABLE_STATUS_CODES:
+                # Retryable 5xx, or 429 with honourable Retry-After
+                retryable = response.status_code in RETRYABLE_STATUS_CODES
+                if (
+                    response.status_code == 429
+                    and self.policy.rate.honour_retry_after
+                    and "Retry-After" in response.headers
+                ):
+                    retryable = True
+                if retryable:
                     last_exc = RetryExhaustedError(
                         url, response.status_code, attempt + 1
                     )
@@ -331,21 +395,13 @@ class HttpClient:
                 # Non-retryable error
                 response.raise_for_status()
 
-                # Success — build FetchResult
-                content = response.content
-
                 # Object-size cap
+                content = response.content
                 max_bytes = self.policy.retention.max_object_size_mb * 1024 * 1024
                 if len(content) > max_bytes:
                     raise ObjectTooLargeError(url, len(content), max_bytes)
 
-                return FetchResult.from_response(
-                    url=url,
-                    content=content,
-                    etag=response.headers.get("ETag"),
-                    last_modified=response.headers.get("Last-Modified"),
-                    policy_version=self.policy.version,
-                )
+                return response
 
             except httpx.TransportError as e:
                 last_exc = e
