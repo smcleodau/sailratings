@@ -20,12 +20,18 @@ const SECTIONS = [
         !p.startsWith("/admin/corrections") &&
         !p.startsWith("/admin/scrapers") &&
         !p.startsWith("/admin/discovery") &&
-        !p.startsWith("/admin/firecrawl")),
+        !p.startsWith("/admin/firecrawl") &&
+        !p.startsWith("/admin/data-health")),
   },
   {
     href: "/admin/scrapers",
     label: "Scrapers",
     match: (p: string) => p.startsWith("/admin/scrapers"),
+  },
+  {
+    href: "/admin/data-health",
+    label: "Data health",
+    match: (p: string) => p.startsWith("/admin/data-health"),
   },
   {
     href: "/sources-policy",
