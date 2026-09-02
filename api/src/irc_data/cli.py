@@ -3547,3 +3547,7 @@ from irc_data.diagnostics.reconciliation_cli import reconcile as _reconcile_cli 
 
 cli.add_command(_reconcile_cli)
 
+from irc_data.resilience.cli import dr_drill as _dr_drill  # noqa: E402
+
+cli.add_command(_dr_drill)
+
