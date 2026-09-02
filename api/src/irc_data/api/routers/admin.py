@@ -982,6 +982,32 @@ async def firecrawl_by_domain(
     }
 
 
+@router.get("/firecrawl/budget")
+async def firecrawl_budget(
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Credit budget state for the crawl provider (OPS-01-05).
+
+    Balance (provider-reported when reachable, else ledger-derived),
+    projected monthly burn from the trailing 7-day average, headroom
+    (balance − projection), the configured soft/hard caps, and the most
+    recent throttle decisions so the onset of throttling is never silent.
+    """
+    _verify_admin(authorization)
+
+    from irc_data.discovery import crawl_telemetry
+    from irc_data.discovery.firecrawl_client import get_credit_usage
+
+    budget = crawl_telemetry.credit_balance(
+        engine, provider_balance=get_credit_usage
+    )
+    budget["throttle_events"] = crawl_telemetry.recent_throttle_events(
+        engine, limit=50, blocked_only=False
+    )
+    return budget
+
+
 @router.get("/firecrawl/diffs")
 async def firecrawl_diffs(
     source: str | None = None,

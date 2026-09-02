@@ -120,7 +120,7 @@ def seed_crawl_and_ingest(
     """
     from irc_data.discovery.extractor import extract_results
     from irc_data.discovery.firecrawl_client import (
-        FirecrawlUnavailable, map_site, scrape_url,
+        CrawlBudgetExhausted, FirecrawlUnavailable, map_site, scrape_url,
     )
     from irc_data.discovery.url_expanders import expand_for_source
     from irc_data.scrapers.result_import import import_scraper_results
@@ -131,6 +131,7 @@ def seed_crawl_and_ingest(
         "urls_failed": 0,
         "rows_imported": 0,
         "rows_matched": 0,
+        "throttled": 0,
     }
 
     if mode == "per-source-expand":
@@ -138,6 +139,11 @@ def seed_crawl_and_ingest(
     else:
         try:
             urls = map_site(seed_url, limit=max_pages, caller="discover-and-ingest")
+        except CrawlBudgetExhausted as e:
+            # Credit-cap gate: throttle before exhaustion, not after.
+            logger.warning("seed crawl throttled by credit cap: %s", e)
+            stats["throttled"] = 1
+            return stats
         except FirecrawlUnavailable as e:
             logger.error("firecrawl unavailable: %s", e)
             return stats
@@ -151,6 +157,11 @@ def seed_crawl_and_ingest(
     for url in urls[:max_pages]:
         try:
             page = scrape_url(url, caller="discover-and-ingest")
+        except CrawlBudgetExhausted as e:
+            # Hard credit cap — stop the batch, keep the ledger honest.
+            logger.warning("seed crawl stopping, credit cap hit: %s", e)
+            stats["throttled"] = 1
+            break
         except Exception as e:
             logger.warning("scrape failed for %s: %s", url, e)
             stats["urls_failed"] += 1

@@ -23,7 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from irc_data.discovery.firecrawl_client import (
-    FirecrawlUnavailable, scrape_url, map_site,
+    CrawlBudgetExhausted, FirecrawlUnavailable, scrape_url, map_site,
 )
 from irc_data.discovery.extractor import extract_event
 
@@ -44,6 +44,17 @@ def discover_url(engine: Engine, url: str, *, seed_url: str | None = None,
     """Scrape, extract, persist. Returns the persisted row as a dict."""
     try:
         scraped = scrape_url(url)
+    except CrawlBudgetExhausted as e:
+        # Credit-cap gate refused the call — persist a failed row so the
+        # throttling is visible in the discovery queue, not silent.
+        logger.warning("crawl budget gate throttled %s: %s", url, e)
+        return _persist(engine, url, seed_url, source_type, {
+            "scoring_platform": "unknown",
+            "platform_ids": {},
+            "confidence": 0.0,
+            "reasoning": f"crawl budget throttled: {e}",
+            "_error": str(e),
+        })
     except FirecrawlUnavailable as e:
         return _persist(engine, url, seed_url, source_type, {
             "scoring_platform": "unknown",
@@ -61,9 +72,16 @@ def discover_url(engine: Engine, url: str, *, seed_url: str | None = None,
 
 
 def discover_seed(engine: Engine, seed_url: str, *, limit: int = 30) -> list[dict[str, Any]]:
-    """Map a seed URL via Firecrawl, then extract from each sub-URL."""
+    """Map a seed URL via Firecrawl, then extract from each sub-URL.
+
+    Stops early when the credit-cap gate starts refusing calls — a seed
+    crawl must throttle before the budget is exhausted, not after.
+    """
     try:
         urls = map_site(seed_url, limit=limit)
+    except CrawlBudgetExhausted as e:
+        logger.warning("discover_seed throttled by credit cap: %s", e)
+        return []
     except FirecrawlUnavailable as e:
         raise RuntimeError(f"cannot map seed: {e}") from e
 
@@ -72,10 +90,16 @@ def discover_seed(engine: Engine, seed_url: str, *, limit: int = 30) -> list[dic
         urls.insert(0, seed_url)
 
     out: list[dict[str, Any]] = []
+    throttled = False
     for u in urls[:limit]:
+        if throttled:
+            break
         try:
             row = discover_url(engine, u, seed_url=seed_url, source_type="seed_crawl")
             out.append(row)
+        except CrawlBudgetExhausted as e:
+            logger.warning("discover_seed stopping early, credit cap hit: %s", e)
+            throttled = True
         except Exception as e:
             logger.exception(f"discover_url failed for {u}: {e}")
     return out
