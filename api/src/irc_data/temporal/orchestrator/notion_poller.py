@@ -96,9 +96,26 @@ class NotionPoller:
             return parent in allowed_epics
 
         def human_gate(page):
-            """Return True if the Human Gate checkbox is checked — never auto-dispatch."""
+            """Return True if the Human Gate checkbox is checked — never auto-dispatch.
+
+            The Notion DB query index can lag behind page-level updates, so when
+            the index says the gate is set we do a live page GET to confirm.
+            """
             cb = page.get('properties', {}).get('Human Gate', {})
-            return cb.get('checkbox', False)
+            if not cb.get('checkbox', False):
+                return False
+            # Index says gated — confirm with a live page fetch to catch stale index.
+            try:
+                req = urllib.request.Request(
+                    f"https://api.notion.com/v1/pages/{page['id']}",
+                    headers=self.headers,
+                )
+                res = urllib.request.urlopen(req)
+                live = json.loads(res.read())
+                live_cb = live.get('properties', {}).get('Human Gate', {})
+                return live_cb.get('checkbox', True)
+            except Exception:
+                return True  # default to gated if live check fails
 
         eligible = [p for p in results if epic_allowed(p) and not human_gate(p)]
         gated = [p for p in results if epic_allowed(p) and human_gate(p)]
