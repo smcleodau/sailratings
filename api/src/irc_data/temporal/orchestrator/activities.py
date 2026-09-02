@@ -157,7 +157,17 @@ async def run_lane_worker_agent(worktree_path: str, task: dict, feedback: str = 
     try:
         conversation = Conversation(agent=agent, workspace=workspace)
         conversation.send_message(prompt)
-        result = await conversation.run() if asyncio.iscoroutinefunction(conversation.run) else conversation.run()
+
+        def _run():
+            if asyncio.iscoroutinefunction(conversation.run):
+                loop = asyncio.new_event_loop()
+                try:
+                    return loop.run_until_complete(conversation.run())
+                finally:
+                    loop.close()
+            return conversation.run()
+
+        result = await asyncio.get_event_loop().run_in_executor(None, _run)
         activity.logger.info("Lane Worker run complete.")
         return {"status": "success", "result": str(result)}
     except Exception as e:
@@ -199,7 +209,17 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
     try:
         conversation = Conversation(agent=agent, workspace=workspace)
         conversation.send_message(prompt)
-        result_obj = await conversation.run() if asyncio.iscoroutinefunction(conversation.run) else conversation.run()
+
+        def _run():
+            if asyncio.iscoroutinefunction(conversation.run):
+                loop = asyncio.new_event_loop()
+                try:
+                    return loop.run_until_complete(conversation.run())
+                finally:
+                    loop.close()
+            return conversation.run()
+
+        result_obj = await asyncio.get_event_loop().run_in_executor(None, _run)
         result = str(result_obj)
         activity.logger.info("Reviewer run complete.")
         
