@@ -805,3 +805,152 @@ class ReconciliationReport(Base):
     promotion_allowed: Mapped[bool] = mapped_column(server_default="true")
     block_reason: Mapped[str | None] = mapped_column(Text)
     schema_version: Mapped[str] = mapped_column(Text, server_default="v1")
+
+
+# ---------------------------------------------------------------------------
+# Validation, quarantine and promotion gates (DP-05-02)
+#
+# quality_batches:      one row per batch version; (pipeline, source_slug,
+#                       version) unique so a retry/replay always lands in a
+#                       fresh version.
+# quality_batch_rows:   staged payload rows for a batch — never read by
+#                       consumers directly; the consumer view joins on
+#                       promoted batches only.
+# quality_quarantine:   one row per quarantined batch — rule failures (with
+#                       samples) + a bounded sample of staged rows.
+# quality_verdicts:     one row per validation run (full report).
+# quality_promotions:   one row per explicit promotion — the only transition
+#                       that changes consumer-visible state, applied in a
+#                       single transaction (partial publication cannot occur).
+# ---------------------------------------------------------------------------
+
+
+class QualityBatch(Base):
+    __tablename__ = "quality_batches"
+    __table_args__ = (
+        UniqueConstraint(
+            "pipeline", "source_slug", "version",
+            name="uq_quality_batches_pipeline_source_version",
+        ),
+        Index("ix_quality_batches_pipeline_source", "pipeline", "source_slug"),
+        Index("ix_quality_batches_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    pipeline: Mapped[str] = mapped_column(Text, nullable=False)
+    source_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    gate: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending"
+    )
+    record_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    content_hash: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    promoted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    promoted_by: Mapped[str | None] = mapped_column(Text)
+
+
+class QualityBatchRow(Base):
+    __tablename__ = "quality_batch_rows"
+    __table_args__ = (
+        Index("ix_quality_batch_rows_batch_key", "batch_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_key: Mapped[str] = mapped_column(
+        ForeignKey("quality_batches.batch_key"), nullable=False
+    )
+    row_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    row_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    row_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class QualityQuarantine(Base):
+    __tablename__ = "quality_quarantine"
+    __table_args__ = (
+        Index("ix_quality_quarantine_batch_key", "batch_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quarantine_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    batch_key: Mapped[str] = mapped_column(Text, nullable=False)
+    pipeline: Mapped[str] = mapped_column(Text, nullable=False)
+    source_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    gate: Mapped[str] = mapped_column(Text, nullable=False)
+    rule_classes: Mapped[list | None] = mapped_column(JSON)
+    failures: Mapped[list | None] = mapped_column(JSON)
+    sample_rows: Mapped[list | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="open"
+    )
+    quarantined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    resolution: Mapped[str | None] = mapped_column(Text)
+
+
+class QualityVerdict(Base):
+    __tablename__ = "quality_verdicts"
+    __table_args__ = (
+        Index("ix_quality_verdicts_batch_key", "batch_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    verdict_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    batch_key: Mapped[str] = mapped_column(Text, nullable=False)
+    pipeline: Mapped[str] = mapped_column(Text, nullable=False)
+    source_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    gate: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    rules_evaluated: Mapped[int] = mapped_column(Integer, server_default="0")
+    rules_failed: Mapped[int] = mapped_column(Integer, server_default="0")
+    failures: Mapped[list | None] = mapped_column(JSON)
+    record_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    evaluated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class QualityPromotion(Base):
+    __tablename__ = "quality_promotions"
+    __table_args__ = (
+        Index("ix_quality_promotions_batch_key", "batch_key"),
+        Index(
+            "ix_quality_promotions_pipeline_source", "pipeline", "source_slug"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    receipt_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    batch_key: Mapped[str] = mapped_column(Text, nullable=False)
+    pipeline: Mapped[str] = mapped_column(Text, nullable=False)
+    source_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    record_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    superseded_batch_key: Mapped[str | None] = mapped_column(Text)
+    superseded_version: Mapped[int | None] = mapped_column(Integer)
+    promoted_by: Mapped[str | None] = mapped_column(Text)
+    auto: Mapped[bool] = mapped_column(server_default="false")
+    promoted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    schema_version: Mapped[str] = mapped_column(Text, server_default="v1")
+
