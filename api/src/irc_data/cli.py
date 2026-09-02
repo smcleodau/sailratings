@@ -441,6 +441,122 @@ def scrape_pdf_certs(ctx, max_fetches, no_window, no_kill_switch, store_path):
             console.print(f"  cert {err['cert_no']}: {err['message']}")
 
 
+@scrape.command(name="raw-capture")
+@click.option(
+    "--source",
+    type=click.Choice(["sailwave", "sailing-news", "all"]),
+    default="all",
+    show_default=True,
+    help="Which DP-00-04 source to capture",
+)
+@click.option(
+    "--max-fetches",
+    type=int,
+    default=5000,
+    show_default=True,
+    help="Maximum total HTTP requests per run",
+)
+@click.option(
+    "--no-window",
+    is_flag=True,
+    help="Skip the nightly collection-window check (manual runs)",
+)
+@click.option(
+    "--no-kill-switch",
+    is_flag=True,
+    help="Skip the per-source kill-switch / §2 gate check",
+)
+@click.option(
+    "--store-path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Override the raw object store root (default: data/raw/<source>)",
+)
+@click.option(
+    "--feed",
+    multiple=True,
+    help="News feed URL to capture (repeatable; overrides default feed list)",
+)
+@click.option(
+    "--url",
+    multiple=True,
+    help="Explicit Sailwave result URL to capture (repeatable; skips discovery)",
+)
+@click.pass_context
+def scrape_raw_capture(ctx, source, max_fetches, no_window, no_kill_switch, store_path, feed, url):
+    """Raw-capture Sailwave result files and approved news feeds (DP-00-04).
+
+    Fetch → hash → store into the content-addressed raw object store.
+    Envelope: RawArtifactV0 = bytes + SHA-256 + URL + fetch time + policy
+    version 'interim-v0'.  Idempotent on re-run (304 / hash dedup).
+
+    Policy: interim-v0.  Polite: 1 req/2s + jitter, nightly window
+    01:00–06:00, max 5,000 fetches/night.  Sources held under §2 of the
+    policy (ClubSpot, Kwindoo) are never fetched.
+    """
+    from irc_data.scrapers.raw_capture import (
+        DP_00_04_SOURCES,
+        RawObjectStore,
+        capture_news_feeds,
+        capture_sailwave,
+        get_default_store,
+    )
+
+    engine = ctx.obj.get("engine")
+
+    sources = list(DP_00_04_SOURCES) if source == "all" else [source]
+
+    console.print("[bold]Raw Capture (DP-00-04)[/bold]")
+    console.print(f"  Sources: {', '.join(sources)}")
+    console.print(f"  Max fetches: {max_fetches:,}")
+    console.print(f"  Window enforcement: {'off' if no_window else 'on'}")
+
+    overall_status = "ok"
+    for slug in sources:
+        store = RawObjectStore(str(store_path / slug)) if store_path else get_default_store(slug)
+        console.print(f"\n[bold]→ {slug}[/bold]  store={store.root}")
+
+        if slug == "sailwave":
+            ledger = capture_sailwave(
+                store,
+                urls=list(url) if url else None,
+                max_fetches=max_fetches,
+                enforce_window=not no_window,
+                check_kill_switch=not no_kill_switch,
+                db_engine=engine if not no_kill_switch else None,
+            )
+        else:
+            ledger = capture_news_feeds(
+                store,
+                feeds=list(feed) if feed else None,
+                max_fetches=max_fetches,
+                enforce_window=not no_window,
+                check_kill_switch=not no_kill_switch,
+                db_engine=engine if not no_kill_switch else None,
+            )
+
+        console.print(f"  Status:       {ledger.status}")
+        console.print(f"  Attempted:    {ledger.urls_attempted:,}")
+        console.print(f"  New:          {ledger.urls_new:,}")
+        console.print(f"  Unchanged:    {ledger.urls_unchanged:,}")
+        console.print(f"  Not modified: {ledger.urls_not_modified:,}")
+        console.print(f"  Skipped:      {ledger.urls_skipped:,}")
+        console.print(f"  Fetches:      {ledger.fetch_count:,}")
+        console.print(f"  Bytes:        {ledger.bytes_downloaded:,}")
+        console.print(f"  Errors:       {len(ledger.errors):,}")
+
+        if ledger.status in ("kill_switch", "window_closed", "robots_error", "error"):
+            overall_status = ledger.status
+
+        if ledger.errors:
+            console.print("  [yellow]Recent errors:[/yellow]")
+            for err in ledger.errors[:5]:
+                console.print(f"    {err['url']}: {err['message']}")
+
+    if overall_status != "ok":
+        console.print(f"\n[yellow]Overall status: {overall_status}[/yellow]")
+
+
 @scrape.command(name="wayback")
 @click.option("--boat", help="Filter by sail number")
 @click.pass_context
