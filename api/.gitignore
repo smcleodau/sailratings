@@ -17,6 +17,7 @@ data/raw/certificates/
 data/raw/race_results/
 data/raw/orc/
 data/reports/
+data/rendered_evidence/
 
 .ipynb_checkpoints/
 *.ipynb_checkpoints

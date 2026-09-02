@@ -54,7 +54,11 @@ _DISCOVERY_ALLOWED = frozenset({"approved", "hold", "unknown"})
 # that DP-01-04 code that does
 #   from irc_data.sources.registry import SourceNotApprovedError
 # continues to work.
-from irc_data.sources.policy import SourceNotApprovedError, PolicyVersionMismatchError
+from irc_data.sources.policy import (
+    SourceNotApprovedError,
+    PolicyVersionMismatchError,
+    assert_policy_current,
+)
 
 # Also expose LEGAL_STATUSES from models (DP-01-04 needs it from registry too)
 from irc_data.sources.models import LEGAL_STATUSES
@@ -115,6 +119,7 @@ try:
         # Optional metadata
         contact_email: Mapped[str | None] = mapped_column(Text)
         robots_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+        robots_disallow: Mapped[str | None] = mapped_column(Text)  # JSON-encoded list
         notes: Mapped[str | None] = mapped_column(Text)
 
         created_at: Mapped[datetime] = mapped_column(
@@ -385,12 +390,20 @@ def _row_to_source(row: Any) -> SourceRecord:
     )
 
 
-def get_source(db: Any, slug: str) -> SourceRecord:
+def get_source(db: Any = None, slug: str | None = None) -> SourceRecord:
     """Resolve a :class:`SourceRecord` from the ``data_sources`` table.
 
     When *db* is ``None``, falls back to the in-memory seed registry.
     Raises :class:`SourceNotApprovedError` if no source found.
+
+    Accepts both ``get_source(db, slug)`` and the legacy single-argument
+    form ``get_source(slug)``.
     """
+    # Legacy single-argument form: get_source("sailsys")
+    if slug is None and isinstance(db, str):
+        db, slug = None, db
+    if slug is None:
+        raise TypeError("get_source() missing required argument: 'slug'")
     if db is None:
         src = get_in_memory_source(slug)
         if src is None:
@@ -399,16 +412,17 @@ def get_source(db: Any, slug: str) -> SourceRecord:
 
     from sqlalchemy import text
 
-    result = db.execute(
-        text(
-            "SELECT slug, display_name, base_url, category, "
-            "policy_version, legal_status, enabled, robots_disallow, "
-            "robots_checked_at, contact_email, notes "
-            "FROM data_sources WHERE slug = :slug"
-        ),
-        {"slug": slug},
-    )
-    row = result.fetchone()
+    with db.connect() as conn:
+        result = conn.execute(
+            text(
+                "SELECT slug, display_name, base_url, category, "
+                "policy_version, legal_status, enabled, robots_disallow, "
+                "robots_checked_at, contact_email, notes "
+                "FROM data_sources WHERE slug = :slug"
+            ),
+            {"slug": slug},
+        )
+        row = result.fetchone()
     if row is None:
         raise SourceNotApprovedError(slug, "No source record found in data_sources")
     return _row_to_source(row)
@@ -424,15 +438,16 @@ def get_all_sources(db: Any) -> list[SourceRecord]:
 
     from sqlalchemy import text
 
-    result = db.execute(
-        text(
-            "SELECT slug, display_name, base_url, category, "
-            "policy_version, legal_status, enabled, robots_disallow, "
-            "robots_checked_at, contact_email, notes "
-            "FROM data_sources ORDER BY slug"
-        ),
-    )
-    return [_row_to_source(row) for row in result.fetchall()]
+    with db.connect() as conn:
+        result = conn.execute(
+            text(
+                "SELECT slug, display_name, base_url, category, "
+                "policy_version, legal_status, enabled, robots_disallow, "
+                "robots_checked_at, contact_email, notes "
+                "FROM data_sources ORDER BY slug"
+            ),
+        )
+        return [_row_to_source(row) for row in result.fetchall()]
 
 
 def seed_sources(
@@ -443,12 +458,24 @@ def seed_sources(
 ) -> int:
     """Seed the ``data_sources`` table.
 
-    When *seeds* is provided (list of ``DataSourceRecordV1``), uses the
-    DP-01-04 ORM-based upsert.  Otherwise uses the DP-01-03 simple
-    ``ON CONFLICT DO NOTHING`` INSERT.
+    By default (or when *seeds* is a list of ``DataSourceRecordV1``), the
+    full 30-source seed set from :mod:`irc_data.sources.seed_data` is
+    upserted via the ORM — this is the DP-01-01 / DP-01-04 path and is
+    idempotent (re-running updates in place, so the row count returned is
+    the total number of seeded records).
 
-    Returns rows inserted / count.
+    When *seeds* is explicitly provided as tuple rows (or the ORM is not
+    available), falls back to the DP-01-03 simple ``ON CONFLICT DO
+    NOTHING`` INSERT of the 11 interim-v0 sources.
+
+    Returns the number of seeded source rows.
     """
+    if seeds is None and _ORM_AVAILABLE:
+        # Default to the full DP-01-01 seed registry (30 sources).
+        from irc_data.sources.seed_data import SEED_SOURCES
+
+        seeds = list(SEED_SOURCES)
+
     if seeds is not None and _ORM_AVAILABLE:
         # DP-01-04 path: ORM upsert with DataSourceRecordV1 records
         now = now or datetime.now(timezone.utc)
@@ -495,18 +522,19 @@ def seed_sources(
     from sqlalchemy import text
 
     inserted = 0
-    for slug, name, url, category, status, notes in _SEED_SOURCES:
-        result = db.execute(
-            text(
-                "INSERT INTO data_sources (slug, display_name, base_url, category, "
-                "policy_version, legal_status, notes, enabled) "
-                "VALUES (:slug, :name, :url, :cat, 'interim-v0', :status, :notes, true) "
-                "ON CONFLICT (slug) DO NOTHING"
-            ),
-            {"slug": slug, "name": name, "url": url, "cat": category,
-             "status": status, "notes": notes},
-        )
-        inserted += result.rowcount
+    with db.begin() as conn:
+        for slug, name, url, category, status, notes in _SEED_SOURCES:
+            result = conn.execute(
+                text(
+                    "INSERT INTO data_sources (slug, display_name, base_url, category, "
+                    "policy_version, legal_status, notes, enabled) "
+                    "VALUES (:slug, :name, :url, :cat, 'interim-v0', :status, :notes, true) "
+                    "ON CONFLICT (slug) DO NOTHING"
+                ),
+                {"slug": slug, "name": name, "url": url, "cat": category,
+                 "status": status, "notes": notes},
+            )
+            inserted += result.rowcount
     return inserted
 
 

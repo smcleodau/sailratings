@@ -1,19 +1,32 @@
 """Acquisition primitives — bounded HTTP, browser, API and document fetchers.
 
+Implements **DP-01-04** of SPEC-012: a shared library of acquisition
+primitives that every source adapter uses instead of bespoke HTTP code.
+
 Every primitive:
-- Accepts an optional ``source: DataSource`` arg; calls policy checks if provided
-- Respects ``robots_disallow`` from the source record
-- Sets the standard ``User-Agent``
-- Returns ``FetchResult`` (never raw bytes directly)
+
+* Accepts an optional ``source: DataSource`` arg; calls
+  :func:`assert_policy_current` and :func:`assert_source_approved` if
+  provided.
+* Respects ``robots_disallow`` from the source record (raises
+  :class:`SourceNotApprovedError` when the URL path is disallowed).
+* Sends the standard policy ``User-Agent`` (enforced by
+  :class:`~irc_data.sources.http_client.HttpClient`).
+* Enforces rate limits, retries (incl. 429 throttling honouring
+  ``Retry-After``), conditional requests and the 25 MB object-size cap
+  via the shared :class:`HttpClient`.
+* Returns :class:`~irc_data.sources.models.FetchResult` — never raw
+  bytes directly.
 
 Primitives::
 
-    fetch_html(url)          — GET with rate-limit, retry, conditional, hash
-    fetch_pdf(url)           — Same + 25 MB cap; PDF magic-byte validation
-    fetch_json(url)          — Same + Content-Type validation, JSON parseability
-    fetch_file(url)          — Generic binary; magic-byte rejection for wrong formats
-    paginate(seed_url, next_fn) — Async generator: follows pagination until cap
-    render_page(url)         — Playwright headless; HTML + screenshot evidence
+    fetch_html(url)              — GET with rate-limit, retry, conditional, hash
+    fetch_pdf(url)               — Same + 25 MB cap; PDF magic-byte validation
+    fetch_json(url)              — Same + JSON parseability validation
+    fetch_xml(url)               — Same + XML parseability validation
+    fetch_file(url)              — Generic binary; magic-byte rejection
+    paginate(seed_url, next_fn)  — Async generator: follows pagination until cap
+    render_page(url)             — Playwright headless; HTML + screenshot evidence
 """
 
 from __future__ import annotations
@@ -23,25 +36,38 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Callable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
+from xml.etree import ElementTree
 
-import httpx
-
+from irc_data.sources.envelope import FetchResult as _EnvelopeFetchResult
 from irc_data.sources.http_client import (
     MAX_OBJECT_SIZE,
-    PolicyAwareHttpClient,
-    RateLimiter,
     STANDARD_USER_AGENT,
+    HttpClient,
+    NotModified,
 )
-from irc_data.sources.models import DataSource, FetchResult, RawArtifactV1
+from irc_data.sources.models import DataSource, FetchResult
 from irc_data.sources.policy import (
-    PolicyVersionMismatchError,
     SourceNotApprovedError,
     assert_policy_current,
     assert_source_approved,
 )
 
 logger = logging.getLogger(__name__)
+
+# Re-exported for backward compatibility with pre-refactor imports.
+PolicyAwareHttpClient = HttpClient
+
+__all__ = [
+    "PDF_MAGIC",
+    "fetch_html",
+    "fetch_pdf",
+    "fetch_json",
+    "fetch_xml",
+    "fetch_file",
+    "paginate",
+    "render_page",
+]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,37 +90,120 @@ def _check_source(source: DataSource | None) -> None:
     assert_source_approved(source)
 
 
-def _check_robots(url: str, source: DataSource | None) -> None:
-    """Raise if the URL is disallowed by robots."""
-    if source and source.is_disallowed(url):
+def _path_disallowed(url: str, robots_disallow: list[str]) -> bool:
+    """Return ``True`` if *url*'s path matches any cached disallow rule."""
+    from urllib.parse import urlparse
+
+    path = urlparse(url).path or "/"
+    for rule in robots_disallow:
+        if not rule:
+            continue
+        # Wildcard root "/" disallows everything
+        if rule == "/":
+            return True
+        if path.startswith(rule):
+            return True
+    return False
+
+
+def _check_robots(url: str, source: Any) -> None:
+    """Raise if the URL is disallowed by the source's robots rules.
+
+    Works with both :class:`~irc_data.sources.models.DataSource`
+    (``is_disallowed`` method) and :class:`~irc_data.sources.gate.SourceRecord`
+    (plain ``robots_disallow`` list).
+    """
+    if source is None:
+        return
+    if hasattr(source, "is_disallowed"):
+        disallowed = source.is_disallowed(url)
+    else:
+        disallowed = _path_disallowed(url, getattr(source, "robots_disallow", []) or [])
+    if disallowed:
         raise SourceNotApprovedError(
-            source.slug,
+            getattr(source, "slug", "<unknown>"),
             reason=f"URL '{url}' is disallowed by robots.txt",
         )
 
 
-def _build_fetch_result(
+def _policy_version(source: DataSource | None) -> str:
+    return source.policy_version if source else "interim-v0"
+
+
+def _not_modified_result(
     url: str,
-    response: httpx.Response,
-    source: DataSource | None = None,
+    nm: NotModified,
+    source: DataSource | None,
+) -> FetchResult:
+    """Build a 304 ``FetchResult`` from a :class:`NotModified` sentinel."""
+    return FetchResult(
+        url=url,
+        content=b"",
+        content_hash="",
+        etag=nm.etag,
+        last_modified=nm.last_modified,
+        fetched_at=_now_iso(),
+        policy_version=_policy_version(source),
+        status_code=304,
+        not_modified=True,
+    )
+
+
+def _to_fetch_result(
+    env: _EnvelopeFetchResult,
+    source: DataSource | None,
+    *,
+    status_code: int = 200,
     screenshot_path: str | None = None,
 ) -> FetchResult:
-    """Build a ``FetchResult`` from an ``httpx.Response``."""
-    content = response.content
-    policy_version = source.policy_version if source else "interim-v0"
-    not_modified = response.status_code == 304
-
+    """Convert an envelope :class:`FetchResult` to the models contract."""
     return FetchResult(
-        url=str(response.url) if response.url else url,
-        content=content if not not_modified else b"",
-        content_hash=_sha256(content) if content else "",
-        etag=response.headers.get("ETag"),
-        last_modified=response.headers.get("Last-Modified"),
-        fetched_at=_now_iso(),
-        policy_version=policy_version,
-        status_code=response.status_code,
-        not_modified=not_modified,
+        url=env.url,
+        content=env.content,
+        content_hash=env.content_hash,
+        etag=env.etag,
+        last_modified=env.last_modified,
+        fetched_at=env.fetched_at,
+        policy_version=_policy_version(source) if source else env.policy_version,
+        status_code=status_code,
+        not_modified=False,
         screenshot_path=screenshot_path,
+    )
+
+
+def _check_size(content: bytes, url: str, max_object_size: int, kind: str) -> None:
+    if len(content) > max_object_size:
+        raise ValueError(
+            f"{kind} at {url} is {len(content)} bytes "
+            f"(exceeds {max_object_size} byte cap)"
+        )
+
+
+def _default_client() -> HttpClient:
+    """Build a default :class:`HttpClient` bound to the active policy.
+
+    Used when the caller does not supply a shared client.  Rate limiting,
+    retry, conditional requests and the object-size cap all come from the
+    active policy; the inner ``httpx`` client is created lazily with the
+    standard User-Agent.
+    """
+    return HttpClient()
+
+
+async def _fetch(
+    url: str,
+    client: HttpClient,
+    *,
+    etag: str | None = None,
+    last_modified: str | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> _EnvelopeFetchResult | NotModified:
+    """Thin wrapper over :meth:`HttpClient.fetch` (keyword style)."""
+    return await client.fetch(
+        url,
+        etag=etag,
+        last_modified=last_modified,
+        extra_headers=extra_headers,
     )
 
 
@@ -105,7 +214,7 @@ def _build_fetch_result(
 
 async def fetch_html(
     url: str,
-    client: PolicyAwareHttpClient | None = None,
+    client: HttpClient | None = None,
     source: DataSource | None = None,
     etag: str | None = None,
     last_modified: str | None = None,
@@ -113,57 +222,28 @@ async def fetch_html(
 ) -> FetchResult:
     """Fetch an HTML page with rate-limit, retry, conditional, and hash check.
 
-    Returns a ``FetchResult`` with the page content.
-    Validates that the response looks like HTML.
+    Returns a :class:`FetchResult` with the page content.  The shared
+    :class:`HttpClient` enforces rate limits, 5xx/429 retry, conditional
+    requests and the 25 MB object-size cap.
     """
     _check_source(source)
     _check_robots(url, source)
 
     owns_client = client is None
     if client is None:
-        client = PolicyAwareHttpClient(rate_limiter=RateLimiter(min_delay=0.0, jitter=0.0))
+        client = _default_client()
 
     try:
-        response = await client.fetch(
-            url,
-            source=source,
-            etag=etag,
-            last_modified=last_modified,
+        result = await _fetch(
+            url, client, etag=etag, last_modified=last_modified
         )
 
-        # 304 Not Modified
-        if response.status_code == 304:
-            return FetchResult(
-                url=url,
-                content=b"",
-                content_hash="",
-                etag=response.headers.get("ETag"),
-                last_modified=response.headers.get("Last-Modified"),
-                fetched_at=_now_iso(),
-                policy_version=source.policy_version if source else "interim-v0",
-                status_code=304,
-                not_modified=True,
-            )
+        if isinstance(result, NotModified):
+            return _not_modified_result(url, result, source)
 
-        # Size check
-        content_length = len(response.content)
-        if content_length > max_object_size:
-            raise ValueError(
-                f"HTML response from {url} is {content_length} bytes "
-                f"(exceeds {max_object_size} byte cap)"
-            )
+        _check_size(result.content, url, max_object_size, "HTML response")
 
-        # Validate it looks like HTML
-        content_type = response.headers.get("Content-Type", "").lower()
-        body_preview = response.content[:200].lower()
-        if content_type and "text/html" not in content_type and "application/xhtml" not in content_type:
-            # Some servers don't set Content-Type properly, check body
-            if b"<html" not in body_preview and b"<!doctype html" not in body_preview:
-                raise ValueError(
-                    f"Expected HTML from {url}, got Content-Type: {content_type}"
-                )
-
-        return _build_fetch_result(url, response, source)
+        return _to_fetch_result(result, source)
     finally:
         if owns_client:
             await client.aclose()
@@ -179,7 +259,7 @@ PDF_MAGIC = b"%PDF"
 
 async def fetch_pdf(
     url: str,
-    client: PolicyAwareHttpClient | None = None,
+    client: HttpClient | None = None,
     source: DataSource | None = None,
     etag: str | None = None,
     last_modified: str | None = None,
@@ -188,51 +268,35 @@ async def fetch_pdf(
     """Fetch a PDF with size cap and magic-byte validation.
 
     Enforces the 25 MB cap and validates that the response starts with
-    ``%PDF``.  If the source is ``irc-certs``, sends the attribution header.
+    ``%PDF``.  If the source is ``irc-certs``, sends the attribution
+    header required by SPEC-012 §3.5.
     """
     _check_source(source)
     _check_robots(url, source)
 
     owns_client = client is None
     if client is None:
-        client = PolicyAwareHttpClient(rate_limiter=RateLimiter(min_delay=0.0, jitter=0.0))
+        client = _default_client()
 
     try:
-        # IRC cert attribution
+        # IRC cert attribution (SPEC-012 §3.5)
         extra_headers: dict[str, str] | None = None
         if source and source.slug == "irc-certs":
             extra_headers = {"X-SailRatings-Source": "irc-certs"}
 
-        response = await client.fetch(
+        result = await _fetch(
             url,
-            source=source,
+            client,
             etag=etag,
             last_modified=last_modified,
             extra_headers=extra_headers,
         )
 
-        # 304 Not Modified
-        if response.status_code == 304:
-            return FetchResult(
-                url=url,
-                content=b"",
-                content_hash="",
-                etag=response.headers.get("ETag"),
-                last_modified=response.headers.get("Last-Modified"),
-                fetched_at=_now_iso(),
-                policy_version=source.policy_version if source else "interim-v0",
-                status_code=304,
-                not_modified=True,
-            )
+        if isinstance(result, NotModified):
+            return _not_modified_result(url, result, source)
 
-        content = response.content
-
-        # Size cap
-        if len(content) > max_object_size:
-            raise ValueError(
-                f"PDF at {url} is {len(content)} bytes "
-                f"(exceeds {max_object_size} byte cap)"
-            )
+        content = result.content
+        _check_size(content, url, max_object_size, "PDF")
 
         # Magic byte validation
         if not content.startswith(PDF_MAGIC):
@@ -241,7 +305,7 @@ async def fetch_pdf(
                 f"(missing %PDF magic bytes)"
             )
 
-        return _build_fetch_result(url, response, source)
+        return _to_fetch_result(result, source)
     finally:
         if owns_client:
             await client.aclose()
@@ -254,77 +318,111 @@ async def fetch_pdf(
 
 async def fetch_json(
     url: str,
-    client: PolicyAwareHttpClient | None = None,
+    client: HttpClient | None = None,
     source: DataSource | None = None,
     etag: str | None = None,
     last_modified: str | None = None,
     max_object_size: int = MAX_OBJECT_SIZE,
 ) -> FetchResult:
-    """Fetch JSON with Content-Type validation and parseability check.
+    """Fetch JSON with parseability validation.
 
-    Sends ``Accept: application/json`` header and validates that the
-    response can be parsed as JSON.
+    Sends ``Accept: application/json`` and validates that the response
+    body parses as JSON.  Malformed JSON raises :class:`ValueError`.
     """
     _check_source(source)
     _check_robots(url, source)
 
     owns_client = client is None
     if client is None:
-        client = PolicyAwareHttpClient(rate_limiter=RateLimiter(min_delay=0.0, jitter=0.0))
+        client = _default_client()
 
     try:
-        extra_headers = {"Accept": "application/json"}
-        # IRC cert attribution
+        extra_headers: dict[str, str] = {"Accept": "application/json"}
         if source and source.slug == "irc-certs":
             extra_headers["X-SailRatings-Source"] = "irc-certs"
 
-        response = await client.fetch(
+        result = await _fetch(
             url,
-            source=source,
+            client,
             etag=etag,
             last_modified=last_modified,
             extra_headers=extra_headers,
         )
 
-        # 304 Not Modified
-        if response.status_code == 304:
-            return FetchResult(
-                url=url,
-                content=b"",
-                content_hash="",
-                etag=response.headers.get("ETag"),
-                last_modified=response.headers.get("Last-Modified"),
-                fetched_at=_now_iso(),
-                policy_version=source.policy_version if source else "interim-v0",
-                status_code=304,
-                not_modified=True,
-            )
+        if isinstance(result, NotModified):
+            return _not_modified_result(url, result, source)
 
-        content = response.content
-
-        # Size check
-        if len(content) > max_object_size:
-            raise ValueError(
-                f"JSON response from {url} is {len(content)} bytes "
-                f"(exceeds {max_object_size} byte cap)"
-            )
-
-        # Content-Type validation
-        content_type = response.headers.get("Content-Type", "").lower()
-        if content_type and "json" not in content_type:
-            raise ValueError(
-                f"Expected JSON from {url}, got Content-Type: {content_type}"
-            )
+        content = result.content
+        _check_size(content, url, max_object_size, "JSON")
 
         # Parseability check
         try:
-            json.loads(content)
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            json.loads(content.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as exc:
             raise ValueError(
-                f"Response from {url} is not valid JSON: {e}"
-            ) from e
+                f"Response from {url} is not valid JSON: {exc}"
+            ) from exc
 
-        return _build_fetch_result(url, response, source)
+        return _to_fetch_result(result, source)
+    finally:
+        if owns_client:
+            await client.aclose()
+
+
+# ---------------------------------------------------------------------------
+# fetch_xml
+# ---------------------------------------------------------------------------
+
+
+async def fetch_xml(
+    url: str,
+    client: HttpClient | None = None,
+    source: DataSource | None = None,
+    etag: str | None = None,
+    last_modified: str | None = None,
+    max_object_size: int = MAX_OBJECT_SIZE,
+) -> FetchResult:
+    """Fetch XML with parseability validation.
+
+    Sends ``Accept: application/xml, text/xml`` and validates that the
+    response body parses as XML.  Covers XML API endpoints (DP-01-04
+    scope: JSON/XML APIs).
+    """
+    _check_source(source)
+    _check_robots(url, source)
+
+    owns_client = client is None
+    if client is None:
+        client = _default_client()
+
+    try:
+        extra_headers: dict[str, str] = {"Accept": "application/xml, text/xml"}
+        if source and source.slug == "irc-certs":
+            extra_headers["X-SailRatings-Source"] = "irc-certs"
+
+        result = await _fetch(
+            url,
+            client,
+            etag=etag,
+            last_modified=last_modified,
+            extra_headers=extra_headers,
+        )
+
+        if isinstance(result, NotModified):
+            return _not_modified_result(url, result, source)
+
+        content = result.content
+        _check_size(content, url, max_object_size, "XML")
+
+        # Parseability check
+        try:
+            ElementTree.fromstring(content.decode("utf-8"))
+        except (ElementTree.ParseError, UnicodeDecodeError) as exc:
+            raise ValueError(
+                f"Response from {url} is not valid XML: {exc}"
+            ) from exc
+
+        return _to_fetch_result(result, source)
     finally:
         if owns_client:
             await client.aclose()
@@ -337,55 +435,36 @@ async def fetch_json(
 
 async def fetch_file(
     url: str,
-    client: PolicyAwareHttpClient | None = None,
+    client: HttpClient | None = None,
     source: DataSource | None = None,
     etag: str | None = None,
     last_modified: str | None = None,
     max_object_size: int = MAX_OBJECT_SIZE,
     reject_magic: list[bytes] | None = None,
 ) -> FetchResult:
-    """Fetch a generic binary file (Sailwave .blw files, CSVs, etc.).
+    """Generic binary fetch (Sailwave ``.blw`` files etc.).
 
-    Optionally rejects responses whose magic bytes match *reject_magic*
-    (e.g. to prevent storing HTML when a binary was expected).
+    Optionally rejects responses whose leading bytes match any of
+    *reject_magic* — useful to detect HTML error pages served with a
+    200 status when a binary file was expected.
     """
     _check_source(source)
     _check_robots(url, source)
 
     owns_client = client is None
     if client is None:
-        client = PolicyAwareHttpClient(rate_limiter=RateLimiter(min_delay=0.0, jitter=0.0))
+        client = _default_client()
 
     try:
-        response = await client.fetch(
-            url,
-            source=source,
-            etag=etag,
-            last_modified=last_modified,
+        result = await _fetch(
+            url, client, etag=etag, last_modified=last_modified
         )
 
-        # 304 Not Modified
-        if response.status_code == 304:
-            return FetchResult(
-                url=url,
-                content=b"",
-                content_hash="",
-                etag=response.headers.get("ETag"),
-                last_modified=response.headers.get("Last-Modified"),
-                fetched_at=_now_iso(),
-                policy_version=source.policy_version if source else "interim-v0",
-                status_code=304,
-                not_modified=True,
-            )
+        if isinstance(result, NotModified):
+            return _not_modified_result(url, result, source)
 
-        content = response.content
-
-        # Size check
-        if len(content) > max_object_size:
-            raise ValueError(
-                f"File at {url} is {len(content)} bytes "
-                f"(exceeds {max_object_size} byte cap)"
-            )
+        content = result.content
+        _check_size(content, url, max_object_size, "File")
 
         # Magic byte rejection
         if reject_magic:
@@ -396,7 +475,7 @@ async def fetch_file(
                         f"({magic!r}) — expected a different format"
                     )
 
-        return _build_fetch_result(url, response, source)
+        return _to_fetch_result(result, source)
     finally:
         if owns_client:
             await client.aclose()
@@ -410,7 +489,7 @@ async def fetch_file(
 async def paginate(
     seed_url: str,
     next_fn: Callable[[FetchResult], str | None],
-    client: PolicyAwareHttpClient | None = None,
+    client: HttpClient | None = None,
     source: DataSource | None = None,
     fetch_fn: Callable | None = None,
     max_pages: int = 100,
@@ -421,24 +500,25 @@ async def paginate(
 
     Args:
         seed_url: The first URL to fetch.
-        next_fn: A callable that takes the previous ``FetchResult`` and
-            returns the next URL (or ``None`` to stop).
+        next_fn: A callable that takes the previous :class:`FetchResult`
+            and returns the next URL (or ``None`` to stop).
         client: Optional shared HTTP client.
-        source: Optional ``DataSource`` for policy enforcement.
-        fetch_fn: Optional custom fetch function (defaults to ``fetch_html``).
+        source: Optional :class:`DataSource` for policy enforcement.
+        fetch_fn: Optional custom fetch function (defaults to
+            :func:`fetch_html`).
         max_pages: Maximum pages to fetch before stopping.
         max_bytes: Maximum total bytes before stopping.
         max_object_size: Maximum size per individual object.
 
     Yields:
-        ``FetchResult`` for each page fetched.
+        :class:`FetchResult` for each page fetched.
     """
     _check_source(source)
     _check_robots(seed_url, source)
 
     owns_client = client is None
     if client is None:
-        client = PolicyAwareHttpClient(rate_limiter=RateLimiter(min_delay=0.0, jitter=0.0))
+        client = _default_client()
 
     if fetch_fn is None:
         fetch_fn = fetch_html
@@ -463,7 +543,8 @@ async def paginate(
             if total_bytes > max_bytes:
                 logger.warning(
                     "Pagination stopped: total bytes %d exceeds %d",
-                    total_bytes, max_bytes,
+                    total_bytes,
+                    max_bytes,
                 )
                 yield result
                 break
@@ -487,37 +568,97 @@ async def paginate(
 # ---------------------------------------------------------------------------
 
 
+def _evidence_dir(evidence_dir: str | None) -> str:
+    """Resolve the directory used to store rendered-evidence screenshots.
+
+    Order of precedence:
+      1. explicit *evidence_dir* argument
+      2. ``SAILRATINGS_RENDER_EVIDENCE_DIR`` environment variable
+      3. ``data/rendered_evidence`` under the current working directory
+      4. the system temp dir (last-resort fallback)
+
+    The chosen directory is created if necessary.  Returns a path that
+    is guaranteed writable (or raises).
+    """
+    import os
+    import tempfile
+
+    candidates: list[str] = []
+    if evidence_dir:
+        candidates.append(evidence_dir)
+    env_dir = os.environ.get("SAILRATINGS_RENDER_EVIDENCE_DIR")
+    if env_dir:
+        candidates.append(env_dir)
+    candidates.append(os.path.join(os.getcwd(), "data", "rendered_evidence"))
+    candidates.append(tempfile.gettempdir())
+
+    for path in candidates:
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError:
+            continue
+        if os.access(path, os.W_OK):
+            return path
+    # Last resort — temp dir always exists.
+    return tempfile.gettempdir()
+
+
+async def _capture_screenshot(page: Any, evidence_dir: str | None) -> str:
+    """Capture a full-page screenshot to the evidence directory."""
+    import os
+    import uuid
+
+    directory = _evidence_dir(evidence_dir)
+    path = os.path.join(directory, f"sailratings_render_{uuid.uuid4().hex}.png")
+    await page.screenshot(path=path, full_page=True)
+    return path
+
+
 async def render_page(
     url: str,
     source: DataSource | None = None,
-    browser=None,
+    browser: Any = None,
     wait_for: str | None = None,
     timeout_ms: int = 30000,
     max_object_size: int = MAX_OBJECT_SIZE,
     screenshot: bool = True,
+    evidence_dir: str | None = None,
 ) -> FetchResult:
     """Render a JavaScript-heavy page using Playwright headless.
 
-    Returns a ``FetchResult`` with the fully rendered HTML and an
-    optional screenshot path as evidence.
+    Returns a :class:`FetchResult` with the fully rendered HTML and an
+    optional screenshot path as rendered evidence (dynamic pages must
+    preserve rendered evidence per the DP-01-04 acceptance criteria).
 
     Args:
         url: The page URL to render.
-        source: Optional ``DataSource`` for policy enforcement.
-        browser: An injectable browser object (must have async ``new_page()``
-            method).  If not provided, Playwright is launched.
-        wait_for: Optional selector to wait for before capturing content.
+        source: Optional :class:`DataSource` for policy enforcement.
+        browser: An injectable browser object (must have async
+            ``new_page()`` method).  If not provided, Playwright is
+            launched.
+        wait_for: Optional selector to wait for before capturing
+            content.
         timeout_ms: Maximum time to wait for page load / selector.
         max_object_size: Maximum size for the rendered HTML.
-        screenshot: If ``True`` (default), capture a screenshot as evidence.
+        screenshot: If ``True`` (default), capture a screenshot as
+            evidence.
+        evidence_dir: Directory in which to store the screenshot so the
+            rendered evidence is preserved beyond the process lifetime.
+            When ``None`` (default) the
+            :envvar:`SAILRATINGS_RENDER_EVIDENCE_DIR` environment
+            variable is honoured, falling back to
+            ``data/rendered_evidence`` under the current working
+            directory; if that directory cannot be created the system
+            temp dir is used as a last resort.
 
     Returns:
-        ``FetchResult`` with rendered HTML and ``screenshot_path``.
+        :class:`FetchResult` with rendered HTML and ``screenshot_path``.
     """
     _check_source(source)
     _check_robots(url, source)
 
     owns_browser = browser is None
+    pw = None
 
     if owns_browser:
         try:
@@ -553,23 +694,13 @@ async def render_page(
         content_bytes = content.encode("utf-8")
 
         # Size check
-        if len(content_bytes) > max_object_size:
-            raise ValueError(
-                f"Rendered page from {url} is {len(content_bytes)} bytes "
-                f"(exceeds {max_object_size} byte cap)"
-            )
+        _check_size(content_bytes, url, max_object_size, "Rendered page")
 
-        # Screenshot
+        # Screenshot evidence — stored in a stable, preserved location so
+        # that rendered evidence for dynamic pages survives the process.
         screenshot_path: str | None = None
         if screenshot:
-            import tempfile
-
-            tmp = tempfile.NamedTemporaryFile(
-                suffix=".png", delete=False, prefix="sailratings_render_"
-            )
-            tmp.close()
-            await page.screenshot(path=tmp.name, full_page=True)
-            screenshot_path = tmp.name
+            screenshot_path = await _capture_screenshot(page, evidence_dir)
 
         # Extract conditional headers from the main navigation response
         etag = None
@@ -585,8 +716,6 @@ async def render_page(
 
         await page.close()
 
-        policy_version = source.policy_version if source else "interim-v0"
-
         return FetchResult(
             url=final_url,
             content=content_bytes,
@@ -594,7 +723,7 @@ async def render_page(
             etag=etag,
             last_modified=last_modified,
             fetched_at=_now_iso(),
-            policy_version=policy_version,
+            policy_version=_policy_version(source),
             status_code=200,
             screenshot_path=screenshot_path,
         )
@@ -604,7 +733,8 @@ async def render_page(
                 await browser.close()
             except Exception:
                 pass
-            try:
-                await pw.stop()
-            except Exception:
-                pass
+            if pw is not None:
+                try:
+                    await pw.stop()
+                except Exception:
+                    pass
