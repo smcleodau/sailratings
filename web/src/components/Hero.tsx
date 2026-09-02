@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { Search, X } from "lucide-react";
-import { searchBoatsFull, type SearchResult, type SearchSuggestion } from "@/lib/api";
+import { searchBoatsFull, getStats, formatStatCount, type SearchResult, type SearchSuggestion, type StatsResponse } from "@/lib/api";
 import MainNav from "@/components/MainNav";
 
 const SYSTEMS = ["IRC", "ORC"];
@@ -48,6 +48,8 @@ export default function Hero({ onBoatSelected }: HeroProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  // OPS-02-11: marketing numbers come from GET /v1/stats (DB census), not copy.
+  const [stats, setStats] = useState<StatsResponse | null>(null);
   const [searchedQuery, setSearchedQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -121,6 +123,19 @@ export default function Hero({ onBoatSelected }: HeroProps) {
   }, []);
   useEffect(() => { return () => clearTimeout(debounceRef.current); }, []);
 
+  // Live census numbers; if the stats endpoint is unreachable we keep the
+  // last-published fallback copy below rather than render nothing.
+  useEffect(() => {
+    let cancelled = false;
+    getStats()
+      .then((s) => { if (!cancelled) setStats(s); })
+      .catch(() => { /* keep fallback copy */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const raceResultsCount = stats ? formatStatCount(stats.race_results) : "31,000";
+  const boatsCount = stats ? formatStatCount(stats.boats) : null;
+
   return (
     <section className="relative h-screen min-h-[600px] overflow-hidden">
       {/* Hero image — fills the entire section */}
@@ -155,7 +170,7 @@ export default function Hero({ onBoatSelected }: HeroProps) {
             fontSize: "clamp(0.875rem, 1.2vw, 1.05rem)",
           }}
         >
-          We analyze over 31,000 race results and every certificate ever published to find where your points are hiding.
+          We analyze over {raceResultsCount} race results and every certificate ever published to find where your points are hiding.
         </p>
 
         {/* Search bar — solid cream card, dropdown-only interaction (no separate Search button) */}
@@ -294,7 +309,7 @@ export default function Hero({ onBoatSelected }: HeroProps) {
       {/* Trust stats — white, at the very bottom, no fade */}
       <div className="absolute bottom-8 left-0 right-0 z-20 text-center animate-in delay-5">
         <p className="text-[14px] text-white/80 font-body font-semibold tracking-wider">
-          31,000+ race results analyzed &middot; 14 years of data &middot; Trusted by teams big and small
+          {raceResultsCount}+ race results analyzed{boatsCount ? <> &middot; {boatsCount}+ boats</> : null} &middot; 14 years of data &middot; Trusted by teams big and small
         </p>
       </div>
     </section>
