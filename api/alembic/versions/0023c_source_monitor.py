@@ -10,8 +10,14 @@ Creates four tables:
   * ``publication_quarantine`` — blocks downstream publishing while an
                                  incident is open
 
-Revision ID: 0023
-Revises: aa0f8e0c178b
+Canonical chain (DP-03-05): renumbered from the duplicated id ``0023`` to
+the unique id ``20260830b`` so the alembic graph is a single linear head.
+``source_incidents`` may already exist (created by ``20260830a``); this
+revision creates it if needed and adds the monitor-specific columns
+idempotently.
+
+Revision ID: 20260830b
+Revises: 20260830a
 Create Date: 2026-08-30
 """
 
@@ -22,8 +28,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0023"
-down_revision: Union[str, Sequence[str], None] = "aa0f8e0c178b"
+revision: str = "20260830b"
+down_revision: Union[str, Sequence[str], None] = "20260830a"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -82,29 +88,40 @@ def upgrade() -> None:
     op.create_index("ix_source_health_events_source_id", "source_health_events", ["source_id"])
     op.create_index("ix_source_health_events_status", "source_health_events", ["status"])
 
-    op.create_table(
-        "source_incidents",
-        sa.Column("id", sa.BigInteger, primary_key=True),
-        sa.Column("source_id", sa.String(128), nullable=False),
-        sa.Column("url", sa.Text),
-        sa.Column("incident_type", sa.String(64), nullable=False),
-        sa.Column(
-            "detected_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.Column("resolved_at", sa.DateTime(timezone=True)),
-        sa.Column("status", sa.String(16), nullable=False, server_default="open"),
-        sa.Column("deviations", sa.JSON),
-        sa.Column("sample_records", sa.JSON),
-        sa.Column("content_excerpt", sa.Text),
-        sa.Column("previous_hash", sa.Text),
-        sa.Column("current_hash", sa.Text),
-        sa.Column("notes", sa.Text),
+    # source_incidents may already exist from 20260830a (policy flavour with a
+    # source_slug FK).  Create the monitor flavour if absent, then ensure
+    # the monitor-specific columns exist either way (idempotent).
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS source_incidents (
+            id BIGSERIAL PRIMARY KEY,
+            source_id VARCHAR(128),
+            url TEXT,
+            incident_type VARCHAR(64) NOT NULL,
+            detected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            resolved_at TIMESTAMPTZ,
+            status VARCHAR(16) NOT NULL DEFAULT 'open',
+            deviations JSON,
+            sample_records JSON,
+            content_excerpt TEXT,
+            previous_hash TEXT,
+            current_hash TEXT,
+            notes TEXT
+        )
+        """
     )
-    op.create_index("ix_source_incidents_source_id", "source_incidents", ["source_id"])
-    op.create_index("ix_source_incidents_status", "source_incidents", ["status"])
+    op.execute("ALTER TABLE source_incidents ADD COLUMN IF NOT EXISTS source_id VARCHAR(128)")
+    op.execute("ALTER TABLE source_incidents ADD COLUMN IF NOT EXISTS url TEXT")
+    op.execute("ALTER TABLE source_incidents ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'open'")
+    op.execute("ALTER TABLE source_incidents ADD COLUMN IF NOT EXISTS deviations JSON")
+    op.execute("ALTER TABLE source_incidents ADD COLUMN IF NOT EXISTS sample_records JSON")
+    op.execute("ALTER TABLE source_incidents ADD COLUMN IF NOT EXISTS content_excerpt TEXT")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_source_incidents_source_id ON source_incidents (source_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_source_incidents_status ON source_incidents (status)"
+    )
 
     op.create_table(
         "publication_quarantine",
@@ -126,12 +143,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Drop only the objects this revision uniquely owns.  ``source_incidents``
+    # is shared with the ``20260830a`` policy flavour and is left in place.
     op.drop_index("ix_publication_quarantine_source_id", table_name="publication_quarantine")
     op.drop_table("publication_quarantine")
 
-    op.drop_index("ix_source_incidents_status", table_name="source_incidents")
-    op.drop_index("ix_source_incidents_source_id", table_name="source_incidents")
-    op.drop_table("source_incidents")
+    op.execute("DROP INDEX IF EXISTS ix_source_incidents_status")
+    op.execute("DROP INDEX IF EXISTS ix_source_incidents_source_id")
 
     op.drop_index("ix_source_health_events_status", table_name="source_health_events")
     op.drop_index("ix_source_health_events_source_id", table_name="source_health_events")

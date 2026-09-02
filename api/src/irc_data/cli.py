@@ -2537,6 +2537,36 @@ def db_stamp(ctx, revision):
     console.print("[green]Database stamped.[/green]")
 
 
+@cli.command(name="db-verify-migrations")
+@click.pass_context
+def db_verify_migrations(ctx):
+    """Verify the canonical migration chain (DP-03-05).
+
+    Provisions a throwaway database, exercises upgrade-from-previous-schema on
+    a production-sized synthetic dataset, validates counts/hashes/queries,
+    checks the time budget, and tests the rollback/restore path.  Never touches
+    the configured database.
+    """
+    from irc_data.db import migration_verify as mv
+
+    console.print("Running DP-03-05 migration verification (throwaway DB)…")
+    try:
+        ev = mv.run_full_verification()
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Verification error: {exc}[/red]")
+        raise SystemExit(2)
+    console.print(f"  heads: {ev.heads}  linear={ev.linear}")
+    console.print(f"  migration_seconds={ev.migration_seconds:.2f} (budget {ev.budget_seconds:.0f})")
+    console.print(f"  counts_match={ev.counts_match} hashes_match={ev.hashes_match}")
+    console.print(f"  rollback_ok={ev.rollback_ok}")
+    console.print(f"  total rows seeded: {sum(ev.seeded_counts.values())}")
+    if ev.passed():
+        console.print("[green]RESULT: PASS[/green]")
+    else:
+        console.print("[red]RESULT: FAIL[/red]")
+        raise SystemExit(1)
+
+
 @cli.command(name="import-results")
 @click.argument("path", type=click.Path(exists=True, path_type=Path))
 @click.option("--format", "fmt", type=click.Choice(["sailsys-json"]), default="sailsys-json", help="JSON format")

@@ -15,8 +15,11 @@ Creates three tables:
                                 batch (retained), and a ``receipt_id``
                                 for audit.
 
-Revision ID: 0024
-Revises: 0023
+Canonical chain (DP-03-05): renumbered from the duplicated id ``0024`` to
+the unique id ``20260901b`` so the alembic graph is a single linear head.
+
+Revision ID: 20260901b
+Revises: 20260901a
 Create Date: 2026-09-01
 """
 
@@ -27,15 +30,51 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0024"
-down_revision: Union[str, Sequence[str], None] = "0023"
+revision: str = "20260901b"
+down_revision: Union[str, Sequence[str], None] = "20260901a"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
+_MD = None
+def _metadata():
+    """Lazily-shared MetaData so ForeignKey references resolve across tables
+    created in the same migration."""
+    global _MD
+    if _MD is None:
+        from sqlalchemy import MetaData
+        _MD = MetaData()
+    return _MD
+
+
+def _ctine(name, *columns, **kwargs):
+    """create_table IF NOT EXISTS (idempotent for canonical chain, DP-03-05).
+
+    Builds the table inside the migration's shared MetaData so ForeignKey
+    references to other tables resolve correctly."""
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if insp.has_table(name):
+        return
+    from sqlalchemy import Table
+    md = _metadata()
+    Table(name, md, *columns, **kwargs)
+    md.tables[name].create(bind)
+
+
+def _cidx_if_not_exists(index_name, table_name, columns, unique=False):
+    """create_index IF NOT EXISTS (idempotent)."""
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    existing = {ix["name"] for ix in insp.get_indexes(table_name)}
+    if index_name in existing:
+        return
+    op.create_index(index_name, table_name, columns, unique=unique)
+
 
 
 def upgrade() -> None:
     # -- replay_batches ---------------------------------------------------
-    op.create_table(
+    _ctine(
         "replay_batches",
         sa.Column("id", sa.BigInteger, primary_key=True),
         sa.Column("plan_id", sa.String(128), nullable=False, unique=True),
@@ -59,10 +98,10 @@ def upgrade() -> None:
         sa.Column("promoted_by", sa.Text),
         sa.Column("notes", sa.Text),
     )
-    op.create_index("ix_replay_batches_plan_id", "replay_batches", ["plan_id"])
+    _cidx_if_not_exists("ix_replay_batches_plan_id", "replay_batches", ["plan_id"])
 
     # -- replay_artifacts -------------------------------------------------
-    op.create_table(
+    _ctine(
         "replay_artifacts",
         sa.Column("id", sa.BigInteger, primary_key=True),
         sa.Column(
@@ -84,10 +123,10 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index("ix_replay_artifacts_batch_id", "replay_artifacts", ["batch_id"])
+    _cidx_if_not_exists("ix_replay_artifacts_batch_id", "replay_artifacts", ["batch_id"])
 
     # -- publication_receipts ---------------------------------------------
-    op.create_table(
+    _ctine(
         "publication_receipts",
         sa.Column("id", sa.BigInteger, primary_key=True),
         sa.Column("receipt_id", sa.String(256), nullable=False, unique=True),
@@ -106,9 +145,7 @@ def upgrade() -> None:
         sa.Column("promoted_by", sa.Text),
         sa.Column("schema_version", sa.String(16), server_default="v1"),
     )
-    op.create_index(
-        "ix_publication_receipts_batch_id", "publication_receipts", ["batch_id"]
-    )
+    _cidx_if_not_exists("ix_publication_receipts_batch_id", "publication_receipts", ["batch_id"])
 
 
 def downgrade() -> None:

@@ -23,38 +23,103 @@ def upgrade() -> None:
     op.add_column('race_results', sa.Column('event_entry_id', sa.Integer(), nullable=True))
     op.alter_column('events', 'start_date', existing_type=sa.DATE(), nullable=True)
 
-    # 2. Backfill events and event_entries from race_results
-    # Note: since events has no unique constraint, we use a CTE to generate distinct events and insert them if they don't match exactly.
-    # To handle the backfill properly, we can do it via a plpgsql DO block
+    # 2. Backfill events and event_entries from race_results.
+    #
+    # DP-03-05 (canonical migrations): the original backfill was neither
+    # join-safe nor performant.  ``events`` has no unique key on
+    # (name, start_date), and the final UPDATE joined three unindexed tables
+    # with ``IS NOT DISTINCT FROM`` (which defeats index use), producing an
+    # O(N²) self-join that hangs on production-sized data.  The rewrite below
+    # is deterministic and runs in seconds at scale:
+    #
+    #   * Add temporary covering indexes so the joins are index/hash based.
+    #   * Insert one event per distinct (name, start_date, organiser).
+    #   * Insert one event_entry per distinct (event, boat, boat_name).
+    #   * Backfill event_entry_id with a direct equality join; equality is
+    #     safe here because the legacy partial unique index on
+    #     (boat_id, event_name, race_name, event_date) guarantees at most one
+    #     row per (event, boat, race), so each race_result resolves to exactly
+    #     one event_entry.
+    #   * Drop the temporary indexes afterwards (they are superseded by the
+    #     permanent indexes created elsewhere).
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS _tmp_ev_name_date ON events (name, start_date) INCLUDE (id);
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS _tmp_ee_event_boat ON event_entries (event_id, boat_id) INCLUDE (id, boat_name);
+    """)
+
     op.execute("""
         INSERT INTO events (name, start_date, organiser, created_at, updated_at)
         SELECT DISTINCT r.event_name, r.event_date, r.organizing_club, NOW(), NOW()
         FROM race_results r
         WHERE NOT EXISTS (
-            SELECT 1 FROM events e 
+            SELECT 1 FROM events e
             WHERE e.name = r.event_name AND e.start_date IS NOT DISTINCT FROM r.event_date
         );
+    """)
 
+    op.execute("""
+        WITH ev AS (
+            -- one deterministic event id per (name, start_date)
+            SELECT name, start_date, MIN(id) AS id
+            FROM events
+            GROUP BY name, start_date
+        )
         INSERT INTO event_entries (event_id, boat_id, boat_name, created_at)
-        SELECT DISTINCT e.id, r.boat_id, r.raw_data->>'boat_name', NOW()
+        SELECT DISTINCT ev.id, r.boat_id, r.raw_data->>'boat_name', NOW()
         FROM race_results r
-        JOIN events e ON e.name = r.event_name AND e.start_date IS NOT DISTINCT FROM r.event_date
+        JOIN ev ON ev.name = r.event_name AND ev.start_date IS NOT DISTINCT FROM r.event_date
         WHERE NOT EXISTS (
             SELECT 1 FROM event_entries ee
-            WHERE ee.event_id = e.id 
+            WHERE ee.event_id = ev.id
               AND ee.boat_id IS NOT DISTINCT FROM r.boat_id
               AND ee.boat_name IS NOT DISTINCT FROM (r.raw_data->>'boat_name')
         );
+    """)
 
+    # Direct equality join (see note above re: the legacy partial unique
+    # index making this 1:1).  Rows with NULL boat_id or boat_name are not
+    # linked here; they are handled by the tolerant backfill below.
+    op.execute("""
         UPDATE race_results r
         SET event_entry_id = ee.id
-        FROM events e, event_entries ee
-        WHERE r.event_name = e.name 
-          AND r.event_date IS NOT DISTINCT FROM e.start_date
-          AND ee.event_id = e.id
-          AND ee.boat_id IS NOT DISTINCT FROM r.boat_id
-          AND ee.boat_name IS NOT DISTINCT FROM (r.raw_data->>'boat_name');
+        FROM events ev
+        JOIN event_entries ee ON ee.event_id = ev.id
+        WHERE ev.name = r.event_name
+          AND ev.start_date = r.event_date
+          AND ee.boat_id = r.boat_id
+          AND ee.boat_name = (r.raw_data->>'boat_name')
+          AND r.event_entry_id IS NULL;
     """)
+
+    # Tolerant pass for rows the strict equality join missed (NULL boat_id or
+    # NULL raw boat_name): match on (event, boat, boat_name) with
+    # NULL-safe comparison, resolving to a single deterministic entry.
+    op.execute("""
+        WITH ev AS (
+            SELECT name, start_date, MIN(id) AS id
+            FROM events
+            GROUP BY name, start_date
+        ),
+        map AS (
+            SELECT ee.event_id, ee.boat_id, ee.boat_name, MIN(ee.id) AS id
+            FROM event_entries ee
+            GROUP BY ee.event_id, ee.boat_id, ee.boat_name
+        )
+        UPDATE race_results r
+        SET event_entry_id = map.id
+        FROM ev
+        JOIN map ON map.event_id = ev.id
+        WHERE ev.name IS NOT DISTINCT FROM r.event_name
+          AND ev.start_date IS NOT DISTINCT FROM r.event_date
+          AND map.boat_id IS NOT DISTINCT FROM r.boat_id
+          AND map.boat_name IS NOT DISTINCT FROM (r.raw_data->>'boat_name')
+          AND r.event_entry_id IS NULL;
+    """)
+
+    op.execute("DROP INDEX IF EXISTS _tmp_ev_name_date;")
+    op.execute("DROP INDEX IF EXISTS _tmp_ee_event_boat;")
 
     # 3. Add foreign key constraint to event_entry_id
     op.create_foreign_key('fk_race_results_event_entry_id', 'race_results', 'event_entries', ['event_entry_id'], ['id'])

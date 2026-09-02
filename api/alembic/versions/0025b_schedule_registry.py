@@ -15,13 +15,14 @@ tables are the ledger / reconciliation state that satisfies the OPS-01-02
 acceptance criteria ("run → ledger row").
 
 The migration is written to be *idempotent* (``CREATE TABLE IF NOT EXISTS``,
-``ADD COLUMN IF NOT EXISTS``) because the repo's 0023/0024 revision ids form
-a multi-branch tangle that prevents a clean ``alembic upgrade`` walk; this
-file can be applied directly via ``python -m alembic`` *or* executed
-standalone.
+``ADD COLUMN IF NOT EXISTS``) so it converges databases that took any of the
+historical branches.
 
-Revision ID: 0025
-Revises: 0024
+Canonical chain (DP-03-05): renumbered from the duplicated id ``0025`` to
+the unique id ``20260902a`` so the alembic graph is a single linear head.
+
+Revision ID: 20260902a
+Revises: 0025
 Create Date: 2026-09-02
 """
 
@@ -34,10 +35,45 @@ from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision: str = "0025"
-down_revision: Union[str, Sequence[str], None] = "0024"
+revision: str = "20260902a"
+down_revision: Union[str, Sequence[str], None] = "0025"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
+_MD = None
+def _metadata():
+    """Lazily-shared MetaData so ForeignKey references resolve across tables
+    created in the same migration."""
+    global _MD
+    if _MD is None:
+        from sqlalchemy import MetaData
+        _MD = MetaData()
+    return _MD
+
+
+def _ctine(name, *columns, **kwargs):
+    """create_table IF NOT EXISTS (idempotent for canonical chain, DP-03-05).
+
+    Builds the table inside the migration's shared MetaData so ForeignKey
+    references to other tables resolve correctly."""
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if insp.has_table(name):
+        return
+    from sqlalchemy import Table
+    md = _metadata()
+    Table(name, md, *columns, **kwargs)
+    md.tables[name].create(bind)
+
+
+def _cidx_if_not_exists(index_name, table_name, columns, unique=False):
+    """create_index IF NOT EXISTS (idempotent)."""
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    existing = {ix["name"] for ix in insp.get_indexes(table_name)}
+    if index_name in existing:
+        return
+    op.create_index(index_name, table_name, columns, unique=unique)
 
 
 _SQL = """
