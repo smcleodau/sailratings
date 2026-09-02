@@ -3103,8 +3103,8 @@ def scrape_daemon(ctx, interval):
 
 
 @cli.command(name="serve")
-@click.option("--host", default="0.0.0.0", help="Bind address")
-@click.option("--port", default=4100, help="Port")
+@click.option("--host", default="0.0.0.0", envvar="HOST", help="Bind address")
+@click.option("--port", default=4100, type=int, envvar="PORT", help="Port")
 @click.option("--workers", default=2, help="Worker processes")
 @click.option("--reload", "do_reload", is_flag=True, help="Auto-reload on code changes")
 def serve(host, port, workers, do_reload):

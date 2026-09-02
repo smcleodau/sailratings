@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
@@ -20,29 +21,36 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.create_table(
-        'boat_news',
-        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('source_domain', sa.Text(), nullable=False),
-        sa.Column('url', sa.Text(), nullable=False),
-        sa.Column('published_at', sa.Date(), nullable=True),
-        sa.Column('title', sa.Text(), nullable=False),
-        sa.Column('snippet', sa.Text(), nullable=True),
-        sa.Column('raw_markdown', sa.Text(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('url')
-    )
-    
-    op.create_table(
-        'boat_news_mentions',
-        sa.Column('news_id', sa.Integer(), nullable=False),
-        sa.Column('boat_id', sa.Integer(), nullable=False),
-        sa.Column('confidence', sa.Numeric(precision=3, scale=2), nullable=True),
-        sa.ForeignKeyConstraint(['boat_id'], ['boats.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['news_id'], ['boat_news.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('news_id', 'boat_id')
-    )
+    # The boat_news tables were created manually ahead of this migration on
+    # some environments, so guard each create to keep the migration idempotent.
+    bind = op.get_bind()
+    inspector = inspect(bind)
+
+    if not inspector.has_table('boat_news'):
+        op.create_table(
+            'boat_news',
+            sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column('source_domain', sa.Text(), nullable=False),
+            sa.Column('url', sa.Text(), nullable=False),
+            sa.Column('published_at', sa.Date(), nullable=True),
+            sa.Column('title', sa.Text(), nullable=False),
+            sa.Column('snippet', sa.Text(), nullable=True),
+            sa.Column('raw_markdown', sa.Text(), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+            sa.PrimaryKeyConstraint('id'),
+            sa.UniqueConstraint('url')
+        )
+
+    if not inspector.has_table('boat_news_mentions'):
+        op.create_table(
+            'boat_news_mentions',
+            sa.Column('news_id', sa.Integer(), nullable=False),
+            sa.Column('boat_id', sa.Integer(), nullable=False),
+            sa.Column('confidence', sa.Numeric(precision=3, scale=2), nullable=True),
+            sa.ForeignKeyConstraint(['boat_id'], ['boats.id'], ondelete='CASCADE'),
+            sa.ForeignKeyConstraint(['news_id'], ['boat_news.id'], ondelete='CASCADE'),
+            sa.PrimaryKeyConstraint('news_id', 'boat_id')
+        )
 
 
 def downgrade() -> None:

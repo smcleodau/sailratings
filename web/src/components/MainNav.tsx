@@ -23,6 +23,7 @@ export default function MainNav({ theme, cta }: MainNavProps) {
   const containerClass = onImage
     ? "absolute top-0 left-0 w-full z-50 bg-[var(--sr-surface-page)]/80 backdrop-blur-md border-b border-[var(--sr-border-subtle)]"
     : "relative w-full z-30 border-b border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)]";
+  const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
   return (
     <nav
@@ -51,17 +52,21 @@ export default function MainNav({ theme, cta }: MainNavProps) {
       </div>
       <div className="justify-self-end flex items-center gap-4">
         {cta}
-        <Show when="signed-out">
-          <SignInButton mode="modal">
-            <button className={`text-xs font-semibold uppercase tracking-wider ${linkBase} transition-colors px-2 py-1`}>Sign In</button>
-          </SignInButton>
-          <SignUpButton mode="modal">
-            <button className="sr-button sr-button--primary text-xs py-2 px-4">Sign Up</button>
-          </SignUpButton>
-        </Show>
-        <Show when="signed-in">
-          <UserButton />
-        </Show>
+        {clerkConfigured && (
+          <>
+            <Show when="signed-out">
+              <SignInButton mode="modal">
+                <button className={`text-xs font-semibold uppercase tracking-wider ${linkBase} transition-colors px-2 py-1`}>Sign In</button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <button className="sr-button sr-button--primary text-xs py-2 px-4">Sign Up</button>
+              </SignUpButton>
+            </Show>
+            <Show when="signed-in">
+              <UserButton />
+            </Show>
+          </>
+        )}
       </div>
     </nav>
   );
