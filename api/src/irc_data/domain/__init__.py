@@ -50,6 +50,35 @@ from irc_data.domain.entities import (
     SCHEMA_VERSION,
 )
 
+# DP-04-01: identity candidate and match-decision contracts.  Imported
+# under a private alias first so the two SCHEMA_VERSION tags stay distinct
+# (entities export theirs as SCHEMA_VERSION; matching's is
+# MATCH_SCHEMA_VERSION).
+from irc_data.domain import matching as _matching
+from irc_data.domain.matching import (
+    ActorKind,
+    BelowThresholdError,
+    CandidatePairV1,
+    CandidateStatus,
+    DecisionStateError,
+    DecisionType,
+    EvidenceRef,
+    FeatureScoreV1,
+    MatchDecisionError,
+    MatchDecisionV1,
+    MatchJournal,
+    MatchPolicy,
+    MissingEvidenceError,
+    MissingPolicyError,
+    apply_decision,
+    decide,
+    reverse_decision,
+)
+
+MATCH_SCHEMA_VERSION = _matching.SCHEMA_VERSION
+DECISION_TYPES = _matching.DECISIONS
+DEFAULT_BOAT_POLICY = _matching.DEFAULT_BOAT_POLICY
+
 __all__ = [
     "Alias",
     "AliasedToRemovedError",
@@ -81,4 +110,25 @@ __all__ = [
     "new_entity_id",
     "new_event_id",
     "parse_entity_id",
+    # DP-04-01: identity candidate & match-decision contracts
+    "ActorKind",
+    "BelowThresholdError",
+    "CandidatePairV1",
+    "CandidateStatus",
+    "DecisionStateError",
+    "DecisionType",
+    "DECISION_TYPES",
+    "DEFAULT_BOAT_POLICY",
+    "EvidenceRef",
+    "FeatureScoreV1",
+    "MATCH_SCHEMA_VERSION",
+    "MatchDecisionError",
+    "MatchDecisionV1",
+    "MatchJournal",
+    "MatchPolicy",
+    "MissingEvidenceError",
+    "MissingPolicyError",
+    "apply_decision",
+    "decide",
+    "reverse_decision",
 ]
