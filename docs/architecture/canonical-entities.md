@@ -286,9 +286,9 @@ and journalists *cite* it).
 2. Assertion A1 (source `sailsys`, recorded T1): `result_RS.status =
    "DNF"`.  Resolved truth as of T1+ε: DNF.
 3. Assertion A2 (recorded T2 > T1, `supersedes=A1.id`): `status =
-   "3"` (place).  Resolved truth now: 3rd; A1 remains in the store,
-   visible as superseded history; resolving with `as_of` between T1 and
-   T2 still yields DNF.
+   "finished"` plus `place = 3`.  Resolved truth now: finished 3rd; A1
+   remains in the store, visible as superseded history; resolving with
+   `as_of` between T1 and T2 still yields DNF.
 
 *Outcome asserted in tests:* both system-time views reproduce; the
 supersession chain is intact; entry/event/race entities are untouched by

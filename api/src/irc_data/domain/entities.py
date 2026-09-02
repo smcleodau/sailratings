@@ -445,9 +445,10 @@ def check_id_opacity(opaque_id: str, *, aliases: Iterable[str] = ()) -> None:
 
     Raises :class:`IdentifierDerivationError` when:
       * the id is not a valid opaque canonical id, or
+      * the id's body contains non-ULID characters (hand-assembled id), or
       * the id's body contains a known mutable-name token (e.g. a country
         prefix such as ``GBR`` or a rule-system label such as ``IRC``), or
-        * the id's body contains (a normalised form of) any provided alias
+      * the id's body contains (a normalised form of) any provided alias
         string — i.e. someone smuggled the boat name into the key.
     """
     parts = parse_entity_id(opaque_id)  # raises DomainError if malformed
@@ -497,6 +498,12 @@ def entity_boundary(entity_type: EntityType | str) -> BoundaryCheck:
 # ---------------------------------------------------------------------------
 # Aliases — mutable names, attached and detached over time
 # ---------------------------------------------------------------------------
+
+
+def _utc(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 @dataclass(frozen=True)
@@ -707,17 +714,6 @@ class RegistryEvent:
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _utc(dt: datetime) -> datetime:
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-# ---------------------------------------------------------------------------
 # DomainModel — the in-memory registry
 # ---------------------------------------------------------------------------
 
@@ -728,7 +724,7 @@ class DomainModel:
     The registry is intentionally small: it stores entity *shells*,
     aliases and the event log, and derives resolved truth by replaying
     assertions through the DP-03-02 resolver.  Persistence adapters
-    serialise :meth:`snapshot` / :meth:`event_log`.
+    serialise :meth:`snapshot` / :attr:`event_log`.
 
     All mutating operations append to the **event log** with a system
     timestamp, so the registry's state is reconstructable for any prior
@@ -742,7 +738,7 @@ class DomainModel:
         self._log: list[RegistryEvent] = []
         self._assertions: dict[str, AssertionV1] = {}
 
-    # -- Creation ------------------------------------------------------------
+    # -- Creation -------------------------------------------------------------
 
     def create_entity(
         self,
@@ -841,7 +837,7 @@ class DomainModel:
                 return entity
         return None
 
-    # -- Assertions -------------------------------------------------------------
+    # -- Assertions --------------------------------------------------------------
 
     def assert_about(self, entity_id: str, assertion: AssertionV1) -> SourceAssertionRef:
         """Attach an observed assertion to its subject entity.

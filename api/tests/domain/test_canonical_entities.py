@@ -91,7 +91,7 @@ class TestIdentifiers:
         assert a < b  # ULID bodies are lexicographically time-sortable
 
     def test_id_contains_no_mutable_name_material(self):
-        # Even the *pin the entropy* path can only produce Crockford chars —
+        # Even with pinned entropy the body can only be Crockford chars —
         # no lowercase, no I/L/O/U, and no way to inject a name.
         oid = new_entity_id("boat", _time_ms=1_726_000_000_000)
         body = parse_entity_id(oid).ulid
