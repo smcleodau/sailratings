@@ -48,7 +48,30 @@ AccessMethod = Literal[
 RobotsStatus = Literal["allowed", "disallowed", "unchecked", "no_robots"]
 
 #: Lifecycle / health of the adapter that collects from this source.
-AdapterStatus = Literal["active", "planned", "beta", "deprecated", "none"]
+#: Mirrors the Notion Data Source Register "Current Status" tiers:
+#: ``active`` ↔ Active, ``prototyped`` ↔ Prototyped,
+#: ``unexplored`` ↔ Unexplored, ``broken`` ↔ Broken.
+AdapterStatus = Literal[
+    "active",
+    "prototyped",
+    "unexplored",
+    "broken",
+    "planned",   # legacy: adapter planned but not yet built (pre-DP-01-01)
+    "beta",      # legacy: adapter in beta (pre-DP-01-01)
+    "deprecated",
+    "none",
+]
+
+#: Notion Data Source Register "Priority Tier" vocabulary (DP-01-01).
+PriorityTier = Literal[
+    "Tier 1: Core Identifiers",
+    "Tier 2: Major Race Platforms",
+    "Tier 3: Niche/Local Events",
+    "Tier 4: News & Enrichment",
+]
+
+#: Notion Data Source Register "Current Status" vocabulary (DP-01-01).
+NotionCurrentStatus = Literal["Active", "Prototyped", "Unexplored", "Broken"]
 
 #: How a change on the source is detected between collection runs.
 ChangeDetection = Literal["etag", "content_hash", "last_modified", "poll", "manual", "none"]
@@ -66,6 +89,44 @@ CATEGORIES: tuple[str, ...] = (
     "events",
     "other",
 )
+
+#: Allowed adapter statuses (mirrors the Notion register "Current Status"
+#: tiers, lower-cased, plus legacy values kept for backward compatibility).
+ADAPTER_STATUSES: tuple[str, ...] = (
+    "active",
+    "prototyped",
+    "unexplored",
+    "broken",
+    "planned",
+    "beta",
+    "deprecated",
+    "none",
+)
+
+#: Allowed priority tiers (Notion Data Source Register "Priority Tier").
+PRIORITY_TIERS: tuple[str, ...] = (
+    "Tier 1: Core Identifiers",
+    "Tier 2: Major Race Platforms",
+    "Tier 3: Niche/Local Events",
+    "Tier 4: News & Enrichment",
+)
+
+#: Notion Data Source Register "Current Status" → ``adapter_status``.
+NOTION_STATUS_TO_ADAPTER_STATUS: dict[str, str] = {
+    "Active": "active",
+    "Prototyped": "prototyped",
+    "Unexplored": "unexplored",
+    "Broken": "broken",
+}
+
+#: Notion Data Source Register "License Status" → register ``licensing``.
+NOTION_LICENSE_TO_LICENSING: dict[str, str] = {
+    "Public Domain": "public_domain",
+    "TOS Restricted": "tos_restricted",
+    "Licensed/API": "licensed_api",
+    "Grey Area": "grey_area",
+    "Private/Authenticated": "private_authenticated",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +179,24 @@ try:
         licensing: str = Field(
             default="unknown",
             description="Licence under which the data is published.",
+        )
+
+        # -- Notion register lineage (DP-01-01) -------------------------------
+        tier: str | None = Field(
+            default=None,
+            description="Priority tier carried over from the Notion Data Source "
+                        "Register, e.g. 'Tier 1: Core Identifiers'.",
+        )
+        notion_status: str | None = Field(
+            default=None,
+            description="'Current Status' carried over from the Notion Data "
+                        "Source Register: Active|Prototyped|Unexplored|Broken.",
+        )
+        notion_license: str | None = Field(
+            default=None,
+            description="'License Status' carried over from the Notion Data "
+                        "Source Register: Public Domain|TOS Restricted|"
+                        "Licensed/API|Grey Area|Private/Authenticated.",
         )
 
         # -- Collection shape -------------------------------------------------
