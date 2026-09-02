@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class NotionPoller:
     def __init__(self):
         self.notion_token = os.environ.get("SAILRATINGS_NOTION_TOKEN")
-        self.db_id = '3b237ffe-f467-811c-ad8b-000b37553856'
+        self.db_id = '3b237ffe-f467-81b4-8aad-e4eb0d49f4da'
         self.headers = {
             'Authorization': f'Bearer {self.notion_token}',
             'Notion-Version': '2022-06-28',
@@ -35,13 +35,15 @@ class NotionPoller:
             logger.info(f"Skipping poll: {running_count} workflows already running (cap={self.MAX_CONCURRENT})")
             return
 
-        # Query DB
+        # Query DB — Ready tasks that haven't been dispatched yet
         req = urllib.request.Request(
             f'https://api.notion.com/v1/databases/{self.db_id}/query',
             data=json.dumps({
                 "filter": {
-                    "property": "Status",
-                    "select": {"equals": "Ready"}
+                    "and": [
+                        {"property": "Status", "select": {"equals": "Ready"}},
+                        {"property": "Execution State", "select": {"equals": "Not Dispatched"}},
+                    ]
                 }
             }).encode(),
             method='POST',
@@ -53,7 +55,7 @@ class NotionPoller:
         except Exception as e:
             logger.error(f"Error querying Notion for Tasks: {e}")
             results = []
-            
+
         logger.info(f"Found {len(results)} tasks ready for agent.")
 
         # Query DB for Epics that need Specifications
@@ -62,7 +64,7 @@ class NotionPoller:
             data=json.dumps({
                 "filter": {
                     "property": "Status",
-                    "select": {"equals": "Needs Spec"}
+                    "select": {"equals": "Needs Specification"}
                 }
             }).encode(),
             method='POST',
@@ -86,7 +88,9 @@ class NotionPoller:
         allowed_epics = [e.strip() for e in allowed_epics_env.split(",") if e.strip()] if allowed_epics_env else []
 
         def epic_allowed(page):
-            parent = (page.get('properties', {}).get('Parent Epic', {}).get('select') or {}).get('name', '')
+            # Parent Epic is a rich_text property on the Roadmap
+            rt = page.get('properties', {}).get('Parent Epic', {}).get('rich_text', [])
+            parent = rt[0]['text']['content'] if rt else ''
             if not allowed_epics:
                 return True
             return parent in allowed_epics
@@ -187,10 +191,10 @@ class NotionPoller:
                 )
                 dispatched += 1
                 
-                # Update Notion status
+                # Mark Execution State = Queued so we don't re-dispatch on the next poll
                 req_update = urllib.request.Request(
                     f"https://api.notion.com/v1/pages/{page['id']}",
-                    data=json.dumps({"properties": {"Status": {"select": {"name": "In Progress"}}}}).encode(),
+                    data=json.dumps({"properties": {"Execution State": {"select": {"name": "Queued"}}}}).encode(),
                     method='PATCH',
                     headers=self.headers
                 )
@@ -226,10 +230,10 @@ class NotionPoller:
                     task_queue="orchestrator-task-queue"
                 )
                 
-                # Update Notion status
+                # Mark Execution State = Queued to prevent re-dispatch
                 req_update = urllib.request.Request(
                     f"https://api.notion.com/v1/pages/{page['id']}",
-                    data=json.dumps({"properties": {"Status": {"select": {"name": "Spec Writing In Progress"}}}}).encode(),
+                    data=json.dumps({"properties": {"Execution State": {"select": {"name": "Queued"}}}}).encode(),
                     method='PATCH',
                     headers=self.headers
                 )
