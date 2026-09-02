@@ -41,9 +41,14 @@ async def main():
         client = await Client.connect(temporal_address, namespace="sailratings")
 
         # Run a worker for the orchestrator workflow
+        # Cap concurrent activities: each OpenHands lane worker is very heavy
+        # (API calls + subprocesses). Too many concurrent ones starve the asyncio
+        # event loop so workflow tasks and provision_worktree can't execute.
         worker = Worker(
             client,
             task_queue="orchestrator-task-queue",
+            max_concurrent_activities=4,
+            max_concurrent_workflow_tasks=10,
             workflows=[
                 EpicExecutionWorkflow,
                 SprintManagerWorkflow,
