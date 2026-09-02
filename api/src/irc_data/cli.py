@@ -3551,3 +3551,7 @@ from irc_data.resilience.cli import dr_drill as _dr_drill  # noqa: E402
 
 cli.add_command(_dr_drill)
 
+from irc_data.operations.cli import ops_soak as _ops_soak  # noqa: E402
+
+cli.add_command(_ops_soak)
+
