@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class NotionPoller:
     def __init__(self):
         self.notion_token = os.environ.get("SAILRATINGS_NOTION_TOKEN")
-        self.db_id = '3ac37ffe-f467-8059-855a-e4e5666e7e3d'
+        self.db_id = '3b237ffe-f467-811c-ad8b-000b37553856'
         self.headers = {
             'Authorization': f'Bearer {self.notion_token}',
             'Notion-Version': '2022-06-28',
