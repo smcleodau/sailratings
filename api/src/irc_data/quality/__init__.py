@@ -1,7 +1,15 @@
-"""Validation, quarantine and promotion gates (DP-05-02).
+"""Validation, quarantine and promotion gates (DP-05-02) and the
+data-quality dimension registry (DP-05-01).
 
-This package prevents bad batches from entering the canonical views:
+This package prevents bad batches from entering the canonical views and
+makes database health measurable:
 
+* :mod:`irc_data.quality.dimensions` — DP-05-01: the eight data-quality
+  dimensions (completeness, validity, uniqueness, consistency,
+  timeliness, provenance, identity confidence, drift), per-dataset /
+  per-field blocking and warning thresholds, accountable owners, SLOs
+  and remediation playbooks, plus the evaluation engine that scores a
+  batch into a :class:`~irc_data.quality.dimensions.DimensionReportV1`.
 * :mod:`irc_data.quality.contracts` — the handoff / output contracts
   (``GateFinding``, ``QuarantineRecordV1``, ``GateVerdictV1``,
   ``PromotionReceiptV1``) and the rule taxonomy.
@@ -26,6 +34,16 @@ from irc_data.quality.contracts import (
     QuarantineRecordV1,
     RuleClass,
 )
+from irc_data.quality.dimensions import (
+    SCHEMA_VERSION as DIMENSIONS_SCHEMA_VERSION,
+    DimensionReportV1,
+    QualityDimension,
+    ThresholdRule,
+    assert_dataset_publishable,
+    evaluate_dataset,
+    published_datasets,
+    validate_registry,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -36,4 +54,13 @@ __all__ = [
     "QualityBatchStatus",
     "QuarantineRecordV1",
     "RuleClass",
+    # DP-05-01 dimensions
+    "DIMENSIONS_SCHEMA_VERSION",
+    "DimensionReportV1",
+    "QualityDimension",
+    "ThresholdRule",
+    "assert_dataset_publishable",
+    "evaluate_dataset",
+    "published_datasets",
+    "validate_registry",
 ]
