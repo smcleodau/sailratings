@@ -270,6 +270,7 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
 
 @activity.defn
 async def create_pull_request(worktree_path: str) -> None:
+    import fcntl
     activity.logger.info(f"Auto-merging {worktree_path} into develop")
     repo_path = "/home/irc-data/code/sailratings"
 
@@ -283,39 +284,51 @@ async def create_pull_request(worktree_path: str) -> None:
     if not branch:
         raise ApplicationError(f"Could not determine branch name in {worktree_path}")
 
-    activity.logger.info(f"Merging {branch} into develop")
+    activity.logger.info(f"Merging {branch} into develop — waiting for git lock")
 
-    # Ensure we are on develop before merging (main repo HEAD may be on a feature branch)
-    await asyncio.create_subprocess_shell(
-        f'git -C "{repo_path}" checkout develop',
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    # Serialise all merge+push operations — concurrent git operations on the same
+    # repo cause lock contention and non-fast-forward push failures
+    lock_path = "/tmp/factory-git-merge.lock"
+    lock_file = open(lock_path, "w")
+    await asyncio.get_event_loop().run_in_executor(
+        None, lambda: fcntl.flock(lock_file, fcntl.LOCK_EX)
     )
+    activity.logger.info(f"Acquired git merge lock for {branch}")
+    try:
+        # Ensure we are on develop before merging (main repo HEAD may be on a feature branch)
+        await asyncio.create_subprocess_shell(
+            f'git -C "{repo_path}" checkout develop',
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
 
-    # Merge into develop in the main repo
-    merge_cmd = (
-        f'git -C "{repo_path}" merge --no-ff "{branch}" '
-        f'-m "feat: factory merge {branch} into develop (gatekeeper approved)"'
-    )
-    proc = await asyncio.create_subprocess_shell(
-        merge_cmd,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        raise ApplicationError(f"Merge failed: {stderr.decode()[:1000]}")
+        # Merge into develop in the main repo
+        merge_cmd = (
+            f'git -C "{repo_path}" merge --no-ff "{branch}" '
+            f'-m "feat: factory merge {branch} into develop (gatekeeper approved)"'
+        )
+        proc = await asyncio.create_subprocess_shell(
+            merge_cmd,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise ApplicationError(f"Merge failed: {stderr.decode()[:1000]}")
 
-    activity.logger.info(f"Merged {branch}. Pushing develop to origin.")
+        activity.logger.info(f"Merged {branch}. Pushing develop to origin.")
 
-    # Push develop
-    proc = await asyncio.create_subprocess_shell(
-        f'git -C "{repo_path}" push origin develop',
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        raise ApplicationError(f"Push failed: {stderr.decode()[:1000]}")
+        # Push develop
+        proc = await asyncio.create_subprocess_shell(
+            f'git -C "{repo_path}" push origin develop',
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise ApplicationError(f"Push failed: {stderr.decode()[:1000]}")
 
-    activity.logger.info(f"Successfully merged and pushed {branch}.")
+        activity.logger.info(f"Successfully merged and pushed {branch}.")
+    finally:
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        lock_file.close()
 
 @activity.defn
 async def notify_admin_hitl(details: dict) -> None:
