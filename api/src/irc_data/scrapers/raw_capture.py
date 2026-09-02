@@ -1,6 +1,6 @@
 """Generic raw archival capture job framework (DP-00-03 / DP-00-04).
 
-Policy: interim-v0 (DP-00-01)
+Policy: v1.0 (DP-01-02; supersedes interim-v0 / DP-00-01)
 
 This module implements the shared "fetch → hash → store" nightly job
 framework used by the DP-00 interim raw-capture track.  DP-00-03 uses it for
@@ -13,7 +13,7 @@ Every fetched object is persisted via
 :func:`irc_data.sources.provenance.persist_raw_artifact`, producing a
 :class:`~irc_data.sources.provenance.ProvenanceRefV1` envelope:
 
-    RawArtifactV0 = bytes + SHA-256 + URL + fetch time + policy_version 'interim-v0'
+    RawArtifactV0 = bytes + SHA-256 + URL + fetch time + policy_version 'v1.0'
 
 Politeness rules (INTERIM-POLICY §3) — identical to DP-00-03 / DP-00-05:
 

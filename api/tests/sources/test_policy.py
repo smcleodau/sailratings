@@ -21,6 +21,7 @@ import pytest
 from irc_data.sources.policy import (
     ACTIVE_POLICY,
     CURRENT_POLICY_VERSION,
+    SUPERSEDED_POLICY_VERSIONS,
     CollectionPolicyDecisionV1,
     LegalStatus,
     SourceClass,
@@ -68,8 +69,20 @@ from tests.sources.fixtures import (
 class TestPolicyVersionGate:
     """AC: Adapter cannot run without approved policy version."""
 
-    def test_current_policy_version_is_interim_v0(self):
-        assert CURRENT_POLICY_VERSION == "interim-v0"
+    def test_current_policy_version_is_v1(self):
+        """DP-01-02: the approved policy is v1.0 (supersedes interim-v0)."""
+        assert CURRENT_POLICY_VERSION == "v1.0"
+
+    def test_interim_v0_is_superseded(self):
+        """interim-v0 (DP-00-01) is recorded as superseded by v1.0."""
+        assert "interim-v0" in SUPERSEDED_POLICY_VERSIONS
+        assert CURRENT_POLICY_VERSION not in SUPERSEDED_POLICY_VERSIONS
+
+    def test_superseded_interim_v0_fails_the_gate(self):
+        """A source row still on interim-v0 cannot run — adapter is blocked."""
+        policy = CollectionPolicyDecisionV1()
+        with pytest.raises(PolicyVersionMismatchError):
+            policy.assert_version("interim-v0", "sailsys")
 
     def test_policy_has_correct_version(self):
         policy = CollectionPolicyDecisionV1()
@@ -557,7 +570,7 @@ class TestObjectSizeEnforcement:
 
 
 class TestPolicyRules:
-    """Verify all policy rule blocks are present and configured per INTERIM-POLICY.md."""
+    """Verify all policy rule blocks are present and configured per SOURCE-POLICY.md."""
 
     def test_robots_rule_present(self):
         policy = CollectionPolicyDecisionV1()
@@ -603,7 +616,7 @@ class TestPolicyRules:
     def test_policy_summary(self):
         policy = CollectionPolicyDecisionV1()
         summary = policy.to_summary()
-        assert summary["version"] == "interim-v0"
+        assert summary["version"] == "v1.0"
         assert "robots" in summary
         assert "rate" in summary
         assert "attribution" in summary
@@ -612,6 +625,85 @@ class TestPolicyRules:
         assert "retention" in summary
         assert "collection_window" in summary
         assert summary["source_count"] == 11
+        assert summary["policy_doc"] == "docs/SOURCE-POLICY.md"
+        assert "interim-v0" in summary["supersedes"]
+
+
+# ---------------------------------------------------------------------------
+# v1.0 named rulings (docs/SOURCE-POLICY.md §3)
+# ---------------------------------------------------------------------------
+
+
+class TestV1Rulings:
+    """DP-01-02 scope: explicit rulings on the ToS-restricted sources
+    (ORC, TopYacht, ClubSpot, Kwindoo) and the grey-area IRC certificate PDFs."""
+
+    def test_orc_approved_public_api_only(self):
+        """ORC: approved, public class, restricted to the public JSON API."""
+        policy = CollectionPolicyDecisionV1()
+        cls = policy.classify("orc")
+        assert cls.source_class == SourceClass.PUBLIC
+        assert cls.legal_status == LegalStatus.APPROVED
+        assert cls.collectible is True
+        assert "orc" in policy.source_rulings
+        assert "JSON API" in policy.source_rulings["orc"]
+
+    def test_topyacht_approved_public_results(self):
+        """TopYacht: approved, public class, club-published results only."""
+        policy = CollectionPolicyDecisionV1()
+        cls = policy.classify("topyacht")
+        assert cls.source_class == SourceClass.PUBLIC
+        assert cls.legal_status == LegalStatus.APPROVED
+        assert cls.collectible is True
+        assert "topyacht" in policy.source_rulings
+
+    def test_clubspot_hold_unclear(self):
+        """ClubSpot: ToS-restricted → unclear class, hold status, not collectible."""
+        policy = CollectionPolicyDecisionV1()
+        cls = policy.classify("clubspot")
+        assert cls.source_class == SourceClass.UNCLEAR
+        assert cls.legal_status == LegalStatus.HOLD
+        assert cls.collectible is False
+        assert "hold" in policy.source_rulings["clubspot"]
+
+    def test_kwindoo_hold_unclear(self):
+        """Kwindoo: ToS-restricted → unclear class, hold status, not collectible."""
+        policy = CollectionPolicyDecisionV1()
+        cls = policy.classify("kwindoo")
+        assert cls.source_class == SourceClass.UNCLEAR
+        assert cls.legal_status == LegalStatus.HOLD
+        assert cls.collectible is False
+        assert "hold" in policy.source_rulings["kwindoo"]
+
+    def test_irc_certs_approved_with_special_conditions(self):
+        """IRC certificate PDFs (grey area): approved with special conditions."""
+        policy = CollectionPolicyDecisionV1()
+        cls = policy.classify("irc-certs")
+        assert cls.source_class == SourceClass.PUBLIC
+        assert cls.legal_status == LegalStatus.APPROVED
+        assert cls.collectible is True
+        ruling = policy.source_rulings["irc-certs"]
+        assert "grey-area" in ruling
+        assert "no raw PDF redistribution" in ruling
+
+    def test_irc_certs_attribution_header_enforced(self):
+        """The irc-certs ruling requires the X-SailRatings-Source header."""
+        from irc_data.sources.policy import resolve_source
+
+        decision = resolve_source("irc-certs")
+        assert decision.rules.attribution_header == "X-SailRatings-Source: irc-certs"
+
+    def test_hold_sources_produce_zero_fetch_attempts(self):
+        """Hold sources (ClubSpot, Kwindoo) cannot even resolve → zero fetches."""
+        for slug in ("clubspot", "kwindoo"):
+            gate = CollectionGate(policy=POLICY, sources=[])
+            decision = gate.evaluate(slug, f"https://{slug}.com/results")
+            assert not decision.allowed
+
+    def test_rulings_surfaced_in_summary(self):
+        summary = CollectionPolicyDecisionV1().to_summary()
+        for slug in ("orc", "topyacht", "clubspot", "kwindoo", "irc-certs"):
+            assert slug in summary["source_rulings"]
 
 
 # ---------------------------------------------------------------------------

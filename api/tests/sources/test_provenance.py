@@ -251,7 +251,7 @@ class TestProvenanceRefSerialization:
             requested_uri="https://app.sailsys.com.au/results/123",
             resolved_uri="https://app.sailsys.com.au/results/123",
             retrieved_at="2026-09-01T02:00:00+00:00",
-            policy_version="interim-v0",
+            policy_version="v1.0",
             headers_subset={"ETag": '"abc123"', "Content-Type": "text/html"},
             status=200,
             object_location=store.object_location(content_hash),
@@ -268,7 +268,7 @@ class TestProvenanceRefSerialization:
         assert ref2.requested_uri == "https://app.sailsys.com.au/results/123"
         assert ref2.resolved_uri == "https://app.sailsys.com.au/results/123"
         assert ref2.retrieved_at == "2026-09-01T02:00:00+00:00"
-        assert ref2.policy_version == "interim-v0"
+        assert ref2.policy_version == "v1.0"
         assert ref2.headers_subset == {"ETag": '"abc123"', "Content-Type": "text/html"}
         assert ref2.status == 200
         assert ref2.adapter_version == "sailsys-v1.2.0"
@@ -283,7 +283,7 @@ class TestProvenanceRefSerialization:
             requested_uri="https://topyacht.net.au/race/42",
             resolved_uri="https://topyacht.net.au/race/42",
             retrieved_at="2026-09-01T02:05:00+00:00",
-            policy_version="interim-v0",
+            policy_version="v1.0",
             headers_subset={"Last-Modified": "Mon, 01 Sep 2026 00:00:00 GMT"},
             status=200,
             object_location=store.object_location(content_hash),
@@ -316,7 +316,7 @@ class TestProvenanceRefSerialization:
         )
         assert ref.requested_uri == ""
         assert ref.resolved_uri == ""
-        assert ref.policy_version == "interim-v0"
+        assert ref.policy_version == "v1.0"
         assert ref.headers_subset == {}
         assert ref.status == 200
         assert ref.adapter_version == ""
@@ -332,7 +332,7 @@ class TestProvenanceRefSerialization:
             requested_uri="http://req.example",
             resolved_uri="http://res.example",
             retrieved_at="2026-09-01T02:00:00+00:00",
-            policy_version="interim-v0",
+            policy_version="v1.0",
             headers_subset={"X-Test": "true"},
             status=200,
             object_location="/path/to/blob",
@@ -541,7 +541,7 @@ class TestRawArtifactV1Extended:
             etag='"abc"',
             last_modified="Mon, 01 Sep 2026 00:00:00 GMT",
             fetched_at="2026-09-01T02:00:00+00:00",
-            policy_version="interim-v0",
+            policy_version="v1.0",
             status_code=200,
         )
 
@@ -561,7 +561,7 @@ class TestRawArtifactV1Extended:
         assert artifact.requested_uri == "https://app.sailsys.com.au/results/123"
         assert artifact.resolved_uri == "https://app.sailsys.com.au/results/123"
         assert artifact.fetched_at == "2026-09-01T02:00:00+00:00"
-        assert artifact.policy_version == "interim-v0"
+        assert artifact.policy_version == "v1.0"
         assert artifact.content_type == "text/html"
         assert artifact.byte_size == len(b"<html>test</html>")
         assert artifact.adapter_version == "sailsys-v1.2.0"
@@ -578,7 +578,7 @@ class TestRawArtifactV1Extended:
             content_hash="a" * 64,
             source_slug="sailsys",
             fetched_at="2026-09-01T02:00:00+00:00",
-            policy_version="interim-v0",
+            policy_version="v1.0",
             content=b"<html>secret</html>",
         )
         d = artifact.to_dict()
@@ -591,7 +591,7 @@ class TestRawArtifactV1Extended:
             content_hash="a" * 64,
             source_slug="sailsys",
             fetched_at="2026-09-01T02:00:00+00:00",
-            policy_version="interim-v0",
+            policy_version="v1.0",
             requested_uri="http://req.test",
             resolved_uri="http://res.test",
             object_location="/data/raw/aa/bb/aabb",
@@ -611,7 +611,7 @@ class TestRawArtifactV1Extended:
         assert ref.requested_uri == "http://req.test"
         assert ref.resolved_uri == "http://res.test"
         assert ref.retrieved_at == "2026-09-01T02:00:00+00:00"
-        assert ref.policy_version == "interim-v0"
+        assert ref.policy_version == "v1.0"
         assert ref.object_location == "/data/raw/aa/bb/aabb"
         assert ref.adapter_version == "v1.0"
         assert ref.headers_subset == {"ETag": '"x"'}
@@ -624,7 +624,7 @@ class TestRawArtifactV1Extended:
             content_hash="a" * 64,
             source_slug="sailsys",
             fetched_at="2026-09-01T02:00:00+00:00",
-            policy_version="interim-v0",
+            policy_version="v1.0",
             requested_uri="http://req.test",
             resolved_uri="http://res.test",
             object_location="/data/raw/aa/bb/aabb",
@@ -673,7 +673,7 @@ class TestEndToEnd:
             content_hash=content_hash,
             source_slug="sailsys",
             fetched_at="2026-09-01T02:00:00+00:00",
-            policy_version="interim-v0",
+            policy_version="v1.0",
             requested_uri="https://app.sailsys.com.au/results/1",
             resolved_uri="https://app.sailsys.com.au/results/1",
             object_location=store.object_location(content_hash),

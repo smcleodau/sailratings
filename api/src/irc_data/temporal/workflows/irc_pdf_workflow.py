@@ -1,6 +1,6 @@
 """Temporal workflow for nightly IRC certificate PDF capture (DP-00-05).
 
-Policy: interim-v0 (DP-00-01)
+Policy: v1.0 (DP-01-02; supersedes interim-v0 / DP-00-01)
 
 Nightly schedule: 01:00 UK (runs inside the collection window).
 
@@ -42,7 +42,7 @@ HEARTBEAT_TIMEOUT = timedelta(minutes=5)
 class NightlyIrcPdfCaptureWorkflow:
     """Nightly IRC certificate PDF raw-capture workflow (DP-00-05).
 
-    Policy: interim-v0
+    Policy: v1.0
 
     Triggered at 01:00 UK by the scheduler. Enumerates all known cert
     numbers, fetches their PDFs from ircrating.org, and stores them in
@@ -147,7 +147,7 @@ def _aggregate_ledgers(ledgers: list[dict]) -> dict:
     """Aggregate batch ledger dicts into a single summary."""
     total = {
         "source_slug": "irc-certs",
-        "policy_version": "interim-v0",
+        "policy_version": "v1.0",
         "certs_found": 0,
         "certs_new": 0,
         "certs_unchanged": 0,

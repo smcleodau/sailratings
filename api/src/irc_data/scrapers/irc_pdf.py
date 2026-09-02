@@ -1,6 +1,6 @@
 """IRC Certificate PDF raw-capture scraper (DP-00-05).
 
-Policy: interim-v0 (DP-00-01)
+Policy: v1.0 (DP-01-02; supersedes interim-v0 / DP-00-01)
 
 Fetches IRC certificate PDFs from the public search widget at:
   https://ircrating.org/boat-data-for-valid-irc-certificates/

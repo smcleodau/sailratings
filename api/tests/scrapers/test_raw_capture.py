@@ -1,6 +1,6 @@
 """Tests for the DP-00-04 raw capture job (Sailwave + sailing news).
 
-Policy: interim-v0
+Policy: v1.0
 
 Test categories:
   1. Envelope validation — CaptureItem carries the RawArtifactV0 contract
@@ -94,7 +94,7 @@ class TestEnvelope:
         assert item.requested_uri == url
         assert item.resolved_uri == url
         assert item.status == 200
-        assert item.policy_version == "interim-v0"
+        assert item.policy_version == "v1.0"
         assert item.adapter_version == ADAPTER_VERSION
         assert item.content_length == len(STUB_HTML)
         assert item.fetched_at  # ISO timestamp present
@@ -125,7 +125,7 @@ class TestEnvelope:
             "adapter_version",
         ):
             assert key in d, f"missing envelope key: {key}"
-        assert d["policy_version"] == "interim-v0"
+        assert d["policy_version"] == "v1.0"
 
 
 # ---------------------------------------------------------------------------
@@ -559,7 +559,7 @@ class TestLedger:
         ledger.finish("ok")
         d = ledger.to_dict()
         assert d["source_slug"] == SOURCE_SLUG_SAILWAVE
-        assert d["policy_version"] == "interim-v0"
+        assert d["policy_version"] == "v1.0"
         assert d["urls_new"] == 2
         assert d["error_count"] == 1
         assert d["status"] == "ok"

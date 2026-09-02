@@ -82,6 +82,7 @@ Public API::
 
 from irc_data.sources.policy import (
     CURRENT_POLICY_VERSION,
+    SUPERSEDED_POLICY_VERSIONS,
     ACTIVE_POLICY,
     CollectionPolicyDecisionV1,
     LegalStatus,
@@ -186,6 +187,7 @@ from irc_data.sources.fake_adapter import (
 __all__ = [
     # DP-01-02 policy + gate
     "CURRENT_POLICY_VERSION",
+    "SUPERSEDED_POLICY_VERSIONS",
     "ACTIVE_POLICY",
     "CollectionPolicyDecisionV1",
     "LegalStatus",

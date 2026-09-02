@@ -12,7 +12,8 @@ This module defines:
 * Emergency disable helpers, collection window checks, and policy summary.
 
 Policy versioning — the adapter SDK cannot run without an approved policy
-version.  Policy text: ``docs/INTERIM-POLICY.md`` (interim-v0).
+version.  Policy text: ``docs/SOURCE-POLICY.md`` (v1.0, approved 2026-09-02,
+DP-01-02), which supersedes ``docs/INTERIM-POLICY.md`` (interim-v0, DP-00-01).
 Spec: SPEC-012 §3.
 
 Backward-compatibility helpers ``assert_policy_current``,
@@ -32,14 +33,23 @@ from typing import Any, Sequence
 # Policy constants
 # ---------------------------------------------------------------------------
 
-CURRENT_POLICY_VERSION = "interim-v0"
-"""The policy version that every active ``data_sources`` row must reference."""
+CURRENT_POLICY_VERSION = "v1.0"
+"""The policy version that every active ``data_sources`` row must reference.
 
-POLICY_APPROVED_DATE = "2026-08-30"
+``v1.0`` is the DP-01-02 responsible-collection policy
+(``docs/SOURCE-POLICY.md``); it supersedes ``interim-v0`` on approval.
+"""
+
+SUPERSEDED_POLICY_VERSIONS: tuple[str, ...] = ("interim-v0",)
+"""Policy versions that are no longer approved.  Any source row or envelope
+referencing one of these fails the policy-version gate (the adapter cannot
+run) until the row is stamped with ``CURRENT_POLICY_VERSION``."""
+
+POLICY_APPROVED_DATE = "2026-09-02"
 """Human-readable approval date of the current policy."""
 
 POLICY_AUTHORITY = "Stuart McLeod"
-"""The human authority who approved the interim policy."""
+"""The human authority who approved the current policy."""
 
 POLICY_AUTHORITY_EMAIL = "stuart@sailratings.com"
 """Contact address for takedown / complaint requests."""
@@ -321,7 +331,7 @@ class CollectionPolicyDecisionV1:
     """
 
     version: str = CURRENT_POLICY_VERSION
-    approved_on: date = field(default_factory=lambda: date(2026, 8, 30))
+    approved_on: date = field(default_factory=lambda: date(2026, 9, 2))
     authority: str = POLICY_AUTHORITY
 
     robots: RobotsRule = field(default_factory=RobotsRule)
@@ -332,19 +342,24 @@ class CollectionPolicyDecisionV1:
     retention: RetentionRule = field(default_factory=RetentionRule)
     collection_window: CollectionWindowRule = field(default_factory=CollectionWindowRule)
 
-    # --- classification table -------------------------------------------
+    # --- classification table (v1.0 rulings, docs/SOURCE-POLICY.md §3) -----
 
     source_classes: dict[str, SourceClass] = field(
         default_factory=lambda: {
             "sailsys": SourceClass.PUBLIC,
+            # v1.0 §3.3 — public club-published results pages only
             "topyacht": SourceClass.PUBLIC,
             "irc-tcc": SourceClass.PUBLIC,
+            # v1.0 §3.3 — public data.orc.org JSON API only; ToS-restricted
+            # areas are out of scope
             "orc": SourceClass.PUBLIC,
             "yachtscoring": SourceClass.PUBLIC,
             "manage2sail": SourceClass.PUBLIC,
             "sailwave": SourceClass.PUBLIC,
             "sailing-news": SourceClass.PUBLIC,
+            # v1.0 §3.4 — grey-area ruling: approved with special conditions
             "irc-certs": SourceClass.PUBLIC,
+            # v1.0 §3.5 — ToS-restricted; rights ruling pending → hold
             "clubspot": SourceClass.UNCLEAR,
             "kwindoo": SourceClass.UNCLEAR,
         }
@@ -371,6 +386,24 @@ class CollectionPolicyDecisionV1:
     )
 
     prohibited_domains: tuple[str, ...] = ()
+
+    # Human-readable record of the v1.0 named rulings
+    # (docs/SOURCE-POLICY.md §3).  Surfaced in ``to_summary()`` for audit.
+    source_rulings: dict[str, str] = field(
+        default_factory=lambda: {
+            "orc": "approved — public data.orc.org JSON API only; "
+                   "ToS-restricted areas excluded (v1.0 §3.3)",
+            "topyacht": "approved — public club-published results pages only "
+                        "(v1.0 §3.3)",
+            "clubspot": "hold — ToS restricts automated access; rights ruling "
+                        "pending; discovery metadata only (v1.0 §3.5)",
+            "kwindoo": "hold — ToS restricts automated access; rights ruling "
+                       "pending; discovery metadata only (v1.0 §3.5)",
+            "irc-certs": "approved — grey-area ruling with special conditions: "
+                         "attribution header, personal-data redaction, no raw "
+                         "PDF redistribution, immediate takedown path (v1.0 §3.4/§6)",
+        }
+    )
 
     # --- evaluation helpers ----------------------------------------------
 
@@ -454,6 +487,9 @@ class CollectionPolicyDecisionV1:
                 "end_hour_local": self.collection_window.end_hour_local,
             },
             "source_count": len(self.source_classes),
+            "source_rulings": dict(self.source_rulings),
+            "supersedes": list(SUPERSEDED_POLICY_VERSIONS),
+            "policy_doc": "docs/SOURCE-POLICY.md",
         }
 
 

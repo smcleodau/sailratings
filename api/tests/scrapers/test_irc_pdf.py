@@ -1,6 +1,6 @@
 """Tests for the IRC certificate PDF scraper (DP-00-05).
 
-Policy: interim-v0
+Policy: v1.0
 
 Test categories:
   1. parse_search_results — recorded-fixture HTML parsing
@@ -448,7 +448,7 @@ class TestMaxFetchesCap:
 
 class TestRunLedger:
     def test_to_dict_structure(self):
-        ledger = RunLedger("irc-certs", "interim-v0")
+        ledger = RunLedger("irc-certs", "v1.0")
         ledger.certs_found = 5
         ledger.certs_new = 3
         ledger.add_error("9999", "search: timeout")
@@ -456,7 +456,7 @@ class TestRunLedger:
 
         d = ledger.to_dict()
         assert d["source_slug"] == "irc-certs"
-        assert d["policy_version"] == "interim-v0"
+        assert d["policy_version"] == "v1.0"
         assert d["certs_found"] == 5
         assert d["certs_new"] == 3
         assert d["error_count"] == 1
@@ -464,13 +464,13 @@ class TestRunLedger:
         assert d["finished_at"] is not None
 
     def test_finish_sets_timestamp(self):
-        ledger = RunLedger("irc-certs", "interim-v0")
+        ledger = RunLedger("irc-certs", "v1.0")
         assert ledger.finished_at is None
         ledger.finish("ok")
         assert ledger.finished_at is not None
 
     def test_errors_capped_in_to_dict(self):
-        ledger = RunLedger("irc-certs", "interim-v0")
+        ledger = RunLedger("irc-certs", "v1.0")
         for i in range(50):
             ledger.add_error(str(i), f"error {i}")
         ledger.finish("ok")

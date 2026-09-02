@@ -188,7 +188,7 @@ class RawArtifactReceiptV1:
     url: str
     content_type: str | None = None
     fetched_at: str = field(default_factory=_now_iso)
-    policy_version: str = "interim-v0"
+    policy_version: str = "v1.0"
     encrypted: bool = True
     encryption_key_id: str | None = None
     encrypted_length: int | None = None
@@ -233,7 +233,7 @@ class RawArtifactReceiptV1:
             url=d["url"],
             content_type=d.get("content_type"),
             fetched_at=d.get("fetched_at", _now_iso()),
-            policy_version=d.get("policy_version", "interim-v0"),
+            policy_version=d.get("policy_version", "v1.0"),
             encrypted=d.get("encrypted", True),
             encryption_key_id=d.get("encryption_key_id"),
             encrypted_length=d.get("encrypted_length"),
@@ -720,7 +720,7 @@ class RawLakeStorage:
         url: str,
         content_type: str | None = None,
         fetched_at: str | None = None,
-        policy_version: str = "interim-v0",
+        policy_version: str = "v1.0",
         retention_expires_at: str | None = None,
         legal_hold: bool = False,
     ) -> RawArtifactReceiptV1:

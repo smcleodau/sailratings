@@ -164,7 +164,7 @@ class ProvenanceRefV1:
     requested_uri: str = ""
     resolved_uri: str = ""
     retrieved_at: str = field(default_factory=_now_iso)
-    policy_version: str = "interim-v0"
+    policy_version: str = "v1.0"
     headers_subset: dict[str, str] = field(default_factory=dict)
     status: int = 200
     object_location: str = ""
@@ -202,7 +202,7 @@ class ProvenanceRefV1:
             requested_uri=d.get("requested_uri", ""),
             resolved_uri=d.get("resolved_uri", ""),
             retrieved_at=d.get("retrieved_at", _now_iso()),
-            policy_version=d.get("policy_version", "interim-v0"),
+            policy_version=d.get("policy_version", "v1.0"),
             headers_subset=dict(d.get("headers_subset", {})),
             status=d.get("status", 200),
             object_location=d.get("object_location", ""),
@@ -429,7 +429,7 @@ def persist_raw_artifact(
     requested_uri: str,
     resolved_uri: str = "",
     retrieved_at: str = "",
-    policy_version: str = "interim-v0",
+    policy_version: str = "v1.0",
     headers_subset: dict[str, str] | None = None,
     status: int = 200,
     adapter_version: str = "",
