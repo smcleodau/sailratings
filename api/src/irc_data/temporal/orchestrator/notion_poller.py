@@ -95,7 +95,19 @@ class NotionPoller:
                 return True
             return parent in allowed_epics
 
-        eligible = [p for p in results if epic_allowed(p)]
+        def human_gate(page):
+            """Return True if the Human Gate checkbox is checked — never auto-dispatch."""
+            cb = page.get('properties', {}).get('Human Gate', {})
+            return cb.get('checkbox', False)
+
+        eligible = [p for p in results if epic_allowed(p) and not human_gate(p)]
+        gated = [p for p in results if epic_allowed(p) and human_gate(p)]
+        if gated:
+            ids = [
+                (p.get('properties', {}).get('ID', {}).get('rich_text', [{}]) or [{}])[0].get('text', {}).get('content', p['id'])
+                for p in gated
+            ]
+            logger.info(f"Skipping {len(gated)} human-gate tasks: {ids}")
         logger.info(f"{len(eligible)} of {len(results)} ready tasks are in allowed epics {allowed_epics}")
 
         for page in eligible[:min(len(eligible), self.MAX_PER_POLL, slots_available)]:
