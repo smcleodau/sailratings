@@ -71,11 +71,18 @@ from irc_data.sources.models import LEGAL_STATUSES
 
 try:
     from sqlalchemy import Boolean, DateTime, Index, Integer, Text, func, select
+    from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Mapped, Session, mapped_column
 
     from irc_data.db.models import Base
     from irc_data.sources.models import DataSourceRecordV1
+
+    #: ``data_sources.robots_disallow`` is a native ``TEXT[]`` array on
+    #: Postgres (see alembic ``0023`` / ``20260830a``) but plain ``Text``
+    #: suffices for the in-memory SQLite engines used by the test-suite.
+    #: ``with_variant`` gives us both.
+    _RobotsDisallowType = Text().with_variant(PG_ARRAY(Text), "postgresql")
 
     class DataSource(Base):
         """SQLAlchemy model for the ``data_sources`` register table (DP-01-04)."""
@@ -112,6 +119,11 @@ try:
         )
         priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
 
+        # Notion register lineage (DP-01-01)
+        tier: Mapped[str | None] = mapped_column(Text)
+        notion_status: Mapped[str | None] = mapped_column(Text)
+        notion_license: Mapped[str | None] = mapped_column(Text)
+
         # Adapter / health
         adapter_class: Mapped[str | None] = mapped_column(Text)
         adapter_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="planned")
@@ -120,7 +132,8 @@ try:
         # Optional metadata
         contact_email: Mapped[str | None] = mapped_column(Text)
         robots_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-        robots_disallow: Mapped[str | None] = mapped_column(Text)  # JSON-encoded list
+        # Native TEXT[] on Postgres (see 0023/20260830a); Text elsewhere.
+        robots_disallow: Mapped[list[str] | None] = mapped_column(_RobotsDisallowType)
         notes: Mapped[str | None] = mapped_column(Text)
 
         created_at: Mapped[datetime] = mapped_column(
@@ -152,6 +165,9 @@ try:
                 adapter_class=self.adapter_class,
                 adapter_status=self.adapter_status,
                 enabled=self.enabled,
+                tier=self.tier,
+                notion_status=self.notion_status,
+                notion_license=self.notion_license,
                 contact_email=self.contact_email,
                 robots_checked_at=self.robots_checked_at,
                 notes=self.notes,
@@ -550,6 +566,9 @@ def seed_sources(
                     "adapter_class": record.adapter_class,
                     "adapter_status": record.adapter_status,
                     "enabled": record.enabled,
+                    "tier": record.tier,
+                    "notion_status": record.notion_status,
+                    "notion_license": record.notion_license,
                     "contact_email": record.contact_email,
                     "notes": record.notes,
                     "updated_at": now,
