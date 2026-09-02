@@ -163,6 +163,18 @@ from irc_data.sources.registry import (
 # DP-01-04 — Pydantic schema
 from irc_data.sources.models import DataSourceRecordV1
 
+# DP-01-04 — acquisition primitives
+from irc_data.sources.primitives import (
+    PDF_MAGIC,
+    fetch_file,
+    fetch_html,
+    fetch_json,
+    fetch_pdf,
+    fetch_xml,
+    paginate,
+    render_page,
+)
+
 from irc_data.sources.fake_adapter import (
     FakeHttpServer,
     FakeSourceAdapter,
@@ -244,6 +256,14 @@ __all__ = [
     "can_discover",
     "list_sources",
     "resolve_and_assert_approved",
+    "PDF_MAGIC",
+    "fetch_html",
+    "fetch_pdf",
+    "fetch_json",
+    "fetch_xml",
+    "fetch_file",
+    "paginate",
+    "render_page",
     # Seed constants
     "SEED_COUNT",
     "HOLD_SOURCES",

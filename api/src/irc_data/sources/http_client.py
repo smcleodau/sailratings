@@ -46,6 +46,11 @@ from irc_data.sources.policy import (
 #: Status codes that are retried with backoff.
 RETRYABLE_STATUS_CODES = frozenset({500, 502, 503, 504})
 
+#: Throttling status codes — retried honouring ``Retry-After`` (DP-01-04).
+#: 429 Too Many Requests means the source is asking us to slow down; we
+#: always honour the ``Retry-After`` hint before falling back to backoff.
+THROTTLE_STATUS_CODES = frozenset({429})
+
 #: Default backoff sequence (seconds) — matches RateRule.backoff_sequence.
 DEFAULT_BACKOFF: tuple[float, ...] = (2.0, 4.0, 8.0, 16.0)
 
@@ -320,6 +325,16 @@ class HttpClient:
 
                 # Retryable 5xx
                 if response.status_code in RETRYABLE_STATUS_CODES:
+                    last_exc = RetryExhaustedError(
+                        url, response.status_code, attempt + 1
+                    )
+                    if attempt < self.max_retries:
+                        await self._backoff(attempt, response)
+                        continue
+                    raise last_exc
+
+                # Throttling (429) — honour Retry-After, then back off
+                if response.status_code in THROTTLE_STATUS_CODES:
                     last_exc = RetryExhaustedError(
                         url, response.status_code, attempt + 1
                     )

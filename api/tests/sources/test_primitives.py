@@ -4,6 +4,7 @@ fetch_file, paginate, render_page.
 All tests run with zero network calls using httpx.MockTransport.
 """
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -15,12 +16,15 @@ import pytest
 
 from irc_data.sources.http_client import (
     MAX_OBJECT_SIZE,
+    HttpClient,
+    ObjectTooLargeError,
     PolicyAwareHttpClient,
     RateLimiter,
     STANDARD_USER_AGENT,
 )
 from irc_data.sources.models import DataSource, FetchResult, RawArtifactV1
 from irc_data.sources.policy import (
+    ACTIVE_POLICY,
     PolicyVersionMismatchError,
     SourceNotApprovedError,
 )
@@ -30,6 +34,7 @@ from irc_data.sources.primitives import (
     fetch_html,
     fetch_json,
     fetch_pdf,
+    fetch_xml,
     paginate,
     render_page,
 )
@@ -41,21 +46,51 @@ from irc_data.sources.registry import get_source
 # ---------------------------------------------------------------------------
 
 
-def make_client(transport, rate_limiter=None):
-    """Build a PolicyAwareHttpClient with a mock transport."""
+def _fast_policy():
+    """Return a policy identical to ACTIVE_POLICY but with no rate-limit delay.
+
+    Tests must not sleep 2s+ between requests; zero out the rate delay and
+    jitter while keeping every other policy rule intact.
+    """
+    return dataclasses.replace(
+        ACTIVE_POLICY,
+        rate=dataclasses.replace(
+            ACTIVE_POLICY.rate, min_delay_seconds=0.0, jitter_seconds=0.0
+        ),
+    )
+
+
+def make_client(transport, policy=None, max_retries=3):
+    """Build an HttpClient with a mock transport and fast backoff."""
     inner = httpx.AsyncClient(
         transport=transport,
         follow_redirects=True,
         headers={"User-Agent": STANDARD_USER_AGENT},
     )
-    return PolicyAwareHttpClient(
+    return HttpClient(
         client=inner,
-        rate_limiter=rate_limiter or RateLimiter(min_delay=0.0, jitter=0.0),
+        policy=policy or _fast_policy(),
+        max_retries=max_retries,
+        backoff=(0.001, 0.001, 0.001, 0.001),
     )
 
 
 VALID_HTML = b"<html><body><h1>Test Page</h1></body></html>"
 VALID_JSON = json.dumps({"key": "value", "items": [1, 2, 3]}).encode()
+
+
+def _detached_source(slug: str, **overrides):
+    """Return a *detached* copy of a registry source record.
+
+    Mutating fields on the in-memory registry records would leak state
+    across tests; build a throw-away record instead.
+    """
+    import dataclasses as _dc
+
+    src = get_source(slug)
+    return _dc.replace(src, **overrides)
+
+
 VALID_PDF = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
 
 
@@ -127,16 +162,22 @@ class TestFetchHtml:
         await client.aclose()
 
     @pytest.mark.asyncio
-    async def test_fetch_html_rejects_non_html_content_type(self):
+    async def test_fetch_html_accepts_any_content_type(self):
+        """fetch_html is intentionally lenient: some servers mislabel HTML.
+
+        The primitive returns the body as-is; downstream parsers decide
+        whether it is usable.  Strict validation lives in fetch_json /
+        fetch_xml / fetch_pdf.
+        """
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=b'{"key": "val"}', headers={"Content-Type": "application/json"}))
         client = make_client(transport)
-        with pytest.raises(ValueError, match="Expected HTML"):
-            await fetch_html("https://example.com/page", client=client)
+        result = await fetch_html("https://example.com/page", client=client)
+        assert result.content == b'{"key": "val"}'
         await client.aclose()
 
     @pytest.mark.asyncio
     async def test_fetch_html_accepts_html_without_content_type(self):
-        """Some servers don't send Content-Type; check body for <html>."""
+        """Some servers don't send Content-Type; fetch_html still works."""
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=VALID_HTML))
         client = make_client(transport)
         result = await fetch_html("https://example.com/page", client=client)
@@ -190,7 +231,7 @@ class TestFetchHtml:
         big = b"x" * (MAX_OBJECT_SIZE + 1)
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=big, headers={"Content-Type": "text/html"}))
         client = make_client(transport)
-        with pytest.raises(ValueError, match="exceeds"):
+        with pytest.raises((ValueError, ObjectTooLargeError), match="exceeds"):
             await fetch_html("https://example.com/big", client=client, max_object_size=MAX_OBJECT_SIZE)
         await client.aclose()
 
@@ -226,7 +267,7 @@ class TestFetchPdf:
         big_pdf = b"%PDF-1.4" + b"x" * (MAX_OBJECT_SIZE + 1)
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=big_pdf))
         client = make_client(transport)
-        with pytest.raises(ValueError, match="exceeds"):
+        with pytest.raises((ValueError, ObjectTooLargeError), match="exceeds"):
             await fetch_pdf("https://example.com/big.pdf", client=client)
         await client.aclose()
 
@@ -308,10 +349,15 @@ class TestFetchJson:
 
     @pytest.mark.asyncio
     async def test_fetch_json_validates_content_type(self):
+        """Valid JSON served with the wrong Content-Type is still accepted.
+
+        The primitive validates *parseability*, not the header — many
+        real-world APIs mislabel JSON as text/html.
+        """
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=VALID_JSON, headers={"Content-Type": "text/html"}))
         client = make_client(transport)
-        with pytest.raises(ValueError, match="Expected JSON"):
-            await fetch_json("https://example.com/api/data", client=client)
+        result = await fetch_json("https://example.com/api/data", client=client)
+        assert result.content == VALID_JSON
         await client.aclose()
 
     @pytest.mark.asyncio
@@ -349,6 +395,73 @@ class TestFetchJson:
         client = make_client(transport)
         result = await fetch_json("https://example.com/api/data", client=client)
         assert result.status_code == 200
+        await client.aclose()
+
+
+# ===========================================================================
+# fetch_xml tests
+# ===========================================================================
+
+
+VALID_XML = b'<?xml version="1.0"?><results><race id="1"/></results>'
+
+
+class TestFetchXml:
+    """Tests for fetch_xml primitive (XML API coverage — DP-01-04 scope)."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_xml_returns_fetch_result(self):
+        transport = httpx.MockTransport(lambda req: httpx.Response(200, content=VALID_XML, headers={"Content-Type": "application/xml"}))
+        client = make_client(transport)
+        result = await fetch_xml("https://example.com/api/results.xml", client=client)
+        assert isinstance(result, FetchResult)
+        assert result.content == VALID_XML
+        assert result.content_hash == hashlib.sha256(VALID_XML).hexdigest()
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_fetch_xml_sets_accept_header(self):
+        captured = {}
+
+        def handler(req):
+            captured["accept"] = req.headers.get("Accept")
+            return httpx.Response(200, content=VALID_XML, headers={"Content-Type": "text/xml"})
+
+        transport = httpx.MockTransport(handler)
+        client = make_client(transport)
+        await fetch_xml("https://example.com/api/results.xml", client=client)
+        assert "xml" in captured["accept"]
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_fetch_xml_validates_parseability(self):
+        transport = httpx.MockTransport(lambda req: httpx.Response(200, content=b"<results><unclosed>", headers={"Content-Type": "application/xml"}))
+        client = make_client(transport)
+        with pytest.raises(ValueError, match="not valid XML"):
+            await fetch_xml("https://example.com/api/results.xml", client=client)
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_fetch_xml_conditional_304(self):
+        def handler(req):
+            if req.headers.get("if-none-match") == '"xml-etag"':
+                return httpx.Response(304, headers={"ETag": '"xml-etag"'})
+            return httpx.Response(200, content=VALID_XML, headers={"Content-Type": "application/xml", "ETag": '"xml-etag"'})
+
+        transport = httpx.MockTransport(handler)
+        client = make_client(transport)
+        result = await fetch_xml("https://example.com/api/results.xml", client=client, etag='"xml-etag"')
+        assert result.not_modified is True
+        assert result.status_code == 304
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_fetch_xml_max_object_size(self):
+        big = b'<?xml version="1.0"?><r>' + b"x" * 200 + b"</r>"
+        transport = httpx.MockTransport(lambda req: httpx.Response(200, content=big, headers={"Content-Type": "application/xml"}))
+        client = make_client(transport)
+        with pytest.raises(ValueError, match="exceeds"):
+            await fetch_xml("https://example.com/big.xml", client=client, max_object_size=100)
         await client.aclose()
 
 
@@ -534,8 +647,7 @@ class TestPaginate:
 
     @pytest.mark.asyncio
     async def test_paginate_robots_disallow_stops(self):
-        src = get_source("sailsys")
-        src.robots_disallow = ["/"]
+        src = _detached_source("sailsys", robots_disallow=["/"])
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=VALID_HTML, headers={"Content-Type": "text/html"}))
         client = make_client(transport)
 
@@ -649,8 +761,7 @@ class TestRenderPage:
 
     @pytest.mark.asyncio
     async def test_render_page_robots_disallow(self):
-        src = get_source("sailsys")
-        src.robots_disallow = ["/"]
+        src = _detached_source("sailsys", robots_disallow=["/"])
         browser = FakeBrowser()
         with pytest.raises(SourceNotApprovedError):
             await render_page("https://app.sailsys.com.au/results", source=src, browser=browser)
@@ -683,6 +794,29 @@ class TestRenderPage:
         result = await render_page("https://example.com/js-page", browser=browser)
         assert result.etag == '"render-etag"'
         assert result.last_modified == "Wed, 01 Jan 2025 00:00:00 GMT"
+
+    @pytest.mark.asyncio
+    async def test_render_page_evidence_dir_is_used(self, tmp_path):
+        """Rendered evidence is preserved in the requested directory."""
+        browser = FakeBrowser()
+        result = await render_page(
+            "https://example.com/js-page",
+            browser=browser,
+            evidence_dir=str(tmp_path),
+        )
+        assert result.screenshot_path is not None
+        assert result.screenshot_path.startswith(str(tmp_path))
+        assert os.path.exists(result.screenshot_path)
+
+    @pytest.mark.asyncio
+    async def test_render_page_evidence_dir_env_var(self, tmp_path, monkeypatch):
+        """SAILRATINGS_RENDER_EVIDENCE_DIR is honoured when no arg given."""
+        monkeypatch.setenv("SAILRATINGS_RENDER_EVIDENCE_DIR", str(tmp_path))
+        browser = FakeBrowser()
+        result = await render_page("https://example.com/js-page", browser=browser)
+        assert result.screenshot_path is not None
+        assert result.screenshot_path.startswith(str(tmp_path))
+        assert os.path.exists(result.screenshot_path)
 
 
 # ===========================================================================
@@ -838,8 +972,7 @@ class TestPolicyEnforcement:
 
     @pytest.mark.asyncio
     async def test_disabled_source_blocked(self):
-        src = get_source("sailsys")
-        src.enabled = False
+        src = _detached_source("sailsys", enabled=False)
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=VALID_HTML, headers={"Content-Type": "text/html"}))
         client = make_client(transport)
         with pytest.raises(SourceNotApprovedError, match="disabled"):
@@ -848,8 +981,7 @@ class TestPolicyEnforcement:
 
     @pytest.mark.asyncio
     async def test_stale_policy_blocked(self):
-        src = get_source("sailsys")
-        src.policy_version = "stale-version"
+        src = _detached_source("sailsys", policy_version="stale-version")
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=VALID_HTML, headers={"Content-Type": "text/html"}))
         client = make_client(transport)
         with pytest.raises(PolicyVersionMismatchError):
@@ -858,8 +990,7 @@ class TestPolicyEnforcement:
 
     @pytest.mark.asyncio
     async def test_robots_disallow_root(self):
-        src = get_source("sailsys")
-        src.robots_disallow = ["/"]
+        src = _detached_source("sailsys", robots_disallow=["/"])
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=VALID_HTML, headers={"Content-Type": "text/html"}))
         client = make_client(transport)
         with pytest.raises(SourceNotApprovedError, match="disallowed"):
