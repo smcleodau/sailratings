@@ -94,6 +94,7 @@ async def monitor_source_health() -> str:
     import httpx
     from irc_data.db.connection import get_engine
     from irc_data.diagnostics.source_monitor import (
+        HEALTH_WEBHOOK_ENV,
         check_source,
         list_baselines,
     )
@@ -103,6 +104,9 @@ async def monitor_source_health() -> str:
 
     if not baselines:
         return "no baselines configured"
+
+    # Health-check webhook for material deviations (SPEC-012 §6.2).
+    webhook_url = os.environ.get(HEALTH_WEBHOOK_ENV) or os.environ.get("WEBHOOK_URL")
 
     results = []
     headers = {"User-Agent": "SailRatings/1.0 (+https://sailratings.com)"}
@@ -139,6 +143,7 @@ async def monitor_source_health() -> str:
             fetch_success=fetch_success,
             http_status=http_status,
             content_type=content_type,
+            alert_webhook_url=webhook_url,
         )
 
         results.append({

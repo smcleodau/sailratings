@@ -21,6 +21,7 @@ from irc_data.diagnostics.source_monitor import (
     STATUS_CHANGED,
     STATUS_CLEAN,
     STATUS_MATERIAL,
+    HEALTH_WEBHOOK_ENV,
     SourceFingerprint,
     SourceHealthEventV1,
     check_source,
@@ -33,6 +34,7 @@ from irc_data.diagnostics.source_monitor import (
     list_incidents,
     release_quarantine,
     rebaseline_source,
+    send_source_alert,
     set_baseline,
     compute_structure_signature,
     compare_and_classify,
@@ -693,3 +695,166 @@ def test_release_all_quarantines(baselined_engine):
     assert released == 2
     assert is_source_quarantined(baselined_engine, SOURCE_ID) is False
     assert is_source_quarantined(baselined_engine, "other") is False
+
+
+# ---------------------------------------------------------------------------
+# Health-check webhook alerting (SPEC-012 §6.2)
+#
+# Verification criterion: "Mutated fixture pages trigger expected alerts
+# without alerting on harmless content changes."
+# ---------------------------------------------------------------------------
+
+
+class _AlertCapture:
+    """In-memory alert transport — records (url, payload) pairs."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, dict]] = []
+
+    def __call__(self, url: str, payload: dict) -> bool:
+        self.calls.append((url, payload))
+        return True
+
+
+def test_material_deviation_sends_webhook_alert(baselined_engine):
+    """A mutated (structure-broken) page triggers a webhook alert."""
+    capture = _AlertCapture()
+    event = check_source(
+        baselined_engine,
+        SOURCE_ID,
+        SOURCE_URL,
+        content=TABLE_REMOVED_HTML,
+        content_type="text/html",
+        alert_webhook_url="https://hooks.slack.test/services/T/B/X",
+        alert_transport=capture,
+    )
+    assert event.material is True
+    assert event.quarantined is True
+
+    # Exactly one alert was posted.
+    assert len(capture.calls) == 1
+    url, payload = capture.calls[0]
+    assert url == "https://hooks.slack.test/services/T/B/X"
+    # Slack-style payload with the source + deviations + incident id.
+    text = payload["text"]
+    assert SOURCE_ID in text
+    assert "structure_signature" in text
+    assert f"#{event.incident_id}" in text
+
+
+def test_harmless_change_sends_no_alert(baselined_engine):
+    """A harmless ad/copy change must NOT trigger a webhook alert."""
+    capture = _AlertCapture()
+    event = check_source(
+        baselined_engine,
+        SOURCE_ID,
+        SOURCE_URL,
+        content=HARMLESS_CHANGED_HTML,
+        content_type="text/html",
+        baseline_content=BASELINE_HTML,
+        alert_webhook_url="https://hooks.slack.test/services/T/B/X",
+        alert_transport=capture,
+    )
+    assert event.material is False
+    assert capture.calls == []
+
+
+def test_clean_check_sends_no_alert(baselined_engine):
+    """Identical content → no alert."""
+    capture = _AlertCapture()
+    check_source(
+        baselined_engine,
+        SOURCE_ID,
+        SOURCE_URL,
+        content=BASELINE_HTML,
+        content_type="text/html",
+        alert_webhook_url="https://hooks.slack.test/services/T/B/X",
+        alert_transport=capture,
+    )
+    assert capture.calls == []
+
+
+def test_discord_webhook_uses_embed_format(baselined_engine):
+    """Discord webhook URLs produce an embed payload."""
+    capture = _AlertCapture()
+    check_source(
+        baselined_engine,
+        SOURCE_ID,
+        SOURCE_URL,
+        content=TABLE_REMOVED_HTML,
+        content_type="text/html",
+        alert_webhook_url="https://discord.test/api/webhooks/1/abc",
+        alert_transport=capture,
+    )
+    assert len(capture.calls) == 1
+    _, payload = capture.calls[0]
+    assert "embeds" in payload
+    assert payload["embeds"][0]["color"] == 0xFF0000
+    assert SOURCE_ID in payload["embeds"][0]["title"]
+
+
+def test_no_webhook_configured_sends_nothing(baselined_engine, monkeypatch):
+    """No explicit URL and no env var → no alert attempt (no error)."""
+    monkeypatch.delenv(HEALTH_WEBHOOK_ENV, raising=False)
+    capture = _AlertCapture()
+    event = check_source(
+        baselined_engine,
+        SOURCE_ID,
+        SOURCE_URL,
+        content=TABLE_REMOVED_HTML,
+        content_type="text/html",
+        alert_transport=capture,
+    )
+    # Still material + quarantined; alerting is just skipped silently.
+    assert event.material is True
+    assert event.quarantined is True
+    assert capture.calls == []
+
+
+def test_env_var_webhook_url_used(baselined_engine, monkeypatch):
+    """SOURCE_MONITOR_WEBHOOK_URL env var is honoured when no URL passed."""
+    monkeypatch.setenv(HEALTH_WEBHOOK_ENV, "https://hooks.slack.test/env")
+    capture = _AlertCapture()
+    check_source(
+        baselined_engine,
+        SOURCE_ID,
+        SOURCE_URL,
+        content=TABLE_REMOVED_HTML,
+        content_type="text/html",
+        alert_transport=capture,
+    )
+    assert len(capture.calls) == 1
+    assert capture.calls[0][0] == "https://hooks.slack.test/env"
+
+
+def test_alert_transport_failure_does_not_raise(baselined_engine):
+    """A failing webhook transport must never break the monitor."""
+    def _boom(url, payload):
+        raise ConnectionError("webhook down")
+
+    event = check_source(
+        baselined_engine,
+        SOURCE_ID,
+        SOURCE_URL,
+        content=TABLE_REMOVED_HTML,
+        content_type="text/html",
+        alert_webhook_url="https://hooks.slack.test/x",
+        alert_transport=_boom,
+    )
+    # Monitor completed and quarantined despite the broken webhook.
+    assert event.material is True
+    assert event.quarantined is True
+    assert event.incident_id is not None
+
+
+def test_send_source_alert_standalone(monkeypatch):
+    """send_source_alert returns False with no URL; True with a good transport."""
+    monkeypatch.delenv(HEALTH_WEBHOOK_ENV, raising=False)
+    ev = SourceHealthEventV1(source_id="s", url="http://x", status=STATUS_MATERIAL,
+                             material=True, deviations=["structure_signature"],
+                             incident_id=7, quarantined=True)
+    # No URL and no env → False, no exception.
+    assert send_source_alert(ev, webhook_url=None) is False
+    capture = _AlertCapture()
+    assert send_source_alert(ev, "https://hooks.slack.test/z", transport=capture) is True
+    assert len(capture.calls) == 1

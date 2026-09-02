@@ -41,10 +41,11 @@ suite can run against in-memory SQLite as well as Postgres.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from sqlalchemy import JSON, bindparam, text
 from sqlalchemy.engine import Engine
@@ -81,6 +82,10 @@ INCIDENT_CONTENT_TYPE = "content_type_change"
 INCIDENT_RECORD_COLLAPSE = "record_count_collapse"
 INCIDENT_PARSER_COLLAPSE = "parser_yield_collapse"
 INCIDENT_HASH_DELTA = "hash_delta"
+
+# Environment variable that carries the health-check webhook URL
+# (SPEC-012 §6.2: material deviations "alert via health-check webhook").
+HEALTH_WEBHOOK_ENV = "SOURCE_MONITOR_WEBHOOK_URL"
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +452,97 @@ def _classify_incident_type(deviations: list[str]) -> str:
         if dev == DEV_PARSER_YIELD:
             return INCIDENT_PARSER_COLLAPSE
     return INCIDENT_HASH_DELTA
+
+
+# ---------------------------------------------------------------------------
+# Health-check webhook alerting (SPEC-012 §6.2)
+# ---------------------------------------------------------------------------
+
+#: Injectable transport for tests.  Signature: ``(url, payload_dict) -> bool``.
+#: Defaults to :func:`_post_webhook` (real HTTP via httpx).  Tests may
+#: monkeypatch this to capture payloads without any network calls.
+AlertTransport = Callable[[str, dict[str, Any]], bool]
+
+
+def _post_webhook(url: str, payload: dict[str, Any]) -> bool:
+    """POST ``payload`` to ``url``; return True on a 2xx response.
+
+    All network/serialisation errors are swallowed — alerting must never
+    crash the monitor.
+    """
+    try:  # pragma: no cover - thin httpx wrapper
+        import httpx
+
+        resp = httpx.post(url, json=payload, timeout=10)
+        return resp.status_code < 300
+    except Exception:
+        return False
+
+
+def send_source_alert(
+    event: SourceHealthEventV1,
+    webhook_url: str | None = None,
+    *,
+    transport: AlertTransport | None = None,
+) -> bool:
+    """Send a health-check webhook alert for a material source deviation.
+
+    Builds a Discord/Slack-compatible payload describing the incident and
+    posts it to ``webhook_url``.  When ``webhook_url`` is ``None`` the
+    ``SOURCE_MONITOR_WEBHOOK_URL`` environment variable is consulted.
+
+    Returns ``True`` when the alert was (attempted and) accepted by the
+    transport, ``False`` when no webhook is configured or the transport
+    failed.  Alerting is **best-effort** and never raises — a broken
+    webhook must not break the monitor.
+    """
+    url = webhook_url or os.environ.get(HEALTH_WEBHOOK_ENV, "")
+    if not url:
+        return False
+
+    post = transport or _post_webhook
+
+    devs = ", ".join(event.deviations) if event.deviations else "unknown"
+    title = f"Source incident: {event.source_id}"
+    summary = (
+        f"Material deviation on `{event.source_id}` "
+        f"({event.url or 'no-url'})\n"
+        f"deviations: {devs}\n"
+        f"incident #{event.incident_id} — publication quarantined"
+    )
+
+    if "discord" in url.lower():
+        embed = {
+            "title": title,
+            "color": 0xFF0000,
+            "fields": [
+                {"name": "Source", "value": str(event.source_id), "inline": True},
+                {"name": "Status", "value": str(event.status), "inline": True},
+                {"name": "Incident", "value": f"#{event.incident_id}", "inline": True},
+                {"name": "Deviations", "value": devs, "inline": False},
+            ],
+            "timestamp": event.checked_at,
+        }
+        if event.url:
+            embed["url"] = event.url
+        payload: dict[str, Any] = {"embeds": [embed]}
+    else:
+        # Slack / generic incoming webhook.
+        lines = [
+            f"*:rotating_light: {title}*",
+            f"*Source:* {event.source_id}   *Status:* {event.status}   "
+            f"*Incident:* #{event.incident_id}",
+            f"*Deviations:* {devs}",
+        ]
+        if event.url:
+            lines.append(f"*URL:* {event.url}")
+        payload = {"text": "\n".join(lines), "summary": summary}
+
+    try:
+        return bool(post(url, payload))
+    except Exception:
+        # Never let alerting break the monitor.
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -912,6 +1008,8 @@ def check_source(
     content_type: str | None = "text/html",
     parser_yield: int | None = None,
     baseline_content: str | None = None,
+    alert_webhook_url: str | None = None,
+    alert_transport: AlertTransport | None = None,
 ) -> SourceHealthEventV1:
     """Compare a source's current fetch against its stored baseline.
 
@@ -932,6 +1030,14 @@ def check_source(
         The *baseline* page body, if available, used to compute the diff
         ratio.  When not supplied the diff ratio is estimated from the
         fingerprints alone.
+    alert_webhook_url
+        Optional health-check webhook URL.  On a *material* deviation an
+        alert is posted to this URL.  When ``None`` the
+        ``SOURCE_MONITOR_WEBHOOK_URL`` environment variable is used; when
+        neither is set no alert is sent.  Alerting is best-effort and
+        never raises.
+    alert_transport
+        Injectable transport used for tests (no network calls).
 
     Returns
     -------
@@ -1064,6 +1170,14 @@ def check_source(
         event.quarantined = True
         event.sample_records = sample_records
         event.content_excerpt = content_excerpt
+
+        # Alert via the health-check webhook (SPEC-012 §6.2).  Only a
+        # *material* deviation alerts — harmless content changes do not.
+        send_source_alert(
+            event,
+            webhook_url=alert_webhook_url,
+            transport=alert_transport,
+        )
 
     # Persist the health event.
     _persist_health_event(engine, event)
