@@ -31,8 +31,11 @@ def test_single_head():
     # The OPS-01-01 scheduling-policy migration must be a head …
     assert "20260903a" in heads, f"OPS-01-01 head missing; got {heads}"
     # … and the only heads are the pre-existing duplicate ``0026`` pair
-    # (a documented DP-03-05 defect) plus the OPS-01-01 migration.
-    assert set(heads) == {"0026", "20260903a"}, (
+    # (a documented DP-03-05 defect) plus the OPS-01-01 migration and the
+    # OPS-02-09 admin_metrics/FK revision which extends the canonical 0026
+    # chain (its parent is the duplicated ``0026`` id, so alembic tolerates
+    # the pre-existing duplicate head rather than re-tangling the graph).
+    assert set(heads) == {"0026", "20260903a", "0029", "20260904b"}, (
         f"unexpected migration heads: {heads}"
     )
 
