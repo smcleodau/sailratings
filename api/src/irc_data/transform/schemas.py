@@ -158,6 +158,14 @@ class TCCListingAssertionV1(BaseModel):
     Derived from a ``tcc_listing_row`` extracted record (the TCC CSV
     parser).  Minimal publishable identity is a non-empty
     ``sail_number`` plus a plausible ``tcc``.
+
+    The DP-06-03 ``irc-tcc`` mapping extends v1 with the remaining
+    listing columns (hull dimensions, sail inventory, stability
+    indices).  All additions are optional, so assertions produced by the
+    DP-03-04 reference transformer remain valid under the extended
+    schema (backward compatible).  Linear measurements are metres;
+    ``units`` carries the per-field unit declaration emitted by the
+    DP-06-03 mapping so the payload is self-describing.
     """
 
     sail_number: str = Field(min_length=1)
@@ -168,6 +176,29 @@ class TCCListingAssertionV1(BaseModel):
     endorsed: str | None = None
     is_secondary: bool = False
 
+    # -- DP-06-03 irc-tcc mapping extensions (all optional) -------------------
+    issue_date: str | None = None  # ISO-8601 date, validated below
+    non_spi_tcc: Decimal | None = Field(default=None, gt=0, le=Decimal("3.0"))
+    crew: int | None = Field(default=None, ge=0)
+    dlr: int | None = Field(default=None, ge=0)
+    lh: Decimal | None = Field(default=None, gt=0)      # metres
+    beam: Decimal | None = Field(default=None, gt=0)    # metres
+    draft: Decimal | None = Field(default=None, gt=0)   # metres
+    single_furling_headsail: str | None = None
+    headsails: int | None = Field(default=None, ge=0)
+    flying_headsails: int | None = Field(default=None, ge=0)
+    spinnakers: int | None = Field(default=None, ge=0)
+    series_date: int | None = Field(default=None, ge=1900, le=2100)
+    age_date: int | None = Field(default=None, ge=1900, le=2100)
+    racing_area: int | None = Field(default=None, ge=0)
+    ssb_base_value: int | None = Field(default=None, ge=0)
+    stix: int | None = Field(default=None, ge=0)
+    avs: int | None = Field(default=None, ge=0)
+    category: str | None = None
+    valid_code: str | None = None
+    #: Per-field unit declarations for the numeric payload (DP-06-03).
+    units: dict[str, Any] | None = None
+
     @field_validator("sail_number")
     @classmethod
     def _sail_number_not_blank(cls, v: str) -> str:
@@ -176,9 +207,24 @@ class TCCListingAssertionV1(BaseModel):
             raise ValueError("sail_number must be non-empty")
         return v
 
-    @field_serializer("tcc")
-    def _serialize_tcc(self, v: Decimal) -> str:
-        return str(v)
+    @field_validator("issue_date")
+    @classmethod
+    def _issue_date_iso(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        from datetime import date
+
+        try:
+            date.fromisoformat(v)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                f"issue_date must be ISO-8601 (YYYY-MM-DD), got {v!r}"
+            ) from exc
+        return v
+
+    @field_serializer("tcc", "non_spi_tcc", "lh", "beam", "draft")
+    def _serialize_tcc(self, v: Decimal | None) -> str | None:
+        return str(v) if v is not None else None
 
 
 # ---------------------------------------------------------------------------
