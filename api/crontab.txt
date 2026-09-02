@@ -64,6 +64,12 @@ OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --en
 # recovery clears the alert; history retained in watchdog_alerts.
 */15 * * * * cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape-watchdog" >> $LOG_DIR/watchdog_$(date +\%F).log 2>&1
 
+# Daily health check for the four active scrapers (DP-00-02): probes
+# TopYacht, SailSys, IRC TCC Listings and ORC for fetch success, reports
+# record counts + last-success timestamp per source, writes one run-log row
+# per source, and alerts within the same cycle on any failure.
+0 6 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scraper-health" >> $LOG_DIR/scraper_health_$(date +\%F).log 2>&1
+
 # Daily health check at 09:00 UTC with webhook notification
 0 9 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data health-check --notify" >> $LOG_DIR/health_$(date +\%F).log 2>&1
 
