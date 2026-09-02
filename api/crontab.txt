@@ -31,6 +31,10 @@ OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --en
 # Approved sailing news feeds (RSS/Atom) at 02:00 UTC
 0 2 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape raw-capture --source sailing-news" >> $LOG_DIR/raw_news_$(date +\%F).log 2>&1
 
+# === DP-00-03: Nightly raw capture — Yacht Scoring + Manage2Sail (raw archives) ===
+# Both DP-00-03 sources at 02:30 UTC (inside 01:00–06:00 window)
+30 2 * * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape raw-capture --source dp-00-03" >> $LOG_DIR/raw_ys_m2s_$(date +\%F).log 2>&1
+
 # Weekly cert discovery (Sunday 07:00 UTC)
 0 7 * * 0    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape certs --exhaustive" >> $LOG_DIR/certs_$(date +\%F).log 2>&1
 
