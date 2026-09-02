@@ -75,7 +75,7 @@ class EpicExecutionWorkflow:
         worktree_path = await workflow.execute_activity(
             provision_worktree,
             task_payload,
-            start_to_close_timeout=timedelta(minutes=5)
+            start_to_close_timeout=timedelta(minutes=10)
         )
         
         try:

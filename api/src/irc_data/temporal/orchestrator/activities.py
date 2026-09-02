@@ -17,60 +17,54 @@ from .llm_client import (
     MODEL_REVIEW_INDEPENDENT,
 )
 
-@activity.defn
-async def provision_worktree(task: dict) -> str:
-    # Extract task id and branch name
-    task_id = task.get("id", "unknown-task")
-    branch_name = f"feature/{task_id}"
-    
-    repo_path = "/home/irc-data/code/sailratings"
-    worktrees_dir = "/home/irc-data/code/sailratings/worktrees"
+def _sync_provision_worktree(task_id: str, branch_name: str, repo_path: str, worktrees_dir: str, worktree_path: str) -> str:
+    """Run in a thread via run_in_executor — keeps git calls off the asyncio event loop
+    so concurrent OpenHands lane workers can't starve this activity."""
+    import subprocess
     os.makedirs(worktrees_dir, exist_ok=True)
-    worktree_path = os.path.join(worktrees_dir, task_id)
-    
-    # Prune any broken or missing worktrees to avoid "already registered" fatal errors
-    await asyncio.create_subprocess_shell(
-        f"git -C {repo_path} worktree prune",
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL
-    )
-    
-    # Force remove if it's somehow still registered
-    await asyncio.create_subprocess_shell(
-        f"git -C {repo_path} worktree remove --force {worktree_path}",
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL
-    )
 
-    # If directory already exists, remove it
+    subprocess.run(
+        ["git", "-C", repo_path, "worktree", "prune"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    subprocess.run(
+        ["git", "-C", repo_path, "worktree", "remove", "--force", worktree_path],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
     if os.path.exists(worktree_path):
         shutil.rmtree(worktree_path, ignore_errors=True)
-        
-    # Execute git worktree add
-    cmd = f"git -C {repo_path} worktree add -b {branch_name} {worktree_path} develop"
-    proc = await asyncio.create_subprocess_shell(
-        cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+
+    result = subprocess.run(
+        ["git", "-C", repo_path, "worktree", "add", "-b", branch_name, worktree_path, "develop"],
+        capture_output=True
     )
-    stdout, stderr = await proc.communicate()
-    
-    if proc.returncode != 0:
-        # Check if branch already exists
-        if b"already exists" in stderr or b"already used by worktree" in stderr:
-            cmd = f"git -C {repo_path} worktree add {worktree_path} {branch_name}"
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+    if result.returncode != 0:
+        stderr = result.stderr.decode()
+        if "already exists" in stderr or "already used by worktree" in stderr:
+            result2 = subprocess.run(
+                ["git", "-C", repo_path, "worktree", "add", worktree_path, branch_name],
+                capture_output=True
             )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                raise ApplicationError(f"Failed to create worktree on existing branch: {stderr.decode()}")
+            if result2.returncode != 0:
+                raise ApplicationError(f"Failed to create worktree on existing branch: {result2.stderr.decode()}")
         else:
-            raise ApplicationError(f"Failed to create worktree: {stderr.decode()}")
-    
+            raise ApplicationError(f"Failed to create worktree: {stderr}")
     return worktree_path
+
+@activity.defn
+async def provision_worktree(task: dict) -> str:
+    task_id = task.get("id", "unknown-task")
+    branch_name = f"feature/{task_id}"
+    repo_path = "/home/irc-data/code/sailratings"
+    worktrees_dir = "/home/irc-data/code/sailratings/worktrees"
+    worktree_path = os.path.join(worktrees_dir, task_id)
+    activity.logger.info(f"Provisioning worktree for {task_id}")
+    # Run in executor so concurrent OpenHands lane workers can't starve this via event loop
+    result = await asyncio.get_event_loop().run_in_executor(
+        None, _sync_provision_worktree, task_id, branch_name, repo_path, worktrees_dir, worktree_path
+    )
+    activity.logger.info(f"Worktree provisioned: {result}")
+    return result
 
 @activity.defn
 async def commit_agent_work(worktree_path: str, message: str = "feat: agent implementation") -> bool:
