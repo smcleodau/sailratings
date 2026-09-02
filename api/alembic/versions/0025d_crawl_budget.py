@@ -12,8 +12,13 @@ of crawl budget silently" is:
   the goal: when the gate starts refusing calls, there is a durable record
   of exactly when it started, at what utilisation, and for which caller.
 
-Revision ID: 0025
-Revises: 0024_raw_lake
+Canonical chain (DP-03-05): renumbered from the duplicated id ``0025`` to
+the unique id ``20260526a`` so the alembic graph is a single linear head.  The
+historical ambiguity this file worked around (two files declaring ``0024``)
+is now resolved by the renumbering.
+
+Revision ID: 20260526a
+Revises: 20260902b
 Create Date: 2026-05-26
 """
 
@@ -23,18 +28,50 @@ import sqlalchemy as sa
 from alembic import op
 
 
-# Two pre-existing files both declare revision "0024"
-# (0024_raw_objects_and_retrieval_events and 0024_replay_backfill), which
-# makes the bare "0024" prefix ambiguous. Chain off the unique
-# "0024_raw_lake" head instead so the graph resolves deterministically.
-revision = "0025"
-down_revision = "0024_raw_lake"
+revision = "20260526a"
+down_revision = "20260902b"
 branch_labels = None
 depends_on = None
 
+_MD = None
+def _metadata():
+    """Lazily-shared MetaData so ForeignKey references resolve across tables
+    created in the same migration."""
+    global _MD
+    if _MD is None:
+        from sqlalchemy import MetaData
+        _MD = MetaData()
+    return _MD
+
+
+def _ctine(name, *columns, **kwargs):
+    """create_table IF NOT EXISTS (idempotent for canonical chain, DP-03-05).
+
+    Builds the table inside the migration's shared MetaData so ForeignKey
+    references to other tables resolve correctly."""
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    if insp.has_table(name):
+        return
+    from sqlalchemy import Table
+    md = _metadata()
+    Table(name, md, *columns, **kwargs)
+    md.tables[name].create(bind)
+
+
+def _cidx_if_not_exists(index_name, table_name, columns, unique=False):
+    """create_index IF NOT EXISTS (idempotent)."""
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+    existing = {ix["name"] for ix in insp.get_indexes(table_name)}
+    if index_name in existing:
+        return
+    op.create_index(index_name, table_name, columns, unique=unique)
+
+
 
 def upgrade() -> None:
-    op.create_table(
+    _ctine(
         "crawl_budget_settings",
         sa.Column("id", sa.BigInteger, primary_key=True),
         sa.Column("provider", sa.Text, nullable=False, unique=True),
@@ -64,7 +101,7 @@ def upgrade() -> None:
         """)
     )
 
-    op.create_table(
+    _ctine(
         "crawl_throttle_events",
         sa.Column("id", sa.BigInteger, primary_key=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
@@ -81,8 +118,8 @@ def upgrade() -> None:
         sa.Column("utilization", sa.Float),
         sa.Column("message", sa.Text),
     )
-    op.create_index("idx_crawl_throttle_created", "crawl_throttle_events", ["created_at"])
-    op.create_index("idx_crawl_throttle_action", "crawl_throttle_events", ["action"])
+    _cidx_if_not_exists("idx_crawl_throttle_created", "crawl_throttle_events", ["created_at"])
+    _cidx_if_not_exists("idx_crawl_throttle_action", "crawl_throttle_events", ["action"])
 
 
 def downgrade() -> None:
