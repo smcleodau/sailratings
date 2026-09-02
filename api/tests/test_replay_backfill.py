@@ -18,6 +18,7 @@ import json
 import pytest
 from sqlalchemy import create_engine
 
+from irc_data.diagnostics.source_monitor import init_monitor_tables
 from irc_data.temporal.replay.contracts import (
     SCHEMA_VERSION,
     ArtifactFilter,
@@ -416,6 +417,76 @@ def test_promote_batch_marks_old_as_superseded(engine, published_artifacts):
     # Its artifacts are still in the database (retained).
     old_arts = get_batch_artifacts(engine, batch1["id"])
     assert len(old_arts) == 10
+
+
+# ---------------------------------------------------------------------------
+# Reconciliation gate (DP-05-03) — promote_batch must respect silent-loss
+# ---------------------------------------------------------------------------
+
+
+def _make_batch_awaiting(engine, source_slug: str, parser_version: str):
+    plan = ReplayPlanV1(
+        source_slug=source_slug,
+        new_parser_version=parser_version,
+        artifact_filter=ArtifactFilter(source_slug=source_slug),
+    )
+    batch = create_or_get_batch(engine, plan)
+    update_batch_status(engine, batch["id"], BatchStatus.AWAITING_APPROVAL)
+    return plan, batch
+
+
+def test_promote_blocked_by_unexplained_variance(engine):
+    """A source with a blocked reconciliation report cannot be promoted."""
+    from irc_data.diagnostics import reconciliation as R
+
+    R.init_reconciliation_tables(engine)
+    init_monitor_tables(engine)
+
+    # Seed a healthy baseline, then a run that silently drops pages.
+    for i in range(1, 5):
+        R.reconcile_run(
+            engine,
+            R.PipelineCountsV1(
+                run_id=i, source_id="sailsys", discovered=10, fetched=10,
+                parsed=10, transformed=10, published=10,
+            ),
+        )
+    R.reconcile_run(
+        engine,
+        R.PipelineCountsV1(
+            run_id=99, source_id="sailsys", discovered=10, fetched=10,
+            parsed=6, transformed=6, published=6,  # 4 pages silently dropped
+        ),
+    )
+
+    plan, batch = _make_batch_awaiting(engine, "sailsys", "2.0.0")
+    with pytest.raises(R.PromotionBlockedError):
+        promote_batch(engine, batch["id"], plan, promoted_by="admin")
+
+    # Operator-forced promotion still possible after incident resolution.
+    receipt = promote_batch(
+        engine, batch["id"], plan, promoted_by="admin",
+        enforce_reconciliation=False,
+    )
+    assert receipt.batch_id == batch["id"]
+
+
+def test_promote_allowed_when_reconciliation_clean(engine):
+    """A clean reconciliation report does not block promotion."""
+    from irc_data.diagnostics import reconciliation as R
+
+    R.init_reconciliation_tables(engine)
+    init_monitor_tables(engine)
+    R.reconcile_run(
+        engine,
+        R.PipelineCountsV1(
+            run_id=1, source_id="sailsys", discovered=10, fetched=10,
+            parsed=10, transformed=10, published=10,
+        ),
+    )
+    plan, batch = _make_batch_awaiting(engine, "sailsys", "2.0.0")
+    receipt = promote_batch(engine, batch["id"], plan, promoted_by="admin")
+    assert receipt.batch_id == batch["id"]
 
 
 def test_promote_is_idempotent(engine, plan, published_artifacts):

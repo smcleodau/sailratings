@@ -585,6 +585,7 @@ def promote_batch(
     batch_id: int,
     plan: ReplayPlanV1,
     promoted_by: str = "",
+    enforce_reconciliation: bool = True,
 ) -> PublicationReceiptV1:
     """Explicitly promote a batch to publication.
 
@@ -600,7 +601,29 @@ def promote_batch(
 
     Raises ``ValueError`` if the batch is not in
     ``awaiting_approval`` status (or already promoted).
+
+    Reconciliation gate (DP-05-03)
+    ------------------------------
+    When ``enforce_reconciliation`` is true (the default), the source's
+    latest :class:`ReconciliationReportV1` is consulted via
+    :func:`irc_data.diagnostics.reconciliation.assert_promotable`.  If that
+    report blocks promotion (unexplained variance or abrupt yield change),
+    :class:`PromotionBlockedError` is raised and nothing is promoted.
+    Pass ``enforce_reconciliation=False`` only for operator-forced
+    promotions after the underlying incident has been resolved.
     """
+    if enforce_reconciliation:
+        from irc_data.diagnostics import reconciliation as _recon
+
+        try:
+            latest = _recon.get_latest_report(engine, plan.source_slug)
+        except Exception:
+            # Reconciliation tables not present (minimal/legacy schema).
+            # Fail open: no report ⇒ nothing to enforce.
+            latest = None
+        if latest is not None:
+            _recon.assert_promotable(latest)  # raises PromotionBlockedError
+
     batch = _get_batch_by_id(engine, batch_id)
     if not batch:
         raise ValueError(f"Batch {batch_id} not found")
