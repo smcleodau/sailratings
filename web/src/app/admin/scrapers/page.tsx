@@ -42,6 +42,30 @@ interface ScraperRun {
   metadata: Record<string, unknown> | null;
 }
 
+interface WatchdogAlert {
+  id: number;
+  alert_key: string;
+  source: string;
+  signal: string;
+  label: string | null;
+  cadence: string | null;
+  reason: string | null;
+  age_hours: number | null;
+  budget_hours: number | null;
+  status: string; // 'active' | 'recovered'
+  first_seen_at: string | null;
+  alerted_at: string | null;
+  cooldown_until: string | null;
+  recovered_at: string | null;
+}
+
+interface ScrapersResponse {
+  as_of: string;
+  sources: ScraperRow[];
+  alerts_active: WatchdogAlert[];
+  alerts_history: WatchdogAlert[];
+}
+
 function fmtAge(seconds: number | null): string {
   if (seconds == null) return "—";
   if (seconds < 60) return `${seconds}s`;
@@ -89,7 +113,7 @@ function SignalPill({ label, state }: { label: string; state: SignalState }) {
 export default function ScrapersPage() {
   const [token, setToken] = useState<string | null>(null);
   const [pwInput, setPwInput] = useState("");
-  const [data, setData] = useState<{ as_of: string; sources: ScraperRow[] } | null>(null);
+  const [data, setData] = useState<ScrapersResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openRow, setOpenRow] = useState<string | null>(null);
@@ -395,6 +419,60 @@ export default function ScrapersPage() {
           </div>
         )}
       </div>
+
+      {/* Watchdog alert log (OPS-01-04) — retained history of every
+          alert raised by the 15-minute staleness watchdog. */}
+      {data && (data.alerts_active?.length ?? 0) + (data.alerts_history?.length ?? 0) > 0 && (
+        <div className="mt-10">
+          <h2 className="heading-display text-lg text-[var(--sr-text-primary)] mb-1">
+            Watchdog alert log
+          </h2>
+          <p className="text-[12px] text-[var(--sr-text-tertiary)] mb-4">
+            Every alert raised by the staleness watchdog. Active alerts clear
+            automatically when the source recovers.
+          </p>
+          <div className="admin-table-container">
+            <div className="admin-table-header grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-[14px] admin-mono-font text-[9px] tracking-[0.16em] uppercase">
+              <span>Source</span>
+              <span>Alerted</span>
+              <span>Status</span>
+              <span>Recovered</span>
+            </div>
+            {(data.alerts_history ?? []).map((a) => (
+              <div
+                key={a.id}
+                className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-[14px] p-[10px_16px] items-center border-b border-[var(--sr-link)]/12 last:border-b-0"
+              >
+                <div>
+                  <div className="text-[13px] text-[var(--sr-text-primary)] font-medium">
+                    {a.label ?? a.source}
+                  </div>
+                  <div className="admin-mono-font text-[10px] text-[var(--sr-text-label)] mt-[2px]">
+                    {a.alert_key}
+                  </div>
+                </div>
+                <div className="admin-mono-font text-[11px] text-[var(--sr-text-primary)]">
+                  {fmtDateTime(a.alerted_at)}
+                </div>
+                <div>
+                  {a.status === "active" ? (
+                    <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-status-warning)]">
+                      <AlertTriangle size={11} strokeWidth={2} /> active
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-status-success)]">
+                      <CheckCircle2 size={11} strokeWidth={2} /> recovered
+                    </span>
+                  )}
+                </div>
+                <div className="admin-mono-font text-[11px] text-[var(--sr-text-primary)]">
+                  {a.recovered_at ? fmtDateTime(a.recovered_at) : "—"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

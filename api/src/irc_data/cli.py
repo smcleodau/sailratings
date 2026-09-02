@@ -3177,178 +3177,59 @@ def seed_crawl(ctx, aggregators, seed_url, limit):
 @click.option("--dry-run", is_flag=True, help="Print what would alert; don't send email.")
 @click.pass_context
 def scrape_watchdog(ctx, cooldown_hours, dry_run):
-    """Check that every configured scraper has run recently. Email on breach.
+    """Staleness watchdog (OPS-01-04). Cron runs this every 15 minutes.
 
-    Reads `scrape_supervision.SOURCES` for expected cadences and queries
-    `ingestion_log` for last success per source. If any non-optional source is
-    stale beyond its budget, send a single consolidated email via Resend
-    (cooldown prevents spam within COOLDOWN_HOURS).
+    Checks every configured source against its freshness budget, raises ONE
+    alert per breach (email + admin banner on /justin/scrapers), respects a
+    4 h cooldown per source, clears alerts on recovery, and retains the full
+    alert history in the ``watchdog_alerts`` table.
     """
-    import json
-    import os
-    from datetime import datetime, timezone
-    from pathlib import Path
-
-    from irc_data.scrape_supervision import SOURCES
+    from irc_data.scrape_watchdog import run_watchdog
 
     engine = ctx.obj["engine"]
-    now = datetime.now(timezone.utc)
 
-    # Pull last-success per source + last new race-row landed (the data tap)
-    with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT source,
-                   MAX(started_at) AS last_started,
-                   MAX(completed_at) FILTER (WHERE status='completed') AS last_success
-            FROM ingestion_log
-            GROUP BY source
-        """)).fetchall()
-        data_rows = conn.execute(text("""
-            SELECT source, MAX(created_at) AS last_new_data
-            FROM race_results
-            GROUP BY source
-        """)).fetchall()
-    by_src = {r.source: r for r in rows}
-    by_src_data = {r.source: r for r in data_rows}
+    try:
+        result = run_watchdog(
+            engine,
+            cooldown_hours=cooldown_hours,
+            dry_run=dry_run,
+        )
+    except Exception as e:
+        console.print(f"[red]Watchdog failed: {e}[/red]")
+        raise SystemExit(1)
 
-    breaches = []
-    for cfg in SOURCES:
-        if cfg.optional:
-            continue
-        r = by_src.get(cfg.source)
-        last_success = r.last_success if r else None
-        # Run-cadence check — the cron-health signal
-        if last_success is None:
-            breaches.append({
-                "source": cfg.source, "label": cfg.label,
-                "cadence": cfg.cadence_human, "age_hours": None,
-                "budget_hours": cfg.run_within.total_seconds() / 3600,
-                "reason": "no successful run on record",
-            })
-        else:
-            run_age = now - last_success
-            if run_age > cfg.run_within:
-                breaches.append({
-                    "source": cfg.source, "label": cfg.label,
-                    "cadence": cfg.cadence_human,
-                    "age_hours": run_age.total_seconds() / 3600,
-                    "budget_hours": cfg.run_within.total_seconds() / 3600,
-                    "reason": "cron stopped (no successful run)",
-                })
-
-        # Data-tap check — only when configured (long budget that survives lulls)
-        if cfg.data_within is not None:
-            dr = by_src_data.get(cfg.source)
-            last_new = dr.last_new_data if dr else None
-            if last_new is not None:
-                data_age = now - last_new
-                if data_age > cfg.data_within:
-                    breaches.append({
-                        "source": cfg.source + ":data",
-                        "label": cfg.label + " (no new data)",
-                        "cadence": cfg.cadence_human,
-                        "age_hours": data_age.total_seconds() / 3600,
-                        "budget_hours": cfg.data_within.total_seconds() / 3600,
-                        "reason": "no new race rows beyond seasonal lull",
-                    })
-
-    if not breaches:
+    if not result.breaches and not result.recoveries:
         console.print("[green]All scrapers within budget.[/green]")
         return
 
-    console.print(f"[yellow]{len(breaches)} scraper(s) stale:[/yellow]")
-    for b in breaches:
-        age_s = "never" if b["age_hours"] is None else f"{b['age_hours']:.1f}h"
-        console.print(f"  - {b['label']} ({b['source']}): {age_s} since last success "
-                      f"(budget {b['budget_hours']:.1f}h, {b['cadence']})")
+    if result.breaches:
+        console.print(f"[yellow]{len(result.breaches)} scraper(s) stale:[/yellow]")
+        for b in result.breaches:
+            console.print(
+                f"  - {b.label} ({b.source}): {b.age_str()} since last success "
+                f"(budget {b.budget_hours:.1f}h, {b.cadence})"
+            )
 
-    # Cooldown: a small JSON file remembers when each source last alerted.
-    cooldown_path = Path(os.environ.get("WATCHDOG_STATE",
-                                        "/home/irc-data/.cache/sr_watchdog.json"))
-    cooldown_path.parent.mkdir(parents=True, exist_ok=True)
-    state: dict = {}
-    if cooldown_path.exists():
-        try:
-            state = json.loads(cooldown_path.read_text())
-        except Exception:
-            state = {}
+    for b in result.in_cooldown:
+        console.print(f"  [dim]  (cooldown active for {b.alert_key}, skipping)[/dim]")
 
-    cooldown_seconds = cooldown_hours * 3600
-    breaches_to_send: list[dict] = []
-    for b in breaches:
-        last_sent = state.get(b["source"])
-        if last_sent:
-            try:
-                last_dt = datetime.fromisoformat(last_sent)
-                if (now - last_dt).total_seconds() < cooldown_seconds:
-                    console.print(f"  [dim]  (cooldown active for {b['source']}, skipping)[/dim]")
-                    continue
-            except Exception:
-                pass
-        breaches_to_send.append(b)
+    if result.alerts_sent:
+        if result.email_sent:
+            console.print(f"[green]Alert email sent for {len(result.alerts_sent)} breach(es); "
+                          f"logged to watchdog_alerts.[/green]")
+        else:
+            console.print(f"[dim]{len(result.alerts_sent)} breach(es) logged "
+                          f"(no email — dry-run or sender disabled).[/dim]")
+    elif result.breaches and not result.in_cooldown:
+        console.print("[dim]No new alerts to send.[/dim]")
 
-    if not breaches_to_send:
-        console.print("[dim]All breaches within cooldown — no email sent.[/dim]")
-        return
-
-    if dry_run:
-        console.print("[dim]--dry-run: not sending email.[/dim]")
-        return
-
-    alert_email = os.environ.get("ALERT_EMAIL", "stuart@stuartmcleod.me")
-    api_key = os.environ.get("RESEND_API_KEY")
-    if not api_key:
-        console.print("[red]RESEND_API_KEY not configured — cannot send alert.[/red]")
-        return
-
-    import resend
-    resend.api_key = api_key
-
-    # Build the email — plain, factual, with an actionable link
-    def _age_str(b):
-        return "never" if b["age_hours"] is None else f"{b['age_hours']:.1f}h"
-
-    rows_html = "\n".join(
-        f"<tr><td style='padding:6px 12px;border-bottom:1px solid #eee'>"
-        f"<strong>{b['label']}</strong><br/>"
-        f"<span style='color:#777;font-size:12px'>{b['source']} · {b['cadence']}</span></td>"
-        f"<td style='padding:6px 12px;border-bottom:1px solid #eee;color:#a00;font-family:monospace'>"
-        f"{_age_str(b)} / {b['budget_hours']:.0f}h</td></tr>"
-        for b in breaches_to_send
-    )
-    subject = f"SailRatings watchdog — {len(breaches_to_send)} scraper(s) stale"
-    html = f"""
-    <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:auto;color:#222">
-      <h2 style="color:#0A2240">SailRatings scraper alert</h2>
-      <p>The watchdog noticed {len(breaches_to_send)} scraper{'s' if len(breaches_to_send)!=1 else ''}
-         outside their freshness budget.</p>
-      <table style="width:100%;border-collapse:collapse;margin:16px 0">
-        <thead><tr style="background:#F4F1E8;text-align:left">
-          <th style="padding:8px 12px">Source</th><th style="padding:8px 12px">Stale for / budget</th>
-        </tr></thead>
-        <tbody>{rows_html}</tbody>
-      </table>
-      <p style="color:#777;font-size:12px">Open the dashboard:
-        <a href="https://dev.sailratings.com/justin/scrapers">/justin/scrapers</a></p>
-      <p style="color:#777;font-size:12px">Cooldown: same source won't alert again for {cooldown_hours}h.</p>
-    </div>
-    """
-    try:
-        resend.Emails.send({
-            "from": "SailRatings Watchdog <reports@sailratings.com>",
-            "to": [alert_email],
-            "subject": subject,
-            "html": html,
-        })
-        console.print(f"[green]Alert email sent to {alert_email}.[/green]")
-    except Exception as e:
-        console.print(f"[red]Failed to send alert email: {e}[/red]")
-        return
-
-    # Record the send time per source to enforce cooldown
-    for b in breaches_to_send:
-        state[b["source"]] = now.isoformat()
-    cooldown_path.write_text(json.dumps(state, indent=2))
+    if result.recoveries:
+        names = ", ".join(r["source"] for r in result.recoveries)
+        if result.recovery_email_sent:
+            console.print(f"[green]Recovery email sent; alerts cleared for: {names}.[/green]")
+        else:
+            console.print(f"[green]Alerts cleared for: {names} "
+                          f"(no email — dry-run or sender disabled).[/green]")
 
 
 # ---------------------------------------------------------------------------
