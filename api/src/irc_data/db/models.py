@@ -742,3 +742,66 @@ class PublicationReceipt(Base):
     schema_version: Mapped[str] = mapped_column(
         Text, server_default="v1"
     )
+
+
+# ---------------------------------------------------------------------------
+# Reconciliation & silent-loss detection (DP-05-03)
+#
+# pipeline_count_baseline: one row per pipeline run per source — the
+#   trailing yield series used to detect abrupt yield change.
+# reconciliation_reports: one row per reconcile_run() verdict — variance,
+#   yield, decision, block reason.  ``decision = 'block'`` rows are the
+#   promotion-blocking signal.
+# ---------------------------------------------------------------------------
+
+
+class PipelineCountBaseline(Base):
+    __tablename__ = "pipeline_count_baseline"
+    __table_args__ = (
+        Index("ix_pcb_source_recorded", "source_id", "recorded_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    discovered: Mapped[int] = mapped_column(Integer, server_default="0")
+    fetched: Mapped[int] = mapped_column(Integer, server_default="0")
+    parsed: Mapped[int] = mapped_column(Integer, server_default="0")
+    transformed: Mapped[int] = mapped_column(Integer, server_default="0")
+    rejected: Mapped[int] = mapped_column(Integer, server_default="0")
+    quarantined: Mapped[int] = mapped_column(Integer, server_default="0")
+    published: Mapped[int] = mapped_column(Integer, server_default="0")
+    duplicate_suppressed: Mapped[int] = mapped_column(Integer, server_default="0")
+    yield_ratio: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ReconciliationReport(Base):
+    __tablename__ = "reconciliation_reports"
+    __table_args__ = (
+        UniqueConstraint("report_id"),
+        Index("ix_recon_reports_source", "source_id", "checked_at"),
+        Index("ix_recon_reports_decision", "decision"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[str] = mapped_column(Text, nullable=False)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    counts: Mapped[dict | None] = mapped_column(JSON)
+    variance: Mapped[int] = mapped_column(Integer, server_default="0")
+    variance_explained: Mapped[bool] = mapped_column(server_default="true")
+    unexplained_reasons: Mapped[dict | None] = mapped_column(JSON)
+    yield_ratio: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    baseline_yield_p10: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    baseline_yield_p50: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    abrupt_yield_change: Mapped[bool] = mapped_column(server_default="false")
+    decision: Mapped[str] = mapped_column(Text, nullable=False, server_default="allow")
+    promotion_allowed: Mapped[bool] = mapped_column(server_default="true")
+    block_reason: Mapped[str | None] = mapped_column(Text)
+    schema_version: Mapped[str] = mapped_column(Text, server_default="v1")
