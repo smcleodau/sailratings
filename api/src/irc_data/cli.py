@@ -1189,20 +1189,44 @@ def scrape_tcc(ctx, no_import: bool):
     import asyncio
     import sys
 
+    from irc_data.db.operations import log_ingestion_start, log_ingestion_end
     from irc_data.scrapers.tcc_listing import download_tcc_listing
 
-    console.print("Downloading TCC listing...")
-    path = asyncio.run(download_tcc_listing())
-    if not path:
-        console.print("[red]Download failed.[/red]")
-        sys.exit(1)
-    console.print(f"[green]Saved: {path}[/green]")
+    engine = ctx.obj["engine"]
 
-    if no_import:
-        return
+    # Run-log row (DP-00-02): makes the daily TCC run observable in
+    # ingestion_log so the health check can report its last-success
+    # timestamp. Monitoring only — download/import behaviour is unchanged.
+    run_log_id = log_ingestion_start(engine, "irc_tcc")
 
-    console.print("Importing into tcc_snapshots...")
-    ctx.invoke(import_csv, path=path, snapshot_date=str(date.today()))
+    run_error: str | None = None
+    try:
+        console.print("Downloading TCC listing...")
+        path = asyncio.run(download_tcc_listing())
+        if not path:
+            console.print("[red]Download failed.[/red]")
+            run_error = "download failed (no CSV saved)"
+            log_ingestion_end(
+                engine, run_log_id, status="failed", error_message=run_error,
+            )
+            sys.exit(1)
+        console.print(f"[green]Saved: {path}[/green]")
+
+        if no_import:
+            log_ingestion_end(engine, run_log_id, status="completed")
+            return
+
+        console.print("Importing into tcc_snapshots...")
+        ctx.invoke(import_csv, path=path, snapshot_date=str(date.today()))
+        log_ingestion_end(engine, run_log_id, status="completed")
+    except SystemExit:
+        raise
+    except Exception as e:  # noqa: BLE001 — record the failure before re-raising
+        run_error = str(e)[:1000]
+        log_ingestion_end(
+            engine, run_log_id, status="failed", error_message=run_error,
+        )
+        raise
 
 
 @scrape.command(name="historical-certs")
@@ -3018,6 +3042,41 @@ def health_check(ctx, notify, webhook_url):
             console.print("[red]  Webhook notification failed.[/red]")
     elif notify:
         console.print("[yellow]  --notify set but no WEBHOOK_URL configured[/yellow]")
+
+
+@cli.command(name="scraper-health")
+@click.option("--no-alert", is_flag=True, help="Do not send failure alerts (still logs + reports)")
+@click.option("--webhook-url", default=None, help="Override Discord/Slack webhook for failure alerts")
+@click.option("--alert-email", default=None, help="Override alert recipient email (Resend)")
+@click.option("--json-output", is_flag=True, help="Print the report as JSON instead of text")
+@click.pass_context
+def scraper_health(ctx, no_alert, webhook_url, alert_email, json_output):
+    """DP-00-02: daily health check for the four active scrapers.
+
+    Probes TopYacht, SailSys, IRC TCC Listings and ORC for fetch success,
+    reports record counts and the last-success timestamp per source, and
+    writes one run-log row per source per cycle. Any fetch failure alerts
+    within this same cycle (webhook/email) and exits non-zero.
+    """
+    import json as _json
+
+    from irc_data.scraper_health import format_report, run_health_check
+
+    engine = ctx.obj["engine"]
+    report = run_health_check(
+        engine,
+        alert=not no_alert,
+        webhook_url=webhook_url,
+        alert_email=alert_email,
+    )
+
+    if json_output:
+        console.print(_json.dumps(report.to_dict(), indent=2))
+    else:
+        console.print(format_report(report))
+
+    # Non-zero exit on any failure so cron marks the run failed.
+    raise SystemExit(0 if report.ok else 1)
 
 
 @cli.command(name="rematch-results")

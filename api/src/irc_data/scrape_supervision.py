@@ -50,6 +50,14 @@ SOURCES: list[SourceConfig] = [
         # alone is sufficient signal here.
     ),
     SourceConfig(
+        source="irc_tcc",
+        label="IRC TCC Listings",
+        cadence_human="daily 06:00 UTC",
+        run_within=timedelta(hours=30),
+        # No data_within: irc_tcc writes to tcc_snapshots, not race_results.
+        # Run-health (via ingestion_log) is the correct signal here.
+    ),
+    SourceConfig(
         source="topyacht",
         label="TopYacht (AU/regattas)",
         cadence_human="daily 02:30 UTC",
