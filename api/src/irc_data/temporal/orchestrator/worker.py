@@ -47,7 +47,7 @@ async def main():
         worker = Worker(
             client,
             task_queue="orchestrator-task-queue",
-            max_concurrent_activities=4,
+            max_concurrent_activities=2,
             max_concurrent_workflow_tasks=10,
             workflows=[
                 EpicExecutionWorkflow,
