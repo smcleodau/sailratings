@@ -227,6 +227,39 @@ try:
             description="Collection priority, 1 (highest) – 5 (lowest).",
         )
 
+        # -- Scheduling policy (OPS-01-01 / docs/SCHEDULING-POLICY.md) ------
+        cadence_class: str | None = Field(
+            default=None,
+            description=(
+                "Cadence class: daily_results | weekly_certificates | "
+                "annual_identifiers | manual."
+            ),
+        )
+        staleness_budget_hours: float | None = Field(
+            default=None,
+            description="Max hours since last successful run before the source is stale.",
+        )
+        nightly_window_start: str | None = Field(
+            default=None,
+            description="Nightly collection window start, HH:MM (collection policy §4.3).",
+        )
+        nightly_window_end: str | None = Field(
+            default=None,
+            description="Nightly collection window end, HH:MM (collection policy §4.3).",
+        )
+        retry_policy: dict[str, Any] | None = Field(
+            default=None,
+            description="Retry/backoff: {'max_attempts': int, 'backoff_seconds': […]}.",
+        )
+        cooldown_hours: float | None = Field(
+            default=None,
+            description="Alert / re-run cooldown in hours (design default 4).",
+        )
+        kill_switch_ack_hours: int | None = Field(
+            default=None,
+            description="Takedown / kill-switch acknowledgement window in hours (4).",
+        )
+
         # -- Adapter / health -------------------------------------------------
         adapter_class: str | None = Field(
             default=None,

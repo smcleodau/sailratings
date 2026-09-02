@@ -177,7 +177,14 @@ class CollectionWindowClosedError(Exception):
 
 @dataclass
 class CollectionRules:
-    """Per-source enforcement rules derived from the policy."""
+    """Per-source enforcement rules derived from the policy.
+
+    OPS-01-01 extends these rules with the scheduling policy fields
+    (staleness budget, retry/backoff, cooldown) so a resolved source
+    decision carries "how often, how late is too late" alongside the
+    collection rules.  Defaults mirror the ``daily_results`` cadence class
+    in ``docs/SCHEDULING-POLICY.md`` (``sched-v1.0``).
+    """
 
     respect_robots: bool = True
     rate_limit_seconds: float = 2.0
@@ -194,6 +201,15 @@ class CollectionRules:
     no_personal_data: bool = True
     retention_days: int | None = None
     takedown_contact: str = POLICY_AUTHORITY_EMAIL
+
+    # -- Scheduling policy (OPS-01-01 / docs/SCHEDULING-POLICY.md) --------
+    cadence_class: str = "daily_results"
+    staleness_budget_hours: float = 48.0
+    retry_max_attempts: int = 3
+    retry_backoff_seconds: tuple[int, ...] = (600, 1800, 7200)
+    cooldown_hours: float = 4.0
+    watchdog_interval_minutes: int = 15
+    kill_switch_ack_hours: int = 4
 
 
 # ---------------------------------------------------------------------------
@@ -549,6 +565,14 @@ class SourceDecisionV1:
                 "no_personal_data": self.rules.no_personal_data,
                 "retention_days": self.rules.retention_days,
                 "takedown_contact": self.rules.takedown_contact,
+                # Scheduling policy fields (OPS-01-01 / sched-v1.0)
+                "cadence_class": self.rules.cadence_class,
+                "staleness_budget_hours": self.rules.staleness_budget_hours,
+                "retry_max_attempts": self.rules.retry_max_attempts,
+                "retry_backoff_seconds": list(self.rules.retry_backoff_seconds),
+                "cooldown_hours": self.rules.cooldown_hours,
+                "watchdog_interval_minutes": self.rules.watchdog_interval_minutes,
+                "kill_switch_ack_hours": self.rules.kill_switch_ack_hours,
             },
         }
 
@@ -694,6 +718,30 @@ def resolve_source(slug: str, db: Any = None) -> SourceDecisionV1:
     rules = CollectionRules()
     if slug == "irc-certs":
         rules.attribution_header = "X-SailRatings-Source: irc-certs"
+
+    # OPS-01-01 — hydrate the per-source scheduling fields from the register
+    # row (falling back to cadence-class design defaults) so the resolved
+    # decision carries "how often, how late is too late" (sched-v1.0).
+    try:
+        from irc_data.sources.scheduling import SCHEDULING_POLICY
+
+        spec = SCHEDULING_POLICY.spec_for(source)
+        rules.cadence_class = spec.cadence_class.value
+        rules.staleness_budget_hours = spec.staleness_budget_hours
+        rules.retry_max_attempts = spec.retry_policy.max_attempts
+        rules.retry_backoff_seconds = spec.retry_policy.backoff_seconds
+        rules.cooldown_hours = spec.cooldown_hours
+        rules.watchdog_interval_minutes = spec.watchdog_interval_minutes
+        rules.kill_switch_ack_hours = int(
+            getattr(source, "kill_switch_ack_hours", None)
+            or SCHEDULING_POLICY.kill_switch.ack_window_hours
+        )
+        rules.collection_window_start = spec.nightly_window_start.hour
+        rules.collection_window_end = spec.nightly_window_end.hour
+    except Exception:
+        # Scheduling fields are best-effort on resolution; register
+        # completeness is enforced separately by validate_register().
+        pass
 
     return SourceDecisionV1(
         slug=slug,

@@ -38,6 +38,12 @@ from irc_data.sources.models import (
     DataSourceRecordV1,
 )
 from irc_data.sources.registry import CURRENT_POLICY_VERSION
+from irc_data.sources.scheduling import (
+    CADENCE_CLASS_DEFAULTS,
+    CadenceClass,
+    SCHEDULING_POLICY,
+    classify_cadence,
+)
 
 _P = CURRENT_POLICY_VERSION  # shorthand
 
@@ -357,6 +363,9 @@ _TIER2: list[DataSourceRecordV1] = [
         terms_status="reviewed",
         robots_status="allowed",
         licensing="licensed_api",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=2.0,
         notes="Notion: Active / Licensed/API / API / Daily. "
               "Australian race management; publicly published results.",
     ),
@@ -380,6 +389,9 @@ _TIER2: list[DataSourceRecordV1] = [
         terms_status="reviewed",
         robots_status="allowed",
         licensing="tos_restricted",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=30.0,
         notes="Notion: Active / TOS Restricted / Web Scraping / Daily. "
               "Public results pages; ToS ruling recorded (v1.0).",
     ),
@@ -403,6 +415,9 @@ _TIER2: list[DataSourceRecordV1] = [
         adapter_status=NOTION_STATUS_TO_ADAPTER_STATUS["Unexplored"],
         robots_status="unchecked",
         licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
         notes="Notion: Unexplored / Public Domain / API / Daily. "
               "DP-00-03 raw capture landed; adapter not yet registered.",
     ),
@@ -447,6 +462,9 @@ _TIER2: list[DataSourceRecordV1] = [
         adapter_status=NOTION_STATUS_TO_ADAPTER_STATUS["Unexplored"],
         robots_status="allowed",
         licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
         notes="Notion: Unexplored / Public Domain / Web Scraping / Daily. "
               "DP-00-03 raw capture landed; adapter not yet registered.",
     ),
@@ -479,6 +497,9 @@ _TIER3: list[DataSourceRecordV1] = [
         legal_status="approved",
         robots_status="allowed",
         licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
         notes="Notion: Prototyped / Public Domain / Web Scraping / Weekly. "
               "Results files publicly linked from club sites.",
     ),
@@ -502,6 +523,9 @@ _TIER3: list[DataSourceRecordV1] = [
         legal_status="approved",
         robots_status="allowed",
         licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="annual_identifiers",
+        staleness_budget_hours=8880.0,
         notes="Notion: Unexplored / Public Domain / Web Scraping / Annually. "
               "Event-specific scraper exists (bespoke); register tier carried over.",
     ),
@@ -524,6 +548,9 @@ _TIER3: list[DataSourceRecordV1] = [
         legal_status="approved",
         robots_status="allowed",
         licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="manual",
+        staleness_budget_hours=87600.0,
         notes="Notion: Unexplored / Public Domain / Web Scraping / Annually. "
               "Event-specific scraper exists (bespoke); register tier carried over.",
     ),
@@ -546,6 +573,9 @@ _TIER3: list[DataSourceRecordV1] = [
         legal_status="approved",
         robots_status="allowed",
         licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=192.0,
         notes="Notion: Unexplored / Public Domain / Web Scraping / Annually. "
               "Event-specific scraper exists (bespoke); register tier carried over.",
     ),
@@ -568,6 +598,9 @@ _TIER3: list[DataSourceRecordV1] = [
         legal_status="approved",
         robots_status="allowed",
         licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="annual_identifiers",
+        staleness_budget_hours=8880.0,
         notes="Notion: Unexplored / Public Domain / Web Scraping / Annually. "
               "Event-specific scraper exists (bespoke); register tier carried over.",
     ),
@@ -590,8 +623,43 @@ _TIER3: list[DataSourceRecordV1] = [
         legal_status="approved",
         robots_status="allowed",
         licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
         notes="Notion: Unexplored / Public Domain / Web Scraping / Daily. "
               "Generic HTML/file parsing scraper exists.",
+    ),
+    # OPS-01-01 new sources (not in HEAD Notion register; appended after existing list)
+    DataSourceRecordV1(
+        slug="rhkyc",
+        display_name="RHKYC",
+        base_url="https://www.rhkyc.org.hk",
+        category="results",
+        geography="HK",
+        access_method="html_scrape",
+        legal_status="approved",
+        cadence="nightly",
+        format="html",
+        identifiers=["sail_number", "boat_name"],
+        priority=3,
+        adapter_class="irc_data.scrapers.rhkyc.RHKYCScraper",
+        adapter_status="active",
+        robots_status="allowed",
+        licensing="public_results",
+        # Scheduling policy (OPS-01-01) — weekly Wed 10:00 UTC ops cadence
+        cadence_class="daily_results",
+        staleness_budget_hours=192.0,
+    ),
+    DataSourceRecordV1(
+        slug="wayback-irc",
+        display_name="Wayback Machine — IRC",
+        base_url="https://web.archive.org/web",
+        category="ratings",
+        geography="GLOBAL",
+        access_method="rest_api",
+        legal_status="approved",
+        robots_status="allowed",
+        licensing="public_domain",
     ),
     DataSourceRecordV1(
         slug="regatta-toolbox",
@@ -613,6 +681,27 @@ _TIER3: list[DataSourceRecordV1] = [
         licensing="public_domain",
         notes="Notion: Unexplored / Public Domain / Web Scraping / Daily. "
               "No adapter yet; rights not yet reviewed — discovery only.",
+    ),
+    # OPS-01-01 new source (not in HEAD Notion register; appended)
+    DataSourceRecordV1(
+        slug="yotbot",
+        display_name="Yotbot",
+        base_url="https://www.yotbot.com.au",
+        category="results",
+        geography="AU",
+        access_method="rest_api",
+        legal_status="approved",
+        cadence="nightly",
+        format="json",
+        identifiers=["sail_number", "boat_name"],
+        priority=3,
+        adapter_class="irc_data.scrapers.yotbot.YotbotScraper",
+        adapter_status="planned",
+        robots_status="unchecked",
+        licensing="public_results",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
     ),
     DataSourceRecordV1(
         slug="kwindoo",
@@ -808,6 +897,38 @@ SEED_SOURCES: list[DataSourceRecordV1] = _TIER1 + _TIER2 + _TIER3 + _TIER4
 for _s in SEED_SOURCES:
     if not _s.policy_version:
         _s.policy_version = _P
+
+# ---------------------------------------------------------------------------
+# Scheduling policy stamping (OPS-01-01 / docs/SCHEDULING-POLICY.md sched-v1.0)
+# ---------------------------------------------------------------------------
+# Every register row must carry explicit scheduling values so that "how
+# often, how late is too late" is visible per source.  Explicit per-source
+# values above win; anything unset is filled from the cadence-class design
+# defaults plus the collection-policy nightly window (01:00–06:00) and the
+# global cooldown (4 h) / takedown-ack (4 h) constants.  After stamping,
+# the full register (including hold/unknown rows) passes
+# ``irc_data.sources.registry.validate_scheduling(include_inactive=True)``,
+# so a source can be re-activated without a schema/config change.
+for _s in SEED_SOURCES:
+    _cc = CadenceClass(_s.cadence_class) if _s.cadence_class else classify_cadence(_s.cadence)
+    _d = CADENCE_CLASS_DEFAULTS[_cc]
+    if not _s.cadence_class:
+        _s.cadence_class = _cc.value
+    if _s.staleness_budget_hours is None:
+        _s.staleness_budget_hours = float(_d["staleness_budget_hours"])
+    if _s.nightly_window_start is None:
+        _s.nightly_window_start = SCHEDULING_POLICY.nightly_window[0]
+    if _s.nightly_window_end is None:
+        _s.nightly_window_end = SCHEDULING_POLICY.nightly_window[1]
+    if _s.retry_policy is None:
+        _s.retry_policy = {
+            "max_attempts": int(_d["retry_max_attempts"]),
+            "backoff_seconds": list(_d["retry_backoff_seconds"]),
+        }
+    if _s.cooldown_hours is None:
+        _s.cooldown_hours = float(_d["cooldown_hours"])
+    if _s.kill_switch_ack_hours is None:
+        _s.kill_switch_ack_hours = SCHEDULING_POLICY.kill_switch.ack_window_hours
 
 
 def _print_register() -> None:

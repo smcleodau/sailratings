@@ -70,7 +70,7 @@ from irc_data.sources.models import LEGAL_STATUSES
 # ---------------------------------------------------------------------------
 
 try:
-    from sqlalchemy import Boolean, DateTime, Index, Integer, Text, func, select
+    from sqlalchemy import JSON, Boolean, DateTime, Float, Index, Integer, Text, func, select
     from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -124,6 +124,18 @@ try:
         notion_status: Mapped[str | None] = mapped_column(Text)
         notion_license: Mapped[str | None] = mapped_column(Text)
 
+        # Scheduling policy (OPS-01-01 / docs/SCHEDULING-POLICY.md).  These
+        # columns are nullable at the schema level so the ORM can map legacy
+        # rows, but *active* sources must carry values — enforced by
+        # ``validate_scheduling()`` below and by migration 20260903a CHECKs.
+        cadence_class: Mapped[str | None] = mapped_column(Text)
+        staleness_budget_hours: Mapped[float | None] = mapped_column(Float)
+        nightly_window_start: Mapped[str | None] = mapped_column(Text)
+        nightly_window_end: Mapped[str | None] = mapped_column(Text)
+        retry_policy: Mapped[dict | None] = mapped_column(JSON)
+        cooldown_hours: Mapped[float | None] = mapped_column(Float)
+        kill_switch_ack_hours: Mapped[int | None] = mapped_column(Integer)
+
         # Adapter / health
         adapter_class: Mapped[str | None] = mapped_column(Text)
         adapter_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="planned")
@@ -162,6 +174,14 @@ try:
                 format=self.format,
                 change_detection=self.change_detection,
                 priority=self.priority,
+                # Scheduling policy (OPS-01-01)
+                cadence_class=self.cadence_class,
+                staleness_budget_hours=self.staleness_budget_hours,
+                nightly_window_start=self.nightly_window_start,
+                nightly_window_end=self.nightly_window_end,
+                retry_policy=self.retry_policy,
+                cooldown_hours=self.cooldown_hours,
+                kill_switch_ack_hours=self.kill_switch_ack_hours,
                 adapter_class=self.adapter_class,
                 adapter_status=self.adapter_status,
                 enabled=self.enabled,
@@ -292,6 +312,73 @@ def can_discover(source: Any) -> bool:
     legal_status = getattr(source, "legal_status", None)
     status_val = legal_status.value if hasattr(legal_status, "value") else (legal_status or "")
     return bool(enabled) and status_val in _DISCOVERY_ALLOWED
+
+
+# ---------------------------------------------------------------------------
+# Scheduling validation (OPS-01-01)
+# ---------------------------------------------------------------------------
+
+
+def validate_scheduling(
+    db: Any = None,
+    *,
+    sources: list[Any] | None = None,
+    include_inactive: bool = False,
+    raise_on_error: bool = False,
+) -> dict[str, list[str]]:
+    """Validate OPS-01-01 scheduling fields across the source register.
+
+    Every *active* source (``enabled`` and ``legal_status = 'approved'``)
+    must carry values for cadence class, cadence, staleness budget, nightly
+    window, retry/backoff, cooldown and the kill-switch acknowledgement
+    window (docs/SCHEDULING-POLICY.md §3).  This is the register-validation
+    enforcement the OPS-01-01 acceptance criteria require.
+
+    Parameters
+    ----------
+    db
+        SQLAlchemy engine/connection for the ``data_sources`` register.
+        When ``None`` (and *sources* is ``None``), the canonical
+        :mod:`irc_data.sources.seed_data` register is validated.
+    sources
+        Explicit list of records to validate (overrides *db*).
+    include_inactive
+        When True, also validate hold/blocked/disabled sources.
+    raise_on_error
+        When True, raise :class:`SchedulingPolicyError` on any failure.
+
+    Returns ``{slug: [errors...]}``; empty dict == register fully compliant.
+    """
+    from irc_data.sources.scheduling import (
+        SCHEDULING_POLICY,
+        SchedulingPolicyError,
+        validate_source_scheduling,
+    )
+
+    if sources is None:
+        if db is not None and _ORM_AVAILABLE:
+            sources = list(list_sources(db))
+        else:
+            from irc_data.sources.seed_data import SEED_SOURCES
+
+            sources = list(SEED_SOURCES)
+
+    failures: dict[str, list[str]] = {}
+    for source in sources:
+        errors = validate_source_scheduling(
+            source, require_when_inactive=include_inactive
+        )
+        if errors:
+            slug = getattr(source, "slug", None) or (
+                source.get("slug") if isinstance(source, dict) else "<unknown>"
+            )
+            failures[str(slug)] = errors
+
+    if failures and raise_on_error:
+        raise SchedulingPolicyError(
+            err for errs in failures.values() for err in errs
+        )
+    return failures
 
 
 # ---------------------------------------------------------------------------
@@ -563,6 +650,14 @@ def seed_sources(
                     "format": record.format,
                     "change_detection": record.change_detection,
                     "priority": record.priority,
+                    # Scheduling policy (OPS-01-01)
+                    "cadence_class": record.cadence_class,
+                    "staleness_budget_hours": record.staleness_budget_hours,
+                    "nightly_window_start": record.nightly_window_start,
+                    "nightly_window_end": record.nightly_window_end,
+                    "retry_policy": record.retry_policy,
+                    "cooldown_hours": record.cooldown_hours,
+                    "kill_switch_ack_hours": record.kill_switch_ack_hours,
                     "adapter_class": record.adapter_class,
                     "adapter_status": record.adapter_status,
                     "enabled": record.enabled,
@@ -659,6 +754,8 @@ __all__ = [
     "resolve_and_assert_approved",
     "can_collect",
     "can_discover",
+    # OPS-01-01 scheduling validation
+    "validate_scheduling",
     # Seed constants
     "SEED_COUNT",
     "HOLD_SOURCES",
