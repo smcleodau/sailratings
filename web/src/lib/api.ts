@@ -117,6 +117,46 @@ export interface ReportData {
   rivals?: Rival[];
 }
 
+/* ── Stats (OPS-02-11: marketing numbers come from the DB census) ─────── */
+
+export interface StatsResponse {
+  /* Flat count keys (legacy-compatible) */
+  boats: number;
+  tcc_snapshots: number;
+  irc_certificates: number;
+  orc_certificates: number;
+  race_results: number;
+  events: number;
+  countries: number;
+  designs: number;
+  sources: number;
+  /* Structured views */
+  counts: Record<string, number>;
+  last_updated: Record<string, string | null>;
+  generated_at: string;
+  cache_ttl_seconds: number;
+}
+
+/** Format a census count the way marketing copy reads ("258,000"). */
+export function formatStatCount(n: number): string {
+  return Math.floor(n / 1000) * 1000 >= 1000
+    ? (Math.floor(n / 1000) * 1000).toLocaleString("en-US")
+    : n.toLocaleString("en-US");
+}
+
+export async function getStats(): Promise<StatsResponse> {
+  const res = await fetch(`${API_BASE}/stats/`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Stats fetch failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
 /* ── Search ───────────────────────────────────────────────────────────── */
 
 export async function searchBoats(query: string): Promise<SearchResult[]> {

@@ -2,6 +2,17 @@ import type { Metadata } from "next";
 import MainNav from "@/components/MainNav";
 import FunnelCTA from "@/components/FunnelCTA";
 import EditorialFooter from "@/components/EditorialFooter";
+import { getStats, formatStatCount, type StatsResponse } from "@/lib/api";
+
+// OPS-02-11: the numbers on this page come from GET /v1/stats (DB census).
+// Revalidate on the same cadence as the endpoint's 10-minute cache.
+async function fetchStatsSafe(): Promise<StatsResponse | null> {
+  try {
+    return await getStats();
+  } catch {
+    return null; // keep last-published fallback copy
+  }
+}
 
 export const metadata: Metadata = {
   title: "IRC and ORC race results, properly read",
@@ -160,7 +171,10 @@ const EVENTS: Array<{
   },
 ];
 
-export default function ResultsPage() {
+export default async function ResultsPage() {
+  const stats = await fetchStatsSafe();
+  const raceResultsCount = stats ? formatStatCount(stats.race_results) : "31,000";
+
   return (
     <main className="min-h-screen bg-cream">
       <MainNav theme="on-cream" />
@@ -259,7 +273,7 @@ export default function ResultsPage() {
           </h2>
           <div className="body-text text-charcoal text-[17px] leading-[1.65] max-w-[62ch] space-y-4">
             <p>
-              <strong>Over 31,000 race finishes</strong> stitched into a single
+              <strong>Over {raceResultsCount} race finishes</strong> stitched into a single
               relational store, growing nightly as the SailSys, RORC, ORC and
               national-authority feeds publish.
             </p>
