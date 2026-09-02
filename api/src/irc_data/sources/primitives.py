@@ -51,6 +51,7 @@ from irc_data.sources.policy import (
     SourceNotApprovedError,
     assert_policy_current,
     assert_source_approved,
+    is_within_collection_window,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,10 +84,22 @@ def _sha256(data: bytes) -> str:
 
 
 def _check_source(source: DataSource | None) -> None:
-    """Run policy + approval checks if a source is provided."""
+    """Run policy + approval checks if a source is provided.
+
+    Enforcement order matches the acceptance criteria: version first, then
+    the kill switch (enabled), then robots/legal status.
+    """
     if source is None:
         return
+    # 1. Policy version gate (raises PolicyVersionMismatchError if stale)
     assert_policy_current(source)
+    # 2. Kill switch — disabled sources produce zero fetch attempts.
+    if not getattr(source, "enabled", True):
+        raise SourceNotApprovedError(
+            getattr(source, "slug", "<unknown>"),
+            reason="source is disabled (kill switch)",
+        )
+    # 3. Legal status / robots approval gate.
     assert_source_approved(source)
 
 
@@ -98,12 +111,20 @@ def _path_disallowed(url: str, robots_disallow: list[str]) -> bool:
     for rule in robots_disallow:
         if not rule:
             continue
-        # Wildcard root "/" disallows everything
         if rule == "/":
             return True
         if path.startswith(rule):
             return True
     return False
+
+
+def _enforce_window(source: DataSource | None) -> None:
+    """Enforce the nightly collection window when a source is provided."""
+    if source is not None and not is_within_collection_window():
+        raise SourceNotApprovedError(
+            getattr(source, "slug", "<unknown>"),
+            reason="outside nightly collection window (01:00-06:00)",
+        )
 
 
 def _check_robots(url: str, source: Any) -> None:
