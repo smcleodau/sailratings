@@ -1,37 +1,23 @@
 import { defineConfig, devices } from '@playwright/test';
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
 
-/* Read Clerk keyless test keys from the .clerk/.tmp/keyless.json file that
-   Clerk generates in keyless mode.  This file is gitignored, so in a fresh
-   checkout (CI / gatekeeper) it may be absent — in that case we fall back
-   to the known project test-mode keys (pk_test / sk_test).  These are
-   test-mode keys, not production secrets. */
-function readClerkKeys(): Record<string, string> {
-  // AD-01-12: when E2E=1 the shell/chrome specs run with Clerk disabled so
-  // admin routes render the internal token gate (AD-01-01) instead of
-  // redirecting to a hosted sign-in page. Auth itself is out of scope here.
-  if (process.env.E2E === '1') {
-    return {
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: '',
-      CLERK_SECRET_KEY: '',
-    };
-  }
-  const keylessPath = join(__dirname, '..', 'web', '.clerk', '.tmp', 'keyless.json');
-  let publishableKey = 'pk_test_cXVpY2std29sZi02MS5jbGVyay5hY2NvdW50cy5kZXYk';
-  let secretKey = 'sk_test_FCH3fSjcXfiTOtx4IcE52aSNNYYNXPYYn0xDRxBBQa';
-  if (existsSync(keylessPath)) {
-    try {
-      const data = JSON.parse(readFileSync(keylessPath, 'utf-8'));
-      if (data.publishableKey) publishableKey = data.publishableKey;
-      if (data.secretKey) secretKey = data.secretKey;
-    } catch { /* fall back to defaults */ }
-  }
+/* Environment for the dev server Playwright boots (webServer.env).
+
+   Clerk is always disabled for the E2E run: empty keys make the root layout
+   skip <ClerkProvider> and the middleware take its unconfigured path, where
+   E2E=1 (honoured only outside production) lets admin routes render their
+   own internal bearer-token gate (AD-01-01) instead of redirecting to a
+   hosted sign-in page. Auth itself is out of scope for these specs.
+
+   This must be unconditional — previously the bypass only engaged when the
+   runner remembered to export E2E=1, so a plain `npx playwright test`
+   injected the fallback Clerk keys and every admin-shell spec failed on the
+   sign-in redirect. Setting E2E=1 here (in the server env, not just the
+   Playwright process) makes a bare `npm run test` self-contained. */
+function testServerEnv(): Record<string, string> {
   return {
-    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
-      process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || publishableKey,
-    CLERK_SECRET_KEY:
-      process.env.CLERK_SECRET_KEY || secretKey,
+    E2E: '1',
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: '',
+    CLERK_SECRET_KEY: '',
   };
 }
 
@@ -71,14 +57,15 @@ export default defineConfig({
     },
   ],
 
-  /* Run your local dev server before starting the tests. When E2E=1 we
-     allow reusing an already-running dev server (handy for iterating on the
-     AD-01-12 shell spec locally); in CI it always boots its own. */
+  /* Run your local dev server before starting the tests. We allow reusing an
+     already-running dev server when E2E=1 is exported (handy for iterating on
+     the AD-01-12 shell spec locally); otherwise Playwright always boots its
+     own with the Clerk-disabled env above. */
   webServer: {
     command: 'cd ../web && PORT=4201 npm run dev',
     url: 'http://localhost:4201',
     reuseExistingServer: process.env.E2E === '1',
     timeout: 180 * 1000,
-    env: readClerkKeys(),
+    env: testServerEnv(),
   },
 });
