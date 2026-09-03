@@ -39,7 +39,28 @@ OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --en
 # (superseded by the SailRaceHQ Temporal schedule; retained for reference)
 # 0 10 * * 2   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape results --source rorc" >> $LOG_DIR/rorc_$(date +\%F).log 2>&1
 
-# === Host maintenance (not irc-data ingestion) ===
+# === Identity & Design Maintenance ===
+# Weekly: match new ORC certs to IRC boats (Sunday 05:00 UTC)
+0 5 * * 0    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data match-boats" >> $LOG_DIR/match_$(date +\%F).log 2>&1
+
+# Monthly: re-seed designs and backfill (1st of month 04:30 UTC)
+30 4 1 * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data seed-designs" >> $LOG_DIR/designs_$(date +\%F).log 2>&1
+
+# === Historical backfill ===
+# Monthly: Wayback Machine archive search (1st of month)
+0 4 1 * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape wayback" >> $LOG_DIR/wayback_$(date +\%F).log 2>&1
+
+# === Monitoring ===
+# Staleness watchdog (OPS-01-04 / OPS-02-03): every 15 min
+*/15 * * * * cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape-watchdog" >> $LOG_DIR/watchdog_$(date +\%F).log 2>&1
+
+# Daily health check at 06:00 UTC
+0 6 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scraper-health" >> $LOG_DIR/scraper_health_$(date +\%F).log 2>&1
+
+# Daily heartbeat + dead-man ping at 09:00 UTC
+0 9 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data health-check --notify" >> $LOG_DIR/health_$(date +\%F).log 2>&1
+
+# === Host maintenance ===
 # Delete logs older than 30 days (midnight)
 0 0 * * *    find /home/irc-data/logs -name "*.log" -mtime +30 -delete
 

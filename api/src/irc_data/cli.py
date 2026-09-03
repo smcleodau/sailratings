@@ -3139,11 +3139,32 @@ def backfill_boat_identity(ctx, source):
 
 
 @cli.command(name="health-check")
-@click.option("--notify", is_flag=True, help="Send alerts to webhook (WEBHOOK_URL env var)")
+@click.option("--notify", is_flag=True, help="Post the daily report to the Slack/webhook channel (SLACK_WEBHOOK_URL or WEBHOOK_URL)")
 @click.option("--webhook-url", envvar="WEBHOOK_URL", default=None, help="Discord/Slack webhook URL")
+@click.option("--deadman-url", envvar="DEADMAN_PING_URL", default=None,
+              help="Dead-man ping URL; the external monitor alerts if no ping lands by 09:30 UTC")
+@click.option("--no-deadman", is_flag=True, help="Do not ping the dead-man URL this run")
 @click.pass_context
-def health_check(ctx, notify, webhook_url):
-    """Run health checks and optionally send alerts to Discord/Slack."""
+def health_check(ctx, notify, webhook_url, deadman_url, no_deadman):
+    """Run health checks, optionally notify, and ping the dead-man URL.
+
+    OPS-02-03 daily heartbeat. Run once a day from cron (before 09:30 UTC):
+
+    * with ``--notify`` the report is posted to the configured Slack/Discord
+      webhook (and the legacy WEBHOOK_URL path) so a human sees the platform
+      is alive every morning;
+    * the **dead-man ping** GETs ``$DEADMAN_PING_URL``. The external monitor
+      behind that URL is configured to raise an alert if no ping has arrived
+      by **09:30 UTC** — so if this cron job itself is dead (the silent-
+      failure mode that produced no output at all), someone is paged the
+      next morning.
+
+    Secrets (webhook + dead-man URLs) come from the 1Password vault via
+    ``op run`` — see :mod:`irc_data.alerting`.
+    """
+    import os as _os
+
+    from irc_data import alerting
     from irc_data.monitoring import check_health, send_webhook
 
     engine = ctx.obj["engine"]
@@ -3173,16 +3194,35 @@ def health_check(ctx, notify, webhook_url):
     else:
         console.print("\n  No alerts")
 
-    # Notify via webhook
-    if notify and webhook_url:
-        console.print(f"\nSending to webhook...")
-        ok = send_webhook(webhook_url, report)
-        if ok:
-            console.print("[green]  Webhook notification sent.[/green]")
+    # --- Notify: post the daily report to Slack (and legacy webhook) -----
+    if notify:
+        # Prefer the dedicated Slack webhook, falling back to WEBHOOK_URL.
+        slack_url = (
+            _os.environ.get(alerting.SLACK_WEBHOOK_ENV)
+            or webhook_url
+            or _os.environ.get(alerting.SLACK_WEBHOOK_FALLBACK_ENV)
+        )
+        if slack_url:
+            console.print("\nPosting daily report to webhook...")
+            ok = send_webhook(slack_url, report)
+            if ok:
+                console.print("[green]  Webhook notification sent.[/green]")
+            else:
+                console.print("[red]  Webhook notification failed.[/red]")
         else:
-            console.print("[red]  Webhook notification failed.[/red]")
-    elif notify:
-        console.print("[yellow]  --notify set but no WEBHOOK_URL configured[/yellow]")
+            console.print("[yellow]  --notify set but no SLACK_WEBHOOK_URL/WEBHOOK_URL configured[/yellow]")
+
+    # --- Dead-man ping: prove the cron is alive ---------------------------
+    if not no_deadman:
+        deadman_url = deadman_url or _os.environ.get(alerting.DEADMAN_URL_ENV)
+        if deadman_url:
+            ok = alerting.ping_deadman(deadman_url)
+            if ok:
+                console.print("[green]  Dead-man ping sent (monitor resets; alerts if missed by 09:30 UTC).[/green]")
+            else:
+                console.print("[red]  Dead-man ping FAILED — the external monitor will alert if unrecovered.[/red]")
+        else:
+            console.print("[dim]  No DEADMAN_PING_URL configured — dead-man ping skipped.[/dim]")
 
 
 @cli.command(name="scraper-health")
@@ -3584,11 +3624,13 @@ def solent_coverage(ctx, mode, years, max_races, skip_warsash, skip_jog, dry_run
 @click.option("--dry-run", is_flag=True, help="Print what would alert; don't send email.")
 @click.pass_context
 def scrape_watchdog(ctx, cooldown_hours, dry_run):
-    """Staleness watchdog (OPS-01-04). Cron runs this every 15 minutes.
+    """Staleness watchdog (OPS-01-04 / OPS-02-03). Cron runs every 15 min.
 
-    Checks every configured source against its freshness budget, raises ONE
-    alert per breach (email + admin banner on /justin/scrapers), respects a
-    4 h cooldown per source, clears alerts on recovery, and retains the full
+    Checks every configured source against its OPS-02-03 freshness budget
+    (ORC/TCC/TopYacht 26h, SailSys 2h run / 26h data, weekly 8d), raises ONE
+    alert per breach fanned out to **Slack + email** (so a single dead
+    transport can't silence the page), respects a 4 h cooldown per source,
+    sends a recovery message when a source returns, and retains the full
     alert history in the ``watchdog_alerts`` table.
     """
     from irc_data.scrape_watchdog import run_watchdog
@@ -3620,23 +3662,25 @@ def scrape_watchdog(ctx, cooldown_hours, dry_run):
     for b in result.in_cooldown:
         console.print(f"  [dim]  (cooldown active for {b.alert_key}, skipping)[/dim]")
 
+    chan = "+".join(result.channels) if result.channels else "none"
+
     if result.alerts_sent:
-        if result.email_sent:
-            console.print(f"[green]Alert email sent for {len(result.alerts_sent)} breach(es); "
+        if result.email_sent or result.slack_sent:
+            console.print(f"[green]Alert sent ({chan}) for {len(result.alerts_sent)} breach(es); "
                           f"logged to watchdog_alerts.[/green]")
         else:
             console.print(f"[dim]{len(result.alerts_sent)} breach(es) logged "
-                          f"(no email — dry-run or sender disabled).[/dim]")
+                          f"(no channel reached — dry-run or transports disabled).[/dim]")
     elif result.breaches and not result.in_cooldown:
         console.print("[dim]No new alerts to send.[/dim]")
 
     if result.recoveries:
         names = ", ".join(r["source"] for r in result.recoveries)
-        if result.recovery_email_sent:
-            console.print(f"[green]Recovery email sent; alerts cleared for: {names}.[/green]")
+        if result.recovery_email_sent or result.recovery_slack_sent:
+            console.print(f"[green]Recovery sent ({chan}); alerts cleared for: {names}.[/green]")
         else:
             console.print(f"[green]Alerts cleared for: {names} "
-                          f"(no email — dry-run or sender disabled).[/green]")
+                          f"(no channel reached — dry-run or transports disabled).[/green]")
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,8 @@
-"""Staleness watchdog with alerting, cooldown, and recovery (OPS-01-04).
+"""Staleness watchdog with alerting, cooldown, and recovery (OPS-01-04,
+extended to human-reachable multi-channel alerts by OPS-02-03).
 
-Know within 15 minutes when any source has gone quiet.
+Know within 15 minutes when any source has gone quiet — and make sure that
+knowledge *reaches a human* through at least two independent channels.
 
 This module is the engine behind the ``irc-data scrape-watchdog`` CLI,
 which cron runs every 15 minutes. It:
@@ -8,20 +10,29 @@ which cron runs every 15 minutes. It:
 1. **Staleness check vs budget** — reads :mod:`irc_data.scrape_supervision`
    ``SOURCES`` for expected cadences and queries ``ingestion_log`` (cron
    health) and ``race_results`` (data-tap freshness) for last activity.
-2. **Alerting** — on a breach, sends one consolidated email via Resend and
-   records the incident in the ``watchdog_alerts`` table. The admin banner
-   ("Cron health: N sources not running") is rendered from the same
-   supervision config on ``/admin/scrapers``.
+   The budgets are the OPS-02-03 contract: ORC/TCC/TopYacht 26 h, SailSys
+   2 h run / 26 h data, weekly sources 8 d.
+2. **Alerting (multi-channel)** — on a breach, fans one consolidated alert
+   out to a **Slack webhook** *and* an **email** (Resend) via
+   :mod:`irc_data.alerting`, and records the incident in the
+   ``watchdog_alerts`` table. The admin banner ("Cron health: N sources not
+   running") is rendered from the same supervision config on
+   ``/admin/scrapers``.
 3. **Cooldown** — a source that alerted is not re-alerted (or re-logged)
    for ``cooldown_hours`` (default 4 h), even while it remains stale.
 4. **Recovery** — when a previously-alerted source comes back within
    budget, the open alert row is closed (``recovered_at`` set) and a
-   recovery email is sent.
+   recovery message is sent to the same Slack + email channels.
 5. **Alert log** — every alert and recovery is retained in
    ``watchdog_alerts`` for history; never deleted by the watchdog.
 
 The cooldown / alert-history state lives in Postgres (not a JSON file) so
 it survives host rebuilds and is inspectable from the admin dashboard.
+
+Secrets (Slack webhook URL, Resend API key, alert recipient) are read from
+the environment, populated in production from the 1Password vault by
+``op run`` — see :mod:`irc_data.alerting` for the variable names. No secret
+is committed to the repo.
 """
 
 from __future__ import annotations
@@ -35,6 +46,7 @@ from typing import Any, Callable, Iterable
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
+from irc_data import alerting
 from irc_data.scrape_supervision import SOURCES, SourceConfig
 
 DEFAULT_COOLDOWN_HOURS = 4
@@ -71,7 +83,12 @@ class WatchdogResult:
     recoveries: list[dict[str, Any]] = field(default_factory=list)
     email_sent: bool = False
     recovery_email_sent: bool = False
-    skipped_send: bool = False  # dry-run or missing API key
+    slack_sent: bool = False
+    recovery_slack_sent: bool = False
+    # Distinct channels that accepted at least one message this pass
+    # (subset of {"slack", "email"}).
+    channels: list[str] = field(default_factory=list)
+    skipped_send: bool = False  # dry-run or no channel configured
 
 
 # ---------------------------------------------------------------------------
@@ -242,19 +259,50 @@ def get_alert_history(conn: Connection, limit: int = 100) -> list[dict[str, Any]
 
 def _default_email_sender(subject: str, html: str) -> None:
     """Send via Resend. Raises if RESEND_API_KEY is not configured."""
-    import resend
+    alerting.send_email_alert(
+        subject,
+        html,
+        text=subject,
+        from_addr="SailRatings Watchdog <reports@sailratings.com>",
+    )
 
-    api_key = os.environ.get("RESEND_API_KEY")
-    if not api_key:
-        raise RuntimeError("RESEND_API_KEY not configured")
-    resend.api_key = api_key
-    alert_email = os.environ.get("ALERT_EMAIL", "stuart@stuartmcleod.me")
-    resend.Emails.send({
-        "from": "SailRatings Watchdog <reports@sailratings.com>",
-        "to": [alert_email],
-        "subject": subject,
-        "html": html,
-    })
+
+def _default_slack_sender(webhook_url: str, message: str) -> bool:
+    """Post to a Slack/Discord webhook. Returns True on acceptance."""
+    return alerting.send_slack(webhook_url, message)
+
+
+def build_alert_text(breaches: list[Breach], cooldown_hours: int) -> str:
+    """Plain-text / Slack-markdown alert for the webhook channel."""
+    lines = [
+        f":rotating_light: *SailRatings watchdog — {len(breaches)} "
+        f"scraper{'s' if len(breaches) != 1 else ''} stale*",
+    ]
+    for b in breaches:
+        lines.append(
+            f"• *{b.label}* (`{b.source}` · {b.cadence}) — "
+            f"{b.age_str()} since last success (budget {b.budget_hours:.0f}h): {b.reason}"
+        )
+    lines.append(
+        f"_Dashboard: https://dev.sailratings.com/justin/scrapers · "
+        f"cooldown {cooldown_hours}h per source_"
+    )
+    return "\n".join(lines)
+
+
+def build_recovery_text(recoveries: list[dict[str, Any]]) -> str:
+    """Plain-text / Slack-markdown recovery message."""
+    n = len(recoveries)
+    lines = [
+        f":white_check_mark: *SailRatings watchdog — {n} "
+        f"scraper{'s' if n != 1 else ''} recovered*",
+    ]
+    for r in recoveries:
+        lines.append(
+            f"• *{r['label'] or r['source']}* (`{r['source']}`) back within budget — alert cleared"
+        )
+    lines.append("_History: https://dev.sailratings.com/justin/scrapers_")
+    return "\n".join(lines)
 
 
 def build_alert_email(breaches: list[Breach], cooldown_hours: int) -> tuple[str, str]:
@@ -325,12 +373,21 @@ def run_watchdog(
     cooldown_hours: int = DEFAULT_COOLDOWN_HOURS,
     dry_run: bool = False,
     send_email: Callable[[str, str], None] | None = _default_email_sender,
+    send_slack: Callable[[str, str], bool] | None = _default_slack_sender,
+    slack_url: str | None = None,
     sources: Iterable[SourceConfig] | None = None,
 ) -> WatchdogResult:
     """Run one watchdog pass: detect breaches, alert with cooldown, recover.
 
-    ``send_email`` is injectable for tests; ``None`` disables sending while
-    still exercising cooldown + alert-log writes.
+    Alerting is multi-channel (OPS-02-03): each alert/recovery is fanned out
+    to a **Slack webhook** *and* an **email** so a single dead transport
+    can't silence the page.
+
+    ``send_email`` / ``send_slack`` are injectable for tests; passing
+    ``None`` for *both* disables sending while still exercising cooldown +
+    alert-log writes. ``slack_url`` overrides the environment-configured
+    webhook (``$SLACK_WEBHOOK_URL`` → ``$WEBHOOK_URL``); when no webhook is
+    resolvable the Slack channel is silently skipped (email still fires).
     """
     now = now or datetime.now(timezone.utc)
     result = WatchdogResult()
@@ -400,26 +457,58 @@ def run_watchdog(
 
         result.alerts_sent = to_alert
 
-    # --- Email (outside the txn — sending is not transactional) ----------
-    if send_email is None or dry_run:
+    # --- Notify (outside the txn — sending is not transactional) ---------
+    # Multi-channel fan-out (OPS-02-03): Slack + email are independent so a
+    # single dead transport never silences the page. Each channel is
+    # best-effort; a failure is recorded on the result but never raised back
+    # into the committed alert-log writes above.
+    resolved_slack_url = (
+        slack_url
+        or os.environ.get(alerting.SLACK_WEBHOOK_ENV)
+        or os.environ.get(alerting.SLACK_WEBHOOK_FALLBACK_ENV)
+    )
+    slack_active = send_slack is not None and bool(resolved_slack_url)
+    email_active = send_email is not None
+
+    if dry_run or (not slack_active and not email_active):
         result.skipped_send = True
         return result
 
-    try:
-        if to_alert:
-            subject, html = build_alert_email(to_alert, cooldown_hours)
-            send_email(subject, html)
-            result.email_sent = True
-        if recoveries:
-            subject, html = build_recovery_email(recoveries)
-            send_email(subject, html)
-            result.recovery_email_sent = True
-    except Exception:
-        # A failed send must not lose the alert-log writes already committed;
-        # the next pass (within cooldown) simply won't re-send. Surface the
-        # error to the caller via skipped_send so cron logs show it.
+    channels: set[str] = set()
+
+    def _fire(subject: str, html: str, text_msg: str) -> tuple[bool, bool]:
+        """Send one message to both channels; return (slack_ok, email_ok)."""
+        slack_ok = email_ok = False
+        if slack_active:
+            try:
+                slack_ok = bool(send_slack(resolved_slack_url, text_msg))
+            except Exception:  # noqa: BLE001 — best-effort
+                slack_ok = False
+        if email_active:
+            try:
+                send_email(subject, html)
+                email_ok = True
+            except Exception:  # noqa: BLE001 — best-effort
+                email_ok = False
+        if slack_ok:
+            channels.add("slack")
+        if email_ok:
+            channels.add("email")
+        return slack_ok, email_ok
+
+    if to_alert:
+        subject, html = build_alert_email(to_alert, cooldown_hours)
+        text_msg = build_alert_text(to_alert, cooldown_hours)
+        result.slack_sent, result.email_sent = _fire(subject, html, text_msg)
+    if recoveries:
+        subject, html = build_recovery_email(recoveries)
+        text_msg = build_recovery_text(recoveries)
+        result.recovery_slack_sent, result.recovery_email_sent = _fire(subject, html, text_msg)
+
+    result.channels = sorted(channels)
+    # "skipped" if nothing actually reached a channel (all transports down).
+    if not channels:
         result.skipped_send = True
-        raise
 
     return result
 
