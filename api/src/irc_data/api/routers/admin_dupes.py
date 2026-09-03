@@ -72,6 +72,7 @@ _ADMIN_EDITS_DDL = """
 CREATE TABLE IF NOT EXISTS admin_edits (
     id          BIGSERIAL PRIMARY KEY,
     edited_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    who         TEXT,
     table_name  TEXT NOT NULL,
     pk_value    TEXT NOT NULL,
     column_name TEXT NOT NULL,
@@ -83,6 +84,7 @@ _ADMIN_EDITS_DDL_SQLITE = """
 CREATE TABLE IF NOT EXISTS admin_edits (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     edited_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    who         TEXT,
     table_name  TEXT NOT NULL,
     pk_value    TEXT NOT NULL,
     column_name TEXT NOT NULL,
@@ -173,6 +175,11 @@ def _ensure_admin_edits(conn: Connection) -> None:
             else _ADMIN_EDITS_DDL
         )
     )
+    if conn.dialect.name != "sqlite":
+        try:
+            conn.execute(text("ALTER TABLE admin_edits ADD COLUMN who TEXT"))
+        except Exception:
+            pass
 
 
 def _write_admin_edit(
@@ -181,13 +188,15 @@ def _write_admin_edit(
     column_name: str,
     old_value: str | None,
     new_value: str | None,
+    who: str | None = None,
 ) -> None:
     conn.execute(
         text(
-            "INSERT INTO admin_edits (table_name, pk_value, column_name, "
-            "old_value, new_value) VALUES (:t, :pk, :c, :old, :new)"
+            "INSERT INTO admin_edits (who, table_name, pk_value, column_name, "
+            "old_value, new_value) VALUES (:w, :t, :pk, :c, :old, :new)"
         ),
         {
+            "w": who,
             "t": _MERGE_AUDIT_TABLE,
             "pk": pk_value,
             "c": column_name,

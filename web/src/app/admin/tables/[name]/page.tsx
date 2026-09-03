@@ -224,6 +224,36 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
           >
             Filter
           </button>
+          <button
+            onClick={async () => {
+              try {
+                const url = new URL(`${API_BASE}/admin/tables/${encodeURIComponent(name)}/export`, window.location.origin);
+                if (filter) {
+                  url.searchParams.set("q", filter);
+                }
+                const res = await fetch(url.toString(), {
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                  },
+                });
+                if (!res.ok) throw new Error("Export failed");
+                const blob = await res.blob();
+                const objUrl = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = objUrl;
+                link.setAttribute('download', `${name}_export.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              } catch (e) {
+                console.error(e);
+                alert("Export failed");
+              }
+            }}
+            className="admin-mono-font text-[10px] uppercase tracking-wider bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] hover:border-[var(--sr-link)] px-3 py-1.5 rounded-[4px] shadow-sm transition-colors"
+          >
+            Export CSV
+          </button>
         </div>
       </div>
 

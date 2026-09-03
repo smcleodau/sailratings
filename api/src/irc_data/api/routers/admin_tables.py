@@ -20,6 +20,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
+from irc_data.api.deps import get_optional_identity
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
@@ -108,6 +109,7 @@ def _ensure_audit_table(engine: Engine) -> None:
             CREATE TABLE IF NOT EXISTS admin_edits (
                 id          BIGSERIAL PRIMARY KEY,
                 edited_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                who         TEXT,
                 table_name  TEXT NOT NULL,
                 pk_value    TEXT NOT NULL,
                 column_name TEXT NOT NULL,
@@ -115,6 +117,10 @@ def _ensure_audit_table(engine: Engine) -> None:
                 new_value   TEXT
             )
         """))
+        try:
+            conn.execute(text("ALTER TABLE admin_edits ADD COLUMN who TEXT"))
+        except Exception:
+            pass
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_admin_edits_table_pk "
             "ON admin_edits (table_name, pk_value, edited_at DESC)"
@@ -313,6 +319,73 @@ def get_rows(
         "q": q,
     }
 
+from fastapi.responses import StreamingResponse
+import csv
+import io
+
+@router.get("/{name}/export")
+def export_table(
+    name: str,
+    q: str | None = Query(None, description="Filter: column=value or column~text"),
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Export table as CSV."""
+    _verify_admin(authorization)
+    policy = TABLE_POLICY.get(name)
+    if policy is None:
+        raise HTTPException(status_code=404, detail=f"Table {name!r} not visible")
+
+    columns = _table_columns(engine, name)
+    col_names = [c["name"] for c in columns]
+    pk = policy.get("pk", "id")
+    order_by = pk
+    order_dir = "desc"
+
+    where_clause = "1=1"
+    params: dict[str, Any] = {}
+    if q and q.strip():
+        q = q.strip()
+        if "=" in q:
+            col, val = q.split("=", 1)
+            if col in col_names:
+                where_clause = f"{col} = :qval"
+                params["qval"] = val
+        elif "~" in q:
+            col, val = q.split("~", 1)
+            if col in col_names:
+                where_clause = f"{col} ILIKE :qval"
+                params["qval"] = f"%{val}%"
+        else:
+            search_cols = policy.get("search_cols", [])
+            if search_cols:
+                clauses = [f"{col} ILIKE :qval" for col in search_cols]
+                where_clause = "(" + " OR ".join(clauses) + ")"
+                params["qval"] = f"%{q}%"
+
+    def iter_csv():
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(col_names)
+        yield output.getvalue()
+        output.seek(0)
+        output.truncate(0)
+
+        with engine.connect() as conn:
+            # PostgreSQL driver supports server-side cursors via execution_options(stream_results=True)
+            res = conn.execution_options(stream_results=True).execute(
+                text(f"SELECT * FROM {name} WHERE {where_clause} ORDER BY {order_by} {order_dir}"),
+                params
+            )
+            for chunk in res.partitions(100):
+                for row in chunk:
+                    writer.writerow([_jsonable(val) for val in row])
+                yield output.getvalue()
+                output.seek(0)
+                output.truncate(0)
+
+    return StreamingResponse(iter_csv(), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={name}_export.csv"})
+
 
 class UpdateBody(BaseModel):
     column: str
@@ -326,6 +399,7 @@ def update_cell(
     body: UpdateBody,
     engine: Engine = Depends(get_db),
     authorization: str = Header(None),
+    caller = Depends(get_optional_identity),
 ):
     """Update a single column on a single row. Audited to admin_edits."""
     _verify_admin(authorization)
@@ -344,6 +418,7 @@ def update_cell(
     pk = policy.get("pk", "id")
 
     _ensure_audit_table(engine)
+    who = caller.email if caller and caller.email else "admin"
 
     with engine.begin() as conn:
         old = conn.execute(
@@ -362,10 +437,11 @@ def update_cell(
 
         conn.execute(
             text("""
-                INSERT INTO admin_edits (table_name, pk_value, column_name, old_value, new_value)
-                VALUES (:t, :pk, :c, :ov, :nv)
+                INSERT INTO admin_edits (who, table_name, pk_value, column_name, old_value, new_value)
+                VALUES (:w, :t, :pk, :c, :ov, :nv)
             """),
             {
+                "w": who,
                 "t": name,
                 "pk": str(pk_value),
                 "c": body.column,

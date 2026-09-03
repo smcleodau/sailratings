@@ -38,6 +38,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from irc_data.api.deps import CallerIdentity, get_optional_identity
+from irc_data.api.audit import log_admin_action
 
 from irc_data.api.deps import get_db
 from irc_data.api.routers.admin import _verify_admin
@@ -172,6 +174,7 @@ async def pause_scraper(
     slug: str,
     engine: Engine = Depends(get_db),
     authorization: str = Header(None),
+    caller: CallerIdentity | None = Depends(get_optional_identity),
 ):
     """Pause the source's schedule — flips Temporal **and** the mirror."""
     _verify_admin(authorization)
@@ -179,13 +182,21 @@ async def pause_scraper(
     from irc_data.temporal.ledger import activities as ledger_activities
 
     try:
-        return await _invoke_control_activity(
+        res = await _invoke_control_activity(
             ledger_activities.set_schedule_paused, slug, True
         )
+        who = caller.email if caller and caller.email else "admin"
+        import logging
+        logging.getLogger(__name__).warning(f"Pausing {slug} by {who}")
+        log_admin_action(engine, who, "pause", f"scrapers:{slug}", slug, after={"paused": True})
+        logging.getLogger(__name__).warning("Finished log_admin_action")
+        return res
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:  # Temporal unreachable — mirror still flips
         ledger_activities.mirror_paused_state(engine, slug, True)
+        who = caller.email if caller and caller.email else "admin"
+        log_admin_action(engine, who, "pause", f"scrapers:{slug}", slug, after={"paused": True, "note": "temporal_unreachable"})
         raise HTTPException(
             status_code=503,
             detail=f"Temporal unreachable; source_schedule_state mirror paused "
@@ -198,6 +209,7 @@ async def resume_scraper(
     slug: str,
     engine: Engine = Depends(get_db),
     authorization: str = Header(None),
+    caller: CallerIdentity | None = Depends(get_optional_identity),
 ):
     """Resume the source's schedule — flips Temporal **and** the mirror."""
     _verify_admin(authorization)
@@ -205,13 +217,18 @@ async def resume_scraper(
     from irc_data.temporal.ledger import activities as ledger_activities
 
     try:
-        return await _invoke_control_activity(
+        res = await _invoke_control_activity(
             ledger_activities.set_schedule_paused, slug, False
         )
+        who = caller.email if caller and caller.email else "admin"
+        log_admin_action(engine, who, "resume", f"scrapers:{slug}", slug, after={"paused": False})
+        return res
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
         ledger_activities.mirror_paused_state(engine, slug, False)
+        who = caller.email if caller and caller.email else "admin"
+        log_admin_action(engine, who, "resume", f"scrapers:{slug}", slug, after={"paused": False, "note": "temporal_unreachable"})
         raise HTTPException(
             status_code=503,
             detail=f"Temporal unreachable; source_schedule_state mirror resumed "
@@ -224,6 +241,7 @@ async def run_scraper_now(
     slug: str,
     engine: Engine = Depends(get_db),
     authorization: str = Header(None),
+    caller: CallerIdentity | None = Depends(get_optional_identity),
 ):
     """Manually trigger the source's schedule (writes source_runs on run)."""
     _verify_admin(authorization)
@@ -231,9 +249,12 @@ async def run_scraper_now(
     from irc_data.temporal.ledger import activities as ledger_activities
 
     try:
-        return await _invoke_control_activity(
+        res = await _invoke_control_activity(
             ledger_activities.trigger_source_run, slug
         )
+        who = caller.email if caller and caller.email else "admin"
+        log_admin_action(engine, who, "run", f"scrapers:{slug}", slug)
+        return res
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:

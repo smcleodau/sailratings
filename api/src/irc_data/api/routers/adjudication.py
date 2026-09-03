@@ -38,6 +38,10 @@ from pydantic import BaseModel, Field
 from irc_data.api.routers.admin import _verify_admin
 from irc_data.matching import adjudication as adj
 
+from irc_data.api.deps import get_optional_identity, CallerIdentity, get_db
+from irc_data.api.audit import log_admin_action
+from sqlalchemy.engine import Engine
+from fastapi import Depends
 router = APIRouter(prefix="/admin/adjudication", tags=["Admin"])
 
 # Process-level queue.  The AdjudicationStore serialisation boundary
@@ -184,7 +188,12 @@ async def enqueue_candidate(body: ScoredCandidateIn, authorization: str = Header
 
 
 @router.post("/decide")
-async def decide(body: DecisionIn, authorization: str = Header(None)):
+async def decide(
+    body: DecisionIn,
+    authorization: str = Header(None),
+    caller: CallerIdentity | None = Depends(get_optional_identity),
+    engine: Engine = Depends(get_db),
+):
     """Write a decision through the shared DecisionRequestV1 contract.
 
     High-impact merges return ``status=pending_second_review`` on the
@@ -200,6 +209,8 @@ async def decide(body: DecisionIn, authorization: str = Header(None)):
             rationale=body.rationale,
         )
         record = queue.decide(request)
+        who = caller.email if caller and caller.email else "admin"
+        log_admin_action(engine, who, "decide", "adjudication", body.case_id, after={"decision": body.decision, "rationale": body.rationale})
     except adj.CaseNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except adj.DoubleReviewError as exc:
@@ -212,7 +223,12 @@ async def decide(body: DecisionIn, authorization: str = Header(None)):
 
 
 @router.post("/reverse")
-async def reverse(body: ReverseIn, authorization: str = Header(None)):
+async def reverse(
+    body: ReverseIn,
+    authorization: str = Header(None),
+    caller: CallerIdentity | None = Depends(get_optional_identity),
+    engine: Engine = Depends(get_db),
+):
     """Undo an applied resolution and requeue the case."""
     _verify_admin(authorization)
     queue = get_queue()
@@ -220,6 +236,8 @@ async def reverse(body: ReverseIn, authorization: str = Header(None)):
         record = queue.reverse_resolution(
             body.resolution_id, decided_by=body.decided_by, rationale=body.rationale
         )
+        who = caller.email if caller and caller.email else "admin"
+        log_admin_action(engine, who, "reverse", "adjudication", body.resolution_id, after={"rationale": body.rationale})
     except adj.CaseNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except adj.InvalidTransitionError as exc:
