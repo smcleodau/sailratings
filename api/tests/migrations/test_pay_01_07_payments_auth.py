@@ -26,15 +26,15 @@ from sqlalchemy.exc import IntegrityError
 
 from irc_data.db import migration_verify as mv
 
-PAY_REVISION = "0034"  # 0034_admin_customers_zone (canonical head)
-PAY_PARENT = "0033"  # parent of the canonical head (0034)
+PAY_REVISION = "0035"  # 0035_account_settings (canonical head; AUTH-01-03)
+PAY_PARENT = "0034"  # parent of the canonical head (0035)
 
 EXPECTED_TABLES = {"users", "subscriptions", "stripe_events", "boat_claims"}
 
 
 @pytest.fixture()
 def pay_db(admin_url):
-    """Throwaway database migrated to the canonical head (0034)."""
+    """Throwaway database migrated to the canonical head (0035)."""
     url = mv.create_temp_database(admin_url, prefix="pay07_test")
     try:
         mv.upgrade(url, "head")
@@ -302,7 +302,9 @@ def test_downgrade_minus_one_round_trip(admin_url):
                     text("SELECT viewname FROM pg_views WHERE schemaname='public'")
                 )
             }
-            assert "v_admin_users" not in views
+            # v_admin_users is owned by 0027/0034 — unwinding only 0035
+            # (AUTH-01-03) leaves it in place.
+            assert "v_admin_users" in views
             orders_cols = {
                 r[0]
                 for r in conn.execute(
@@ -312,16 +314,19 @@ def test_downgrade_minus_one_round_trip(admin_url):
                     )
                 )
             }
-            # `downgrade -1` now unwinds 0034 -> 0033, not 0027 -> 0026.
-            # 0034 owns only v_admin_users and boat_claims; users,
-            # subscriptions, stripe_events and the orders linkage columns
-            # belong to 0027 and must survive (its downgrade says so
-            # explicitly: "leave them in place").
+            # `downgrade -1` now unwinds 0035 -> 0034 (AUTH-01-03): it drops
+            # only user_settings + the deletion-audit columns. The
+            # v_admin_users view, boat_claims, users, subscriptions,
+            # stripe_events and the orders linkage columns all belong to
+            # earlier revisions and must survive.
             assert "user_id" in orders_cols
             assert "stripe_payment_status" in orders_cols
         remaining = _table_names(engine)
-        assert "boat_claims" not in remaining
-        assert {"users", "subscriptions", "stripe_events"} <= remaining
+        assert "user_settings" not in remaining
+        assert {"users", "subscriptions", "stripe_events", "boat_claims"} <= remaining
+        # v_admin_users (owned by 0027/0034) still answers after the unwind.
+        with engine.connect() as conn:
+            conn.execute(text("SELECT * FROM v_admin_users")).fetchall()
         engine.dispose()
 
         # and re-upgrading restores the schema (downgrade is non-destructive)

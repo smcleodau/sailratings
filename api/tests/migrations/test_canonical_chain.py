@@ -30,8 +30,9 @@ def test_single_head():
     heads = script.get_heads()
     # PAY-01-07 linearised the canonical chain; PAY-01-08 extended it with
     # ``0033`` (orders.stripe_customer_id); PAY-01-10 extended it with
-    # ``0034`` (admin customers zone). The only head is ``0034``.
-    assert set(heads) == {"0034"}, f"unexpected migration heads: {heads}"
+    # ``0034`` (admin customers zone); AUTH-01-03 extended it with ``0035``
+    # (user_settings + deletion audit columns). The only head is ``0035``.
+    assert set(heads) == {"0035"}, f"unexpected migration heads: {heads}"
 
 
 def test_no_duplicate_revision_ids():
@@ -74,12 +75,12 @@ def test_chain_contains_canonical_order():
     # base must be first and the chain must converge on the single canonical
     # head (PAY-01-07 payments/auth revision).
     assert order[0] == "0001"
-    assert order[-1] == "0034", f"unexpected chain tail: {order[-1]}"
+    assert order[-1] == "0035", f"unexpected chain tail: {order[-1]}"
     # the previous branch point feeds the 0023 series and converges to head
     assert "aa0f8e0c178b" in order
     assert order.index("aa0f8e0c178b") < order.index("0023")
-    # canonical PAY/DP tail: fact_assertions -> policy stamp -> payments/auth -> stripe_customer_id -> admin_customers
-    assert order.index("0025") < order.index("0026") < order.index("0027") < order.index("0033") < order.index("0034")
+    # canonical PAY/DP tail: fact_assertions -> policy stamp -> payments/auth -> stripe_customer_id -> admin_customers -> account settings
+    assert order.index("0025") < order.index("0026") < order.index("0027") < order.index("0033") < order.index("0034") < order.index("0035")
 
 
 def test_head_matches_models_metadata_scratch_build():

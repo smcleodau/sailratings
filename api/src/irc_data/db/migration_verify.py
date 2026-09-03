@@ -75,7 +75,7 @@ PREVIOUS_SUPPORTED_REVISION = "0021"
 #
 # These were pinned at "0027" long after the chain grew to 0034, so the
 # rollback/convergence machinery targeted a seven-revision-stale head.
-CANONICAL_HEAD = "0034"
+CANONICAL_HEAD = "0035"
 # The revision whose downgrade/upgrade pair is the tested rollback / restore
 # strategy (PAY-01-07: additive tables + views; rollback drops them). This is
 # deliberately NOT the head — it names the DP-03-05 rollback drill, and
