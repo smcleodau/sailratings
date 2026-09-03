@@ -30,8 +30,9 @@ def test_single_head():
     heads = script.get_heads()
     # PAY-01-07 linearised the canonical chain; PAY-01-08 extended it with
     # ``0033`` (orders.stripe_customer_id); PAY-01-10 extended it with
-    # ``0034`` (admin customers zone); AUTH-01-03 extended it with ``0035``
-    # (user_settings + deletion audit columns). The only head is ``0035``.
+    # ``0034`` (admin customers zone); 0035 reconciles the OPS-01/OPS-02
+    # infra + AUTH-01-03 objects that had been applied live outside any
+    # migration that ever merged into develop. The only head is ``0035``.
     assert set(heads) == {"0035"}, f"unexpected migration heads: {heads}"
 
 

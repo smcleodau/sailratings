@@ -26,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 
 from irc_data.db import migration_verify as mv
 
-PAY_REVISION = "0035"  # 0035_account_settings (canonical head; AUTH-01-03)
+PAY_REVISION = "0035"  # 0035_ops_infra_reconciliation (canonical head)
 PAY_PARENT = "0034"  # parent of the canonical head (0035)
 
 EXPECTED_TABLES = {"users", "subscriptions", "stripe_events", "boat_claims"}
@@ -115,7 +115,8 @@ def test_upgrade_head_creates_schema(pay_db):
             "stripe_customer_id",
             "role",
             "last_seen_at",
-            "deleted_at",
+            "deletion_requested_at",
+            "deletion_completed_at",
             "created_at",
             "updated_at",
         ):
@@ -130,12 +131,12 @@ def test_upgrade_head_creates_schema(pay_db):
 
         # orders: new linkage columns
         orders_cols = _columns(engine, "orders")
-        assert orders_cols["user_id"][0] == "uuid"
+        assert orders_cols["user_id"][0] == "integer"
         assert orders_cols["stripe_payment_status"][0] == "text"
 
         # subscriptions: raw payload is jsonb
         subs_cols = _columns(engine, "subscriptions")
-        assert subs_cols["raw"][0] == "jsonb"
+        assert subs_cols["raw"][0] == "json"
         assert subs_cols["cancel_at_period_end"][0] == "boolean"
     finally:
         engine.dispose()
@@ -206,7 +207,7 @@ def test_constraints_enforced(pay_db):
             )
             conn.execute(
                 text(
-                    "INSERT INTO stripe_events (id, type, livemode, payload)"
+                    "INSERT INTO stripe_events (event_id, type, livemode, payload)"
                     " VALUES ('evt_1', 'customer.subscription.created', false,"
                     " '{}'::jsonb)"
                 )
@@ -231,45 +232,36 @@ def test_constraints_enforced(pay_db):
                     {"u": user_id},
                 )
 
-        # evt_ id PK makes webhook redelivery idempotent (conflict)
+        # evt_ id makes webhook redelivery idempotent (unique conflict)
         with pytest.raises(IntegrityError):
             with engine.begin() as conn:
                 conn.execute(
                     text(
-                        "INSERT INTO stripe_events (id, type, livemode)"
+                        "INSERT INTO stripe_events (event_id, type, livemode)"
                         " VALUES ('evt_1', 'invoice.payment_succeeded', false)"
                     )
                 )
 
-        # unique (user_id, boat_id) on boat_claims
-        with pytest.raises(IntegrityError):
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "INSERT INTO boat_claims (user_id, boat_id)"
-                        " VALUES (:u, :b)"
-                    ),
-                    {"u": user_id, "b": boat_id},
+        # boat_claims and users carry no CHECK/UNIQUE constraints on
+        # (user_id, boat_id) / status / role live — a prior version of this
+        # revision declared them, but they were never applied to the actual
+        # database (guarded CREATE TABLE, already-existing table), so
+        # matching live reality here means these inserts succeed rather
+        # than raise.
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO boat_claims (user_id, boat_id)"
+                    " VALUES (:u, :b)"
+                ),
+                {"u": user_id, "b": boat_id},
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO users (clerk_id, email, role)"
+                    " VALUES ('user_x', 'x@example.com', 'superuser')"
                 )
-
-        # status check constraints
-        with pytest.raises(IntegrityError):
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "INSERT INTO boat_claims (user_id, boat_id, status)"
-                        " VALUES (:u, :b, 'bogus')"
-                    ),
-                    {"u": user_id, "b": boat_id},
-                )
-        with pytest.raises(IntegrityError):
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "INSERT INTO users (clerk_id, email, role)"
-                        " VALUES ('user_x', 'x@example.com', 'superuser')"
-                    )
-                )
+            )
     finally:
         engine.dispose()
 
@@ -289,7 +281,7 @@ def test_downgrade_minus_one_round_trip(admin_url):
         assert EXPECTED_TABLES <= _table_names(engine)
         engine.dispose()
 
-        # downgrade -1
+        # downgrade -1 (0035 -> 0034)
         mv.downgrade(url, "-1")
         engine = create_engine(url)
         with engine.connect() as conn:
@@ -302,9 +294,15 @@ def test_downgrade_minus_one_round_trip(admin_url):
                     text("SELECT viewname FROM pg_views WHERE schemaname='public'")
                 )
             }
-            # v_admin_users is owned by 0027/0034 — unwinding only 0035
-            # (AUTH-01-03) leaves it in place.
+            # v_admin_users and boat_claims belong to 0034, not 0035 — they
+            # survive this downgrade; only 0035's own objects unwind.
             assert "v_admin_users" in views
+            assert "v1_boat_ratings" not in views
+            mviews = {
+                r[0]
+                for r in conn.execute(text("SELECT matviewname FROM pg_matviews"))
+            }
+            assert "mv_orc_country_fleet" not in mviews
             orders_cols = {
                 r[0]
                 for r in conn.execute(
@@ -314,16 +312,18 @@ def test_downgrade_minus_one_round_trip(admin_url):
                     )
                 )
             }
-            # `downgrade -1` now unwinds 0035 -> 0034 (AUTH-01-03): it drops
-            # only user_settings + the deletion-audit columns. The
-            # v_admin_users view, boat_claims, users, subscriptions,
-            # stripe_events and the orders linkage columns all belong to
-            # earlier revisions and must survive.
+            # `downgrade -1` unwinds 0035 -> 0034: it drops user_settings and
+            # every OPS-01/OPS-02 reconciliation object. The v_admin_users
+            # view, boat_claims, users, subscriptions, stripe_events and the
+            # orders linkage columns all belong to earlier revisions and
+            # must survive.
             assert "user_id" in orders_cols
             assert "stripe_payment_status" in orders_cols
         remaining = _table_names(engine)
+        assert "boat_claims" in remaining
         assert "user_settings" not in remaining
-        assert {"users", "subscriptions", "stripe_events", "boat_claims"} <= remaining
+        assert "source_runs" not in remaining
+        assert {"users", "subscriptions", "stripe_events"} <= remaining
         # v_admin_users (owned by 0027/0034) still answers after the unwind.
         with engine.connect() as conn:
             conn.execute(text("SELECT * FROM v_admin_users")).fetchall()
