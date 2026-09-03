@@ -84,6 +84,72 @@ def get_fleet_drift(
 
 
 # ---------------------------------------------------------------------------
+# SM-01-04: Rule / formula drift analysis (RuleDriftV1)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/rule-drift")
+def get_rule_drift(
+    design: str | None = Query(None, description="Restrict to one design class"),
+    year_from: str | None = Query(None, description="First rating cycle year, e.g. 2022"),
+    year_to: str | None = Query(None, description="Last rating cycle year, e.g. 2026"),
+    engine: Engine = Depends(get_db),
+):
+    """RuleDriftV1 — fleet-wide or per-class rule/formula drift.
+
+    Stable-certificate cohorts (measurements unchanged) across rating cycles
+    yield mean TCC drift per class and fleet-wide, with t-test/Wilcoxon
+    p-values, per-lever attribution ('taxed more' / 'eased' / 'stable') and
+    per-boat 'rule movement vs boat movement' decomposition.
+    """
+    from irc_data.analysis.rule_drift import analyze_rule_drift
+
+    result = analyze_rule_drift(
+        engine, design=design, year_from=year_from, year_to=year_to
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="No rule drift data available")
+
+    return result.to_dict()
+
+
+@router.get("/designs/{design_name}/rule-drift-v1")
+def get_design_rule_drift_v1(
+    design_name: str,
+    engine: Engine = Depends(get_db),
+):
+    """RuleDriftV1 restricted to a single design class."""
+    from irc_data.analysis.rule_drift import get_class_rule_drift
+
+    result = get_class_rule_drift(engine, design_name)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No rule drift data available for design '{design_name}'",
+        )
+
+    return result
+
+
+@router.get("/boats/{boat_id}/rule-drift")
+def get_boat_rule_drift(
+    boat_id: int,
+    engine: Engine = Depends(get_db),
+):
+    """Per-boat 'rule movement vs boat movement' decomposition history."""
+    from irc_data.analysis.rule_drift import get_boat_rule_drift
+
+    result = get_boat_rule_drift(engine, boat_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No rule drift decomposition available for boat {boat_id}",
+        )
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Engine 3: Performance
 # ---------------------------------------------------------------------------
 
