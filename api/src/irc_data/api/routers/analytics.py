@@ -209,6 +209,105 @@ def compare_designs_endpoint(
 
 
 # ---------------------------------------------------------------------------
+# SM-01-02: Class regression engine (IRC + ORC)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/class-regression/{design_name}")
+def get_class_regression(
+    design_name: str,
+    system: str = Query("irc", description="Rating system: irc | orc"),
+    target: str | None = Query(
+        None,
+        description="ORC target: gph | triple_low | triple_med | triple_high "
+        "(IRC is always tcc)",
+    ),
+    dataset_version: str | None = Query(
+        None, description="Pin to a promoted dataset version for reproducibility"
+    ),
+    engine: Engine = Depends(get_db),
+):
+    """ClassRegressionV1 — 'what the data shows' for one class + system.
+
+    Standardised β, R², N, class mean and smart-boat cohort mean per
+    lever, plus the 'where the points hide' per-boat teaser.  IRC and ORC
+    are fitted and reported separately — never pooled.  Classes below the
+    publish thresholds are withheld.
+    """
+    from irc_data.analysis.class_regression import (
+        WithheldClassResult,
+        run_class_regression,
+    )
+
+    try:
+        result = run_class_regression(
+            engine, design_name, system, target, dataset_version=dataset_version
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    out = result.to_dict()
+    if isinstance(result, WithheldClassResult):
+        # Withheld classes are still a valid 200 payload — the flag tells
+        # the consumer why no fit is shown.
+        return out
+    return out
+
+
+@router.get("/class-regression/{design_name}/all-targets")
+def get_class_regression_all_targets(
+    design_name: str,
+    system: str = Query("irc", description="Rating system: irc | orc"),
+    dataset_version: str | None = Query(None),
+    engine: Engine = Depends(get_db),
+):
+    """IRC → one TCC fit.  ORC → GPH plus each triple-number target."""
+    from irc_data.analysis.class_regression import run_class_all_targets
+
+    try:
+        results = run_class_all_targets(
+            engine, design_name, system, dataset_version=dataset_version
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "design": design_name,
+        "system": system,
+        "results": [r.to_dict() for r in results],
+    }
+
+
+@router.get("/boats/{boat_id}/class-position")
+def get_boat_class_position_endpoint(
+    boat_id: int,
+    system: str = Query("irc", description="Rating system: irc | orc"),
+    target: str | None = Query(None),
+    dataset_version: str | None = Query(None),
+    engine: Engine = Depends(get_db),
+):
+    """BoatClassPositionV1 — 'where the points hide' for one boat.
+
+    The boat's position vs its class mean and smart-boat cohort for the
+    chosen rating system.  Dual-rated boats resolve both systems — call
+    once per system.
+    """
+    from irc_data.analysis.class_regression import get_boat_class_position
+
+    try:
+        result = get_boat_class_position(
+            engine, boat_id, system, target, dataset_version=dataset_version
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Boat {boat_id} not found or no class regression available",
+        )
+    return result
+
+
+# ---------------------------------------------------------------------------
 # SM-01-06: Rivals head-to-head / Design comparator / Fleet intelligence
 # ---------------------------------------------------------------------------
 
