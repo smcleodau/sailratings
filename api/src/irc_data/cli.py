@@ -1393,6 +1393,59 @@ def backfill_irc_certs(ctx, tcc_dir, strategy, no_resume, limit):
     )
 
 
+@cli.command(name="history-reconstruction")
+@click.option("--dry-run", is_flag=True, help="report only; no DB writes / downloads")
+@click.option("--skip-harvest", is_flag=True, help="skip Phase A (wayback harvest)")
+@click.option("--skip-import", is_flag=True, help="skip Phase B (tcc_snapshots import)")
+@click.option("--skip-backfill", is_flag=True, help="skip Phase C (cert PDF backfill)")
+@click.option("--backfill-limit", type=int, default=None, help="cap Phase C probes")
+@click.option("--progress-every", type=int, default=100, show_default=True,
+              help="admin_metrics progress cadence during Phase C")
+@click.option("--no-resume", is_flag=True, help="ignore .irc_backfill_state.json")
+@click.option("--start-year", type=int, default=2010, show_default=True)
+@click.option("--end-year", type=int, default=2025, show_default=True)
+@click.option("--max-per-pattern", type=int, default=None,
+              help="smoke-test cap per CDX pattern")
+@click.option("--tcc-dir", default=None, help="override harvested-CSV dir")
+@click.pass_context
+def history_reconstruction(ctx, dry_run, skip_harvest, skip_import, skip_backfill,
+                           backfill_limit, progress_every, no_resume,
+                           start_year, end_year, max_per_pattern, tcc_dir):
+    """OPS-02-12 — IRC history reconstruction at scale.
+
+    Orchestrates the Wayback TCC harvest + historical TCC import +
+    prioritized irc_backfill, recording progress in admin_metrics and the
+    acceptance KPI (>=60% of 24-month racers with >=3y TCC history)
+    before/after the run.
+    """
+    import argparse
+
+    from scripts.ops_02_12_history_reconstruction import _print, run
+
+    ns = argparse.Namespace(
+        dry_run=dry_run,
+        skip_harvest=skip_harvest,
+        skip_import=skip_import,
+        skip_backfill=skip_backfill,
+        backfill_limit=backfill_limit,
+        progress_every=progress_every,
+        no_resume=no_resume,
+        start_year=start_year,
+        end_year=end_year,
+        max_per_pattern=max_per_pattern,
+        tcc_dir=tcc_dir,
+    )
+    report = run(ctx.obj["engine"], ns)
+    _print(report)
+    kpi = report["kpi_after"]
+    colour = "green" if kpi["meets_acceptance"] else "yellow"
+    console.print(
+        f"[{colour}]Acceptance KPI: {kpi['with_3y_span']}/{kpi['racers']} "
+        f"24-month racers have >=3y TCC history "
+        f"({100 * kpi['pct_span']:.1f}%; threshold 60%).[/{colour}]"
+    )
+
+
 @scrape.command(name="cert-probe")
 @click.option("--design", "-d", default="Sunfast 3300", help="Boat design to probe")
 @click.option("--range", "scan_range", type=int, default=5000, help="How far back to scan")
