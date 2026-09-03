@@ -32,10 +32,17 @@ interface WindowStats {
   domains: number;
 }
 
+interface DailyCapState {
+  daily_credit_cap: number | null;
+  used_today: number | null;
+  daily_capped: boolean;
+}
+
 interface SummaryPayload {
   as_of: string;
   remaining: { remaining_credits: number; plan_credits: number | null } | null;
   windows: Record<string, WindowStats>;
+  daily?: DailyCapState;
 }
 
 interface RecentCall {
@@ -407,6 +414,68 @@ export default function FirecrawlPage() {
               Credit balance unavailable. Check that FIRECRAWL_API_KEY is set on
               the API process.
             </p>
+          </div>
+        )}
+
+        {/* Daily hard-stop banner (OPS-02-06 / AD-01-08) */}
+        {summary?.daily && summary.daily.daily_credit_cap != null && (
+          <div
+            className={`border px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px] ${
+              summary.daily.daily_capped
+                ? "border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5"
+                : "border-[var(--sr-link)]/12 bg-white"
+            } shadow-sm`}
+          >
+            {summary.daily.daily_capped ? (
+              <AlertTriangle
+                size={16}
+                className="text-[var(--sr-action-pressed)] flex-shrink-0 mt-0.5"
+              />
+            ) : (
+              <CheckCircle2
+                size={16}
+                className="text-[var(--sr-status-success)] flex-shrink-0 mt-0.5"
+              />
+            )}
+            <div className="flex-1">
+              <p
+                className={`text-[13px] font-medium ${
+                  summary.daily.daily_capped
+                    ? "text-[var(--sr-action-pressed)]"
+                    : "text-[var(--sr-text-primary)]"
+                }`}
+              >
+                {summary.daily.daily_capped
+                  ? "Daily credit cap reached — Firecrawl calls are stopped (hard stop)"
+                  : "Daily credit cap"}
+              </p>
+              <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] mt-1 tabular-nums">
+                {summary.daily.used_today ?? 0} / {summary.daily.daily_credit_cap} credits
+                used today (UTC)
+                {summary.daily.daily_capped
+                  ? " · refusing non-manual calls until the day rolls"
+                  : ""}
+              </p>
+              {summary.daily.daily_credit_cap != null &&
+                summary.daily.used_today != null &&
+                summary.daily.daily_credit_cap > 0 && (
+                  <div className="h-1.5 bg-[var(--sr-surface-interactive)] rounded-[2px] overflow-hidden mt-2 max-w-md">
+                    <div
+                      className={`h-full ${
+                        summary.daily.daily_capped
+                          ? "bg-[var(--sr-action-pressed)]"
+                          : "bg-[var(--sr-link)]/60"
+                      }`}
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (summary.daily.used_today / summary.daily.daily_credit_cap) * 100
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                )}
+            </div>
           </div>
         )}
 

@@ -3351,11 +3351,13 @@ def discover_events(ctx, url, seed_url, limit, auto_ingest):
                    "extracted + imported from every reachable sub-URL.")
 @click.option(
     "--source",
-    type=click.Choice(["cowesweek", "sydneyhobart", "rhkyc", "isora",
-                       "sailracehq", "sailwave", "yachtscoring", "rpayc",
-                       "firecrawl"]),
+    type=click.Choice(["cowesweek", "cowesweek-races", "sydneyhobart", "rhkyc",
+                       "isora", "sailracehq", "sailwave", "yachtscoring",
+                       "rpayc", "firecrawl"]),
     required=True,
-    help="Value written to race_results.source.",
+    help="Value written to race_results.source. 'cowesweek-races' uses the "
+         "per-race expander (per-race TCCs) but records rows under the "
+         "canonical 'cowesweek' source.",
 )
 @click.option("--max-pages", type=int, default=20,
               help="Cap on how many mapped URLs to crawl per run.")
@@ -3386,9 +3388,16 @@ def discover_and_ingest(ctx, seed_url, source, max_pages, tag_as, year, mode):
     """
     from irc_data.discovery.orchestrator import seed_crawl_and_ingest
 
+    # cowesweek-races is an expansion *mode*, not a distinct data source:
+    # rows are still recorded under the canonical 'cowesweek' source slug.
+    record_source = "cowesweek" if source == "cowesweek-races" else source
+    # The per-race expander implies per-source-expand mode.
+    if source == "cowesweek-races" and mode == "map-site":
+        mode = "per-source-expand"
+
     engine = ctx.obj["engine"]
     console.print(
-        f"[cyan]discover-and-ingest[/cyan] seed={seed_url} source={source} "
+        f"[cyan]discover-and-ingest[/cyan] seed={seed_url} source={record_source} "
         f"max_pages={max_pages} tag_as={tag_as} mode={mode}"
         + (f" year={year}" if year else "")
     )
@@ -3396,11 +3405,12 @@ def discover_and_ingest(ctx, seed_url, source, max_pages, tag_as, year, mode):
     stats = seed_crawl_and_ingest(
         engine,
         seed_url=seed_url,
-        source=source,
+        source=record_source,
         max_pages=max_pages,
         transport_tag=tag_as,
         year=year,
         mode=mode,
+        expander=source,
     )
     console.print(
         f"[green]urls_mapped={stats['urls_mapped']}[/green]  "
@@ -3535,6 +3545,16 @@ def scrape_watchdog(ctx, cooldown_hours, dry_run):
 from irc_data.diagnostics.scraper_parity import parity_report as _parity_report  # noqa: E402
 
 cli.add_command(_parity_report)
+
+from irc_data.diagnostics.parity_gate import parity_gate as _parity_gate  # noqa: E402
+
+cli.add_command(_parity_gate)
+
+from irc_data.operations.cutover import cutover_status as _cutover_status  # noqa: E402
+from irc_data.operations.cutover import cutover_source as _cutover_source  # noqa: E402
+
+cli.add_command(_cutover_status)
+cli.add_command(_cutover_source)
 
 from irc_data.cli_news_events import register_news_and_events_commands
 register_news_and_events_commands(cli)

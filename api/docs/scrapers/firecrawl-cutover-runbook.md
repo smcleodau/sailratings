@@ -3,6 +3,26 @@
 When a long-tail source meets the quantitative quality gate, this runbook
 documents how to retire the bespoke legacy scraper and run Firecrawl-only.
 
+> **OPS-02-06 update (2026-09-03):** the parity gate and cutover are now
+> automated. Prefer the CLIs over the manual SQL below:
+>
+> - `irc-data parity-gate --source X` — evaluates the OPS-02-06 gate
+>   (14-day window, row capture ≥ 95%, place-1 agreement ≥ 98%, min 5
+>   comparable observations). Exits non-zero on FAIL so it can gate a cron.
+>   Add `--save` to persist a snapshot into `firecrawl_diffs` for the
+>   14-day evidence trail, and `--json` for machine-readable output.
+> - `irc-data cutover-status` — shows, per source, whether the adapter is
+>   the Firecrawl pipeline, whether legacy is paused, and the 14-day
+>   `transport` split (the "rows arrive with transport='firecrawl'" proof).
+> - `irc-data cutover-source X` — performs the cutover **only if the gate
+>   passes**: pauses the legacy adapter, repoints
+>   `data_sources.adapter_class` at the Firecrawl discovery pipeline
+>   (`irc_data.discovery.orchestrator.seed_crawl_and_ingest`), and writes an
+>   `ingest_events` audit row. `--dry-run` previews; `--force` overrides a
+>   failing gate (audited).
+>
+> The manual procedure below remains as the underlying reference.
+
 ---
 
 ## Cutover Quality Gate
@@ -16,6 +36,11 @@ A source is ready to cutover when, across the most recent 14-day window:
 | P10 recall (10th-percentile) | ≥ 0.75 |
 
 Pages where the extractor returns `_error` count as recall = 0.
+
+The OPS-02-06 automated gate (`parity-gate`) adds the parallel-run
+comparison: over the same 14-day window, Firecrawl row capture
+(`transport='firecrawl'` / `transport='legacy'` rows) must be ≥ 0.95 and
+place-1 (winner) agreement must be ≥ 0.98.
 
 **Gate query:**
 

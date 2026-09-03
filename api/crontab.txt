@@ -29,6 +29,9 @@ OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --en
 30 1 * * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape raw-capture --source sailwave" >> $LOG_DIR/raw_sailwave_$(date +\%F).log 2>&1
 
 # Approved sailing news feeds (RSS/Atom) at 02:00 UTC
+# OPS-02-06: news moved off Firecrawl. sailingscuttlebutt + all RSS-capable
+# feeds are captured here via plain HTTP (zero Firecrawl credits on news
+# domains). `irc-data scrape-news` runs the same feeds + Gemini mention parse.
 0 2 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape raw-capture --source sailing-news" >> $LOG_DIR/raw_news_$(date +\%F).log 2>&1
 
 # === DP-00-03: Nightly raw capture — Yacht Scoring + Manage2Sail (raw archives) ===

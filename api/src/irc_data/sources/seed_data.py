@@ -856,13 +856,15 @@ _TIER4: list[DataSourceRecordV1] = [
         identifiers=_ident("News", "Boat"),
         change_detection="etag",
         priority=3,
-        adapter_class="irc_data.scrapers.news.NewsScraper",
+        adapter_class="irc_data.scrapers.raw_capture.capture_news_feeds",
         adapter_status=NOTION_STATUS_TO_ADAPTER_STATUS["Prototyped"],
         legal_status="approved",
         robots_status="allowed",
         licensing="public_domain",
         notes="Notion: Prototyped / Public Domain / Web Scraping / Daily. "
-              "Firecrawl + Gemini extraction; RSS/Atom syndication.",
+              "OPS-02-06: moved off Firecrawl — RSS/Atom raw capture "
+              "(sailingscuttlebutt, SailWeb, Sail-World) + Gemini mention "
+              "extraction. Zero Firecrawl credits on news domains.",
     ),
     # -- Unexplored ----------------------------------------------------------
     DataSourceRecordV1(

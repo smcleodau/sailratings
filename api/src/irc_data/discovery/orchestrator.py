@@ -100,6 +100,7 @@ def seed_crawl_and_ingest(
     transport_tag: str = "firecrawl",
     year: int | None = None,
     mode: str = "map-site",
+    expander: str | None = None,
 ) -> dict[str, int]:
     """Crawl ``seed_url``, extract race results from each sub-URL, import.
 
@@ -109,6 +110,11 @@ def seed_crawl_and_ingest(
     - ``"per-source-expand"``: calls the registered expander for ``source``
       (see ``url_expanders.py``), producing a fixed list of leaf URLs. Faster
       and more reliable for sources with a known per-class URL pattern.
+
+    ``expander`` optionally overrides which expander key is used, decoupled
+    from the recorded ``source`` slug — e.g. ``source='cowesweek'`` with
+    ``expander='cowesweek-races'`` follows the per-race pages (per-race TCCs,
+    OPS-02-06) while still recording rows under ``source='cowesweek'``.
 
     Returns a per-batch stats dict::
 
@@ -135,7 +141,7 @@ def seed_crawl_and_ingest(
     }
 
     if mode == "per-source-expand":
-        urls = expand_for_source(source, seed_url, year)
+        urls = expand_for_source(expander or source, seed_url, year)
     else:
         try:
             urls = map_site(seed_url, limit=max_pages, caller="discover-and-ingest")
