@@ -1,1150 +1,752 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import {
-  SendIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  CheckIcon,
-  XIcon,
-  DatabaseIcon,
-  AlertTriangleIcon,
-  PlusIcon,
-  TrashIcon,
-  PanelLeftIcon,
-} from "@/components/admin/AdminIcons";
+/**
+ * /admin — the Today screen (AD-01-13).
+ *
+ * "What needs a human today, in one call and one screen."  One fetch to
+ * GET /v1/admin/overview renders:
+ *
+ *   - four stat tiles          (attention, new today, dupe clusters, corrections)
+ *   - the Attention list       (server-side attention rules, SPEC-22 §3.1)
+ *   - the Sources table        (register ⋈ schedule state ⋈ ledger, stale pills,
+ *                               per-source 14-day sparkline)
+ *   - runs-per-day sparkline   (60d, zero-run bands in Buoy)
+ *   - boats count + completeness meters
+ */
 
-/* ── Types ────────────────────────────────────────────────────────────── */
+import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  AlertTriangle,
+  Anchor,
+  CheckCircle2,
+  Clock,
+  GitMerge,
+  ListChecks,
+  RefreshCw,
+  Waves,
+} from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
-interface AdminSSEEvent {
-  type: "text" | "query" | "proposed_change" | "done" | "error" | "meta";
-  data:
-    | string
-    | QueryData
-    | ProposedChangeData
-    | MetaData
-    | Record<string, never>;
+/* ── Types (mirror the admin-overview-v1 contract) ─────────────────────── */
+
+interface Last14Day {
+  day: string;
+  runs: number;
+  failed: number;
+  new: number;
 }
 
-interface MetaData {
-  conversation_id: number;
+interface SourceRow {
+  slug: string;
+  display_name: string;
+  cadence: string;
+  enabled: boolean;
+  paused: boolean;
+  schedule_id: string | null;
+  legal_status: string | null;
+  adapter_status: string | null;
+  last_run_at: string | null;
+  last_completed_at: string | null;
+  last_status: string | null;
+  runs_total: number;
+  runs_14d: number;
+  failed_14d: number;
+  stale_days: number | null;
+  budget_hours: number;
+  stale: boolean;
+  last14: Last14Day[];
 }
 
-interface QueryData {
-  sql: string;
-  explanation: string;
-  columns?: string[];
-  rows?: (string | number | boolean | null)[][];
-  total_rows?: number;
-  truncated?: boolean;
-  error?: string;
-}
-
-interface ProposedChangeData {
-  sql: string;
-  explanation: string;
-  affected_rows_estimate: string;
-}
-
-interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  queries?: QueryData[];
-  proposedChanges?: ProposedChangeItem[];
-}
-
-interface ProposedChangeItem {
-  id: string;
-  data: ProposedChangeData;
-  status:
-    | "pending"
-    | "confirmed"
-    | "rejected"
-    | "executing"
-    | "executed"
-    | "error";
-  result?: { status: string; rows_affected: number };
-  error?: string;
-}
-
-interface ConversationListItem {
-  id: number;
-  title: string | null;
-  created_at: string;
-  message_count: number;
-}
-
-/* ── SSE Stream Parser ────────────────────────────────────────────────── */
-
-async function* streamAdminChat(
-  message: string,
-  token: string,
-  conversationId?: number | null
-): AsyncGenerator<AdminSSEEvent, void, unknown> {
-  const body: Record<string, unknown> = { message };
-  if (conversationId) {
-    body.conversation_id = conversationId;
-  }
-
-  const res = await fetch(`${API_BASE}/admin/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
-      throw new Error("Unauthorized. CheckIcon your password.");
-    }
-    throw new Error(`Request failed: ${res.status}`);
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) {
-    throw new Error("No readable stream in response");
-  }
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data:")) continue;
-
-        const jsonStr = trimmed.slice(5).trim();
-        if (!jsonStr || jsonStr === "[DONE]") continue;
-
-        try {
-          const event: AdminSSEEvent = JSON.parse(jsonStr);
-          yield event;
-
-          if (event.type === "done") {
-            return;
-          }
-        } catch {
-          // Skip malformed JSON lines
-        }
-      }
-    }
-
-    // Process remaining buffer
-    if (buffer.trim()) {
-      const trimmed = buffer.trim();
-      if (trimmed.startsWith("data:")) {
-        const jsonStr = trimmed.slice(5).trim();
-        if (jsonStr && jsonStr !== "[DONE]") {
-          try {
-            const event: AdminSSEEvent = JSON.parse(jsonStr);
-            yield event;
-          } catch {
-            // Skip
-          }
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-/* ── API Helpers ──────────────────────────────────────────────────────── */
-
-async function executeChange(
-  sql: string,
-  token: string
-): Promise<{ status: string; rows_affected: number }> {
-  const res = await fetch(`${API_BASE}/admin/execute`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ sql }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Execute failed: ${res.status}`);
-  }
-
-  return res.json();
-}
-
-async function fetchConversations(
-  token: string
-): Promise<ConversationListItem[]> {
-  const res = await fetch(`${API_BASE}/admin/conversations`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`Failed to fetch conversations: ${res.status}`);
-  return res.json();
-}
-
-async function fetchConversation(
-  token: string,
-  id: number
-): Promise<{
-  id: number;
+interface AttentionItem {
+  kind: string;
+  severity: "critical" | "warning" | "info";
+  source: string | null;
   title: string;
-  messages: Array<{
-    id: number;
-    role: string;
-    content: string | null;
-    queries: QueryData[] | null;
-    proposed_changes: ProposedChangeData[] | null;
-    created_at: string;
-  }>;
-}> {
-  const res = await fetch(`${API_BASE}/admin/conversations/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`Failed to fetch conversation: ${res.status}`);
-  return res.json();
+  detail: string;
+  stale_days: number | null;
+  href: string;
 }
 
-async function deleteConversation(
-  token: string,
-  id: number
-): Promise<void> {
-  const res = await fetch(`${API_BASE}/admin/conversations/${id}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`Failed to delete conversation: ${res.status}`);
-}
-
-/* ── Example Prompts ──────────────────────────────────────────────────── */
-
-const EXAMPLE_PROMPTS = [
-  "Show me all twilight race results",
-  "Which boats are racing on non-spinnaker certificates?",
-  "How many Sunfast 3300s do we actually have?",
-  "What race results do we have for SUN FISH?",
-];
-
-/* ── Login Gate ───────────────────────────────────────────────────────── */
-
-function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!password.trim()) {
-      setError("Please enter a password.");
-      return;
-    }
-    setError("");
-    onLogin(password.trim());
+interface Overview {
+  schema_version: string;
+  as_of: string;
+  today: {
+    date: string;
+    runs: number;
+    completed: number;
+    failed: number;
+    found: number;
+    new: number;
+    updated: number;
   };
-
-  return (
-    <div className="flex-1 flex items-center justify-center px-6 bg-[var(--sr-surface-page)]">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="heading-display text-3xl text-[var(--sr-text-primary)] mb-2">
-            Data Admin
-          </h1>
-          <p className="text-[13px] text-[var(--sr-text-label)]">sailratings.com</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            ref={inputRef}
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
-          />
-          {error && <p className="text-[13px] text-[var(--sr-action-pressed)]">{error}</p>}
-          <button
-            type="submit"
-            className="w-full h-12 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
-          >
-            Sign In
-          </button>
-        </form>
-      </div>
-    </div>
-  );
+  overview: {
+    sources_tracked: number;
+    sources_stale: number;
+    sources_failed: number;
+    sources_paused: number;
+    attention_count: number;
+    dupes_pending_clusters: number;
+    corrections_pending: number;
+    boats: number;
+  };
+  sources: SourceRow[];
+  runs_per_day: {
+    days: number;
+    series: { day: string; runs: number; failed: number }[];
+  };
+  dupes: {
+    available: boolean;
+    pending: number;
+    pending_clusters: number;
+    by_tier: Record<string, number>;
+  };
+  corrections: { available: boolean; pending: number };
+  fleet: {
+    available: boolean;
+    boats: number;
+    completeness: Record<string, { count: number; pct: number }>;
+  };
+  attention: AttentionItem[];
 }
 
-/* ── Query Card (Collapsible) ─────────────────────────────────────────── */
+/* ── Formatting helpers ────────────────────────────────────────────────── */
 
-function QueryCard({ query }: { query: QueryData }) {
-  const [expanded, setExpanded] = useState(false);
-  const [showSql, setShowSql] = useState(false);
+function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
-  const hasResults =
-    (query.rows?.length ?? 0) > 0 || (query.total_rows ?? 0) > 0;
-  const summary =
-    query.error !== undefined
-      ? `error: ${query.error}`
-      : query.total_rows !== undefined
-        ? `${query.total_rows} row${query.total_rows === 1 ? "" : "s"}`
-        : "";
 
+
+/* ── Stat tiles ────────────────────────────────────────────────────────── */
+
+function StatTile({
+  label,
+  value,
+  sub,
+  tone,
+  icon,
+  testId,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: string;
+  tone?: "bad" | "warn" | "ok" | "neutral";
+  icon?: React.ReactNode;
+  testId?: string;
+}) {
+  const colour =
+    tone === "bad"
+      ? "text-[var(--sr-action-pressed)]"
+      : tone === "warn"
+        ? "text-[var(--sr-status-warning)]"
+        : tone === "ok"
+          ? "text-[var(--sr-status-success)]"
+          : "text-[var(--sr-text-primary)]";
   return (
-    <div className="my-3 border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm overflow-hidden">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-[var(--sr-surface-interactive)] transition-colors"
-      >
-        <DatabaseIcon
-          size={14}
-          strokeWidth={1.5}
-          className={`flex-shrink-0 ${query.error ? "text-[var(--sr-action-pressed)]" : "text-[var(--sr-link)]"}`}
-        />
-        <span className="text-[13px] text-[var(--sr-text-primary)] flex-1">
-          {query.explanation || query.sql.slice(0, 80)}
-        </span>
-        {summary && (
-          <span className="admin-mono-font text-[10px] text-[var(--sr-text-label)] flex-shrink-0">
-            {summary}
-          </span>
+    <div
+      data-testid={testId}
+      className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-3"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className={`heading-display text-3xl leading-none ${colour}`}>
+          {value}
+        </div>
+        {icon && (
+          <span className="text-[var(--sr-text-label)] mt-0.5">{icon}</span>
         )}
-        {expanded ? (
-          <ChevronDownIcon size={14} className="text-[var(--sr-text-label)] flex-shrink-0" />
-        ) : (
-          <ChevronRightIcon size={14} className="text-[var(--sr-text-label)] flex-shrink-0" />
-        )}
-      </button>
-      {expanded && (
-        <div className="border-t border-[var(--sr-link)]/12">
-          {hasResults && query.columns && query.rows && (
-            <div className="overflow-x-auto max-h-96 overflow-y-auto">
-              <table className="w-full admin-mono-font text-[10px]">
-                <thead className="sticky top-0 bg-[var(--sr-surface-interactive)]/95 backdrop-blur z-10">
-                  <tr>
-                    {query.columns.map((c) => (
-                      <th
-                        key={c}
-                        className="text-left px-3 py-2 text-[var(--sr-text-label)] font-medium border-b border-[var(--sr-link)]/12 whitespace-nowrap"
-                      >
-                        {c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {query.rows.map((row, i) => (
-                    <tr
-                      key={i}
-                      className="border-b border-[var(--sr-link)]/5 hover:bg-[var(--sr-surface-interactive)] transition-colors"
-                    >
-                      {row.map((cell, j) => (
-                        <td
-                          key={j}
-                          className="px-3 py-1.5 text-[var(--sr-text-primary)] align-top"
-                          title={cell === null ? "NULL" : String(cell)}
-                        >
-                          {cell === null ? (
-                            <span className="text-[var(--sr-text-label)] italic">NULL</span>
-                          ) : typeof cell === "object" ? (
-                            <span className="text-[var(--sr-link)]">
-                              {JSON.stringify(cell).slice(0, 80)}
-                            </span>
-                          ) : (
-                            String(cell).slice(0, 200)
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {query.truncated && (
-                <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] px-3 py-2 border-t border-[var(--sr-link)]/12">
-                  Showing first {query.rows.length} of {query.total_rows} rows
-                </p>
-              )}
-            </div>
-          )}
-          {!hasResults && !query.error && (
-            <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] px-4 py-3">
-              0 rows
-            </p>
-          )}
-          {query.error && (
-            <p className="admin-mono-font text-[10px] text-[var(--sr-action-pressed)] px-4 py-3 whitespace-pre-wrap">
-              {query.error}
-            </p>
-          )}
-          <div className="px-4 py-2 border-t border-[var(--sr-link)]/12 bg-[var(--sr-surface-interactive)]">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowSql(!showSql);
-              }}
-              className="text-[11px] text-[var(--sr-link)] hover:text-[var(--sr-focus)] transition-colors font-medium"
-            >
-              {showSql ? "Hide SQL" : "Show SQL"}
-            </button>
-            {showSql && (
-              <pre className="admin-mono-font text-[10px] text-[var(--sr-text-primary)] whitespace-pre-wrap break-all mt-2 leading-relaxed bg-[var(--sr-surface-card)] p-3 border border-[var(--sr-link)]/12 rounded-[4px]">
-                {query.sql}
-              </pre>
-            )}
-          </div>
+      </div>
+      <div className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mt-2">
+        {label}
+      </div>
+      {sub && (
+        <div className="admin-mono-font text-[10px] text-[var(--sr-text-tertiary)] mt-1">
+          {sub}
         </div>
       )}
     </div>
   );
 }
 
-/* ── Proposed Change Card ─────────────────────────────────────────────── */
+/* ── Attention list ────────────────────────────────────────────────────── */
 
-function ProposedChangeCard({
-  change,
-  onConfirm,
-  onReject,
-}: {
-  change: ProposedChangeItem;
-  onConfirm: () => void;
-  onReject: () => void;
-}) {
+function SeverityDot({ severity }: { severity: AttentionItem["severity"] }) {
+  const colour =
+    severity === "critical"
+      ? "bg-[var(--sr-action)]"
+      : severity === "warning"
+        ? "bg-[var(--sr-status-warning)]"
+        : "bg-[var(--sr-status-info)]";
   return (
-    <div className="my-3 border border-[var(--sr-status-warning)]/40 bg-[var(--sr-status-warning)]/12 rounded-[10px] overflow-hidden">
-      <div className="px-4 py-3 border-b border-[var(--sr-status-warning)]/20 flex items-center gap-2">
-        <AlertTriangleIcon
-          size={14}
-          strokeWidth={1.5}
-          className="text-[var(--sr-status-warning)] flex-shrink-0"
-        />
-        <span className="admin-mono-font text-[10px] tracking-[0.14em] uppercase text-[var(--sr-status-warning)] font-semibold">
-          Proposed Change
-        </span>
-        {change.data.affected_rows_estimate && (
-          <span className="admin-mono-font text-[10px] text-[var(--sr-status-warning)]/70 ml-auto">
-            ~{change.data.affected_rows_estimate} rows
-          </span>
-        )}
-      </div>
-
-      <div className="px-4 py-3">
-        <p className="text-[13px] text-[var(--sr-text-primary)] mb-3">
-          {change.data.explanation}
-        </p>
-        <pre className="admin-mono-font text-[10px] text-[var(--sr-status-warning)] whitespace-pre-wrap break-all bg-[var(--sr-surface-card)] px-3 py-2 rounded-[4px] leading-relaxed border border-[var(--sr-status-warning)]/20">
-          {change.data.sql}
-        </pre>
-      </div>
-
-      <div className="px-4 py-3 border-t border-[var(--sr-status-warning)]/20">
-        {change.status === "pending" && (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onConfirm}
-              className="flex items-center gap-1.5 px-4 py-2 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[11px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
-            >
-              <CheckIcon size={14} strokeWidth={2} />
-              Confirm
-            </button>
-            <button
-              onClick={onReject}
-              className="flex items-center gap-1.5 px-4 py-2 border border-[var(--sr-link)]/30 text-[var(--sr-link)] text-[11px] hover:bg-[var(--sr-surface-card)] transition-colors rounded-[4px]"
-            >
-              <XIcon size={14} strokeWidth={2} />
-              Reject
-            </button>
-          </div>
-        )}
-        {change.status === "executing" && (
-          <div className="flex items-center gap-2">
-            <div
-              className="w-3.5 h-3.5 border border-[var(--sr-status-warning)]/30 border-t-[var(--sr-status-warning)] animate-spin"
-              style={{ borderRadius: "50%" }}
-            />
-            <span className="text-[11px] text-[var(--sr-status-warning)] italic">
-              Executing...
-            </span>
-          </div>
-        )}
-        {change.status === "executed" && change.result && (
-          <div className="flex items-center gap-2">
-            <CheckIcon size={14} strokeWidth={2} className="text-[var(--sr-status-success)]" />
-            <span className="text-[11px] text-[var(--sr-status-success)] font-medium">
-              Executed successfully. {change.result.rows_affected} row
-              {change.result.rows_affected !== 1 ? "s" : ""} affected.
-            </span>
-          </div>
-        )}
-        {change.status === "rejected" && (
-          <span className="text-[11px] text-[var(--sr-status-warning)]/70 italic">
-            Change rejected.
-          </span>
-        )}
-        {change.status === "error" && (
-          <div className="flex items-center gap-2">
-            <XIcon size={14} strokeWidth={2} className="text-[var(--sr-action-pressed)]" />
-            <span className="text-[11px] text-[var(--sr-action-pressed)] font-medium">
-              {change.error || "Execution failed."}
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
+    <span
+      className={`inline-block w-2 h-2 rounded-full mt-1.5 shrink-0 ${colour}`}
+      aria-hidden
+    />
   );
 }
 
-/* ── Conversation Sidebar ────────────────────────────────────────────── */
-
-function ConversationSidebar({
-  conversations,
-  activeId,
-  onSelect,
-  onNew,
-  onDelete,
-  collapsed,
-  onToggle,
-}: {
-  conversations: ConversationListItem[];
-  activeId: number | null;
-  onSelect: (id: number) => void;
-  onNew: () => void;
-  onDelete: (id: number) => void;
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
-  const formatTime = (iso: string) => {
-    const d = new Date(iso);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return "just now";
-    if (diffMin < 60) return `${diffMin}m ago`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffDay < 7) return `${diffDay}d ago`;
-    return d.toLocaleDateString();
-  };
-
-  if (collapsed) {
+function AttentionList({ items }: { items: AttentionItem[] }) {
+  if (items.length === 0) {
     return (
-      <div className="flex-shrink-0 border-r border-[var(--sr-link)]/12 flex flex-col items-center py-4 w-12 bg-[var(--sr-surface-interactive)]">
-        <button
-          onClick={onToggle}
-          className="text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors mb-4"
-          title="Show conversations"
-        >
-          <PanelLeftIcon size={18} strokeWidth={1.5} />
-        </button>
-        <button
-          onClick={onNew}
-          className="text-[var(--sr-link)] hover:text-[var(--sr-focus)] transition-colors"
-          title="New conversation"
-        >
-          <PlusIcon size={18} strokeWidth={2} />
-        </button>
+      <div
+        data-testid="attention-empty"
+        className="flex items-center gap-2 text-[var(--sr-status-success)] border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-6 justify-center"
+      >
+        <CheckCircle2 size={16} strokeWidth={2} />
+        <span className="text-[13px]">Nothing needs a human today.</span>
       </div>
     );
   }
-
   return (
-    <div className="flex-shrink-0 w-64 border-r border-[var(--sr-link)]/12 flex flex-col bg-[var(--sr-surface-interactive)]">
-      {/* Sidebar header */}
-      <div className="flex items-center justify-between px-3 py-3 border-b border-[var(--sr-link)]/12">
-        <button
-          onClick={onNew}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--sr-surface-card)] text-[var(--sr-link)] text-[13px] font-medium hover:bg-[var(--sr-surface-interactive)] transition-colors rounded-[4px]"
-        >
-          <PlusIcon size={14} strokeWidth={2} />
-          New
-        </button>
-        <button
-          onClick={onToggle}
-          className="text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors"
-          title="Hide sidebar"
-        >
-          <PanelLeftIcon size={18} strokeWidth={1.5} />
-        </button>
-      </div>
-
-      {/* Conversation list */}
-      <div className="flex-1 overflow-y-auto">
-        {conversations.length === 0 && (
-          <p className="text-[13px] text-[var(--sr-text-label)] px-3 py-6 text-center">
-            No conversations yet
-          </p>
-        )}
-        {conversations.map((conv) => (
-          <div
-            key={conv.id}
-            className={`group flex items-start gap-2 px-3 py-2.5 cursor-pointer border-b border-[var(--sr-link)]/5 transition-colors ${
-              conv.id === activeId
-                ? "bg-[var(--sr-surface-card)] border-l-2 border-l-[var(--sr-link)]"
-                : "hover:bg-[var(--sr-surface-interactive)] border-l-2 border-l-transparent"
-            }`}
-            onClick={() => onSelect(conv.id)}
+    <ul data-testid="attention-list" className="space-y-2">
+      {items.map((item, idx) => (
+        <li key={`${item.kind}-${item.source ?? "fleet"}-${idx}`}>
+          <Link
+            href={item.href}
+            className="flex items-start gap-3 border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-3 hover:border-[var(--sr-border-strong)] transition-colors"
           >
-            <div className="flex-1 min-w-0">
-              <p
-                className={`text-[13px] truncate ${
-                  conv.id === activeId ? "text-[var(--sr-text-primary)] font-medium" : "text-[var(--sr-text-tertiary)]"
-                }`}
-              >
-                <span className="admin-mono-font text-[10px] text-[var(--sr-text-label)] mr-1.5">#{conv.id}</span>
-                {conv.title || "Untitled"}
-              </p>
-              <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] mt-0.5">
-                {formatTime(conv.created_at)}
+            <SeverityDot severity={item.severity} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                <span className="text-[13px] text-[var(--sr-text-primary)] font-medium">
+                  {item.title}
+                </span>
+                <span className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-label)]">
+                  {item.kind.replace(/_/g, " ")}
+                </span>
+              </div>
+              <p className="text-[12px] text-[var(--sr-text-tertiary)] mt-0.5">
+                {item.detail}
               </p>
             </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(conv.id);
-              }}
-              className="opacity-0 group-hover:opacity-100 text-[var(--sr-text-label)] hover:text-[var(--sr-action-pressed)] transition-all flex-shrink-0 mt-0.5"
-              title="Delete conversation"
-            >
-              <TrashIcon size={13} strokeWidth={1.5} />
-            </button>
-          </div>
-        ))}
-      </div>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ── Sparklines ────────────────────────────────────────────────────────── */
+
+function RunsSparkline({
+  series,
+  height = 56,
+  testId,
+}: {
+  series: { day: string; runs: number; failed: number }[];
+  height?: number;
+  testId?: string;
+}) {
+  const max = Math.max(1, ...series.map((d) => d.runs));
+  const n = series.length;
+  return (
+    <div
+      data-testid={testId}
+      className="flex items-end gap-px w-full"
+      style={{ height }}
+      role="img"
+      aria-label="Runs per day, trailing 60 days"
+    >
+      {series.map((d) => {
+        const h = d.runs === 0 ? 0 : Math.max(8, (d.runs / max) * 100);
+        // Zero-run bands render in Buoy — a day nothing ran is the signal.
+        const colour =
+          d.runs === 0
+            ? "bg-[var(--sr-buoy)]/25"
+            : d.failed > 0
+              ? "bg-[var(--sr-action-pressed)]"
+              : "bg-[var(--sr-marine-400)]";
+        return (
+          <div
+            key={d.day}
+            title={`${d.day}: ${d.runs} run${d.runs === 1 ? "" : "s"}${
+              d.failed ? `, ${d.failed} failed` : ""
+            }`}
+            className={`flex-1 rounded-[1px] ${colour}`}
+            style={{ height: d.runs === 0 ? "100%" : `${h}%` }}
+          />
+        );
+      })}
+      {n === 0 && (
+        <div className="admin-mono-font text-[10px] text-[var(--sr-text-label)]">
+          no runs recorded
+        </div>
+      )}
     </div>
   );
 }
 
-/* ── Main Admin Chat Page ─────────────────────────────────────────────── */
+function Last14Sparkline({ days }: { days: Last14Day[] }) {
+  return (
+    <div
+      className="flex items-end gap-[2px] h-5 w-[86px]"
+      role="img"
+      aria-label="Last 14 days"
+    >
+      {days.map((d) => {
+        const colour =
+          d.runs === 0
+            ? "bg-[var(--sr-buoy)]/30"
+            : d.failed > 0
+              ? "bg-[var(--sr-action-pressed)]"
+              : d.new > 0
+                ? "bg-[var(--sr-status-success)]"
+                : "bg-[var(--sr-marine-400)]";
+        return (
+          <div
+            key={d.day}
+            title={`${d.day}: ${d.runs} run${d.runs === 1 ? "" : "s"}, ${
+              d.new
+            } new`}
+            className={`flex-1 rounded-[1px] ${colour}`}
+            style={{ height: d.runs === 0 ? "100%" : "70%" }}
+          />
+        );
+      })}
+    </div>
+  );
+}
 
-export default function AdminChatPage() {
+/* ── Sources table ─────────────────────────────────────────────────────── */
+
+function StalePill({ row }: { row: SourceRow }) {
+  if (row.paused) {
+    return (
+      <span className="admin-mono-font text-[9px] uppercase tracking-[0.12em] px-1.5 py-0.5 border rounded-[3px] text-[var(--sr-text-label)] border-[var(--sr-border-subtle)]">
+        paused
+      </span>
+    );
+  }
+  if (row.stale_days == null) {
+    return (
+      <span className="admin-mono-font text-[9px] uppercase tracking-[0.12em] px-1.5 py-0.5 border rounded-[3px] text-[var(--sr-action-pressed)] border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5">
+        never run
+      </span>
+    );
+  }
+  if (row.stale) {
+    return (
+      <span
+        data-testid={`stale-pill-${row.slug}`}
+        className="admin-mono-font text-[9px] uppercase tracking-[0.12em] px-1.5 py-0.5 border rounded-[3px] text-[var(--sr-status-warning)] border-[var(--sr-status-warning)]/40 bg-[var(--sr-status-warning)]/5"
+      >
+        stale {row.stale_days}d
+      </span>
+    );
+  }
+  return (
+    <span className="admin-mono-font text-[9px] uppercase tracking-[0.12em] px-1.5 py-0.5 border rounded-[3px] text-[var(--sr-status-success)] border-[var(--sr-status-success)]/40 bg-[var(--sr-status-success)]/5">
+      fresh
+    </span>
+  );
+}
+
+function StatusCell({ status }: { status: string | null }) {
+  if (!status) return <span className="admin-mono-font text-[11px] text-[var(--sr-text-label)]">—</span>;
+  const colour =
+    status === "completed"
+      ? "text-[var(--sr-status-success)]"
+      : status === "failed"
+        ? "text-[var(--sr-action-pressed)]"
+        : "text-[var(--sr-status-info)]";
+  return (
+    <span className={`admin-mono-font text-[11px] ${colour}`}>{status}</span>
+  );
+}
+
+function SourcesTable({ sources }: { sources: SourceRow[] }) {
+  return (
+    <div
+      data-testid="sources-table"
+      className="border border-[var(--sr-border-subtle)] rounded-[4px] overflow-hidden"
+    >
+      <table className="w-full text-left">
+        <thead>
+          <tr className="bg-[var(--sr-surface-card)] border-b border-[var(--sr-border-subtle)]">
+            {["Source", "Cadence", "Last run", "Status", "Last 14d", "Freshness"].map(
+              (h) => (
+                <th
+                  key={h}
+                  className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium px-4 py-2.5"
+                >
+                  {h}
+                </th>
+              )
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {sources.map((s) => (
+            <tr
+              key={s.slug}
+              data-testid={`source-row-${s.slug}`}
+              className="border-b border-[var(--sr-border-subtle)] last:border-0 bg-[var(--sr-surface-card)] hover:bg-[var(--sr-surface-interactive)]/40 transition-colors"
+            >
+              <td className="px-4 py-2.5">
+                <div className="text-[13px] text-[var(--sr-text-primary)]">
+                  {s.display_name}
+                </div>
+                <div className="admin-mono-font text-[10px] text-[var(--sr-text-label)]">
+                  {s.slug}
+                </div>
+              </td>
+              <td className="px-4 py-2.5 admin-mono-font text-[11px] text-[var(--sr-text-secondary)]">
+                {s.cadence}
+              </td>
+              <td className="px-4 py-2.5 admin-mono-font text-[11px] text-[var(--sr-text-secondary)]">
+                {fmtDateTime(s.last_run_at)}
+              </td>
+              <td className="px-4 py-2.5">
+                <StatusCell status={s.last_status} />
+              </td>
+              <td className="px-4 py-2.5">
+                <Last14Sparkline days={s.last14} />
+              </td>
+              <td className="px-4 py-2.5">
+                <StalePill row={s} />
+              </td>
+            </tr>
+          ))}
+          {sources.length === 0 && (
+            <tr>
+              <td
+                colSpan={6}
+                className="px-4 py-8 text-center admin-mono-font text-[11px] text-[var(--sr-text-label)]"
+              >
+                No sources registered yet.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ── Completeness meters ───────────────────────────────────────────────── */
+
+const METER_LABELS: Record<string, string> = {
+  sail_number: "Sail number",
+  design: "Design",
+  design_canonical: "Design (canonical)",
+  country: "Country",
+  year_built: "Year built",
+};
+
+function CompletenessMeters({
+  completeness,
+}: {
+  completeness: Record<string, { count: number; pct: number }>;
+}) {
+  const keys = Object.keys(METER_LABELS).filter((k) => k in completeness);
+  return (
+    <div data-testid="completeness-meters" className="space-y-2.5">
+      {keys.map((k) => {
+        const m = completeness[k];
+        return (
+          <div key={k}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[12px] text-[var(--sr-text-secondary)]">
+                {METER_LABELS[k]}
+              </span>
+              <span className="admin-mono-font text-[10px] text-[var(--sr-text-label)]">
+                {m.count.toLocaleString()} · {m.pct.toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-[var(--sr-surface-card)] border border-[var(--sr-border-subtle)] overflow-hidden mt-1">
+              <div
+                className={`h-full rounded-full ${
+                  m.pct >= 90
+                    ? "bg-[var(--sr-status-success)]"
+                    : m.pct >= 60
+                      ? "bg-[var(--sr-buoy)]"
+                      : "bg-[var(--sr-action-pressed)]"
+                }`}
+                style={{ width: `${Math.min(100, m.pct)}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Login gate (same convention as the other admin pages) ─────────────── */
+
+function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
+  const [pwInput, setPwInput] = useState("");
+  return (
+    <div className="flex-1 flex items-center justify-center px-6 bg-[var(--sr-surface-page)]">
+      <form
+        className="w-full max-w-sm space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (pwInput.trim()) onLogin(pwInput.trim());
+        }}
+      >
+        <h1 className="heading-display text-2xl text-[var(--sr-text-primary)] text-center mb-6">
+          Today
+        </h1>
+        <input
+          type="password"
+          value={pwInput}
+          onChange={(e) => setPwInput(e.target.value)}
+          placeholder="Admin password"
+          className="w-full h-12 px-4 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-ink)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+        />
+        <button
+          type="submit"
+          className="w-full h-12 bg-[var(--sr-link)] text-white text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
+        >
+          Sign in
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/* ── Page ──────────────────────────────────────────────────────────────── */
+
+export default function AdminTodayPage() {
   const [token, setToken] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [conversationId, setConversationId] = useState<number | null>(null);
-  const [conversations, setConversations] = useState<ConversationListItem[]>(
-    []
-  );
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [data, setData] = useState<Overview | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-
-  // Load token from localStorage or environment on mount
   useEffect(() => {
-    const stored = localStorage.getItem("admin_token") || process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "sailfast2026";
-    if (stored) {
-      localStorage.setItem("admin_token", stored);
-      setToken(stored);
+    const t =
+      localStorage.getItem("admin_token") ||
+      process.env.NEXT_PUBLIC_ADMIN_PASSWORD ||
+      "sailfast2026";
+    if (t) {
+      localStorage.setItem("admin_token", t);
+      setToken(t);
     }
   }, []);
 
-  // Load conversations when token is set
-  useEffect(() => {
+  const fetchOverview = useCallback(async () => {
     if (!token) return;
-    fetchConversations(token)
-      .then(setConversations)
-      .catch(() => {});
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/admin/overview`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) {
+        localStorage.removeItem("admin_token");
+        setToken(null);
+        throw new Error("Session expired");
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setData(await res.json());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
 
-  // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // Focus input after streaming ends
-  useEffect(() => {
-    if (!isStreaming) {
-      inputRef.current?.focus();
-    }
-  }, [isStreaming]);
-
-  const refreshConversations = useCallback(() => {
+    fetchOverview();
     if (!token) return;
-    fetchConversations(token)
-      .then(setConversations)
-      .catch(() => {});
-  }, [token]);
-
-  const handleLogin = useCallback((password: string) => {
-    localStorage.setItem("admin_token", password);
-    setToken(password);
-  }, []);
-
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem("admin_token");
-    setToken(null);
-    setMessages([]);
-    setConversationId(null);
-    setConversations([]);
-  }, []);
-
-  const handleNewConversation = useCallback(() => {
-    setMessages([]);
-    setConversationId(null);
-    inputRef.current?.focus();
-  }, []);
-
-  const handleSelectConversation = useCallback(
-    async (id: number) => {
-      if (!token || id === conversationId) return;
-
-      try {
-        const data = await fetchConversation(token, id);
-        const loaded: ChatMessage[] = data.messages.map((m, idx) => {
-          if (m.role === "user") {
-            return {
-              id: `loaded-user-${m.id}`,
-              role: "user" as const,
-              content: m.content || "",
-            };
-          }
-          return {
-            id: `loaded-assistant-${m.id}`,
-            role: "assistant" as const,
-            content: m.content || "",
-            queries: m.queries || undefined,
-            proposedChanges: m.proposed_changes
-              ? (m.proposed_changes as unknown as Array<Record<string, unknown>>).map(
-                  (c, ci) => ({
-                    id: `loaded-change-${m.id}-${ci}`,
-                    data: {
-                      sql: (c.sql as string) || "",
-                      explanation: (c.explanation as string) || "",
-                      affected_rows_estimate:
-                        (c.affected_rows_estimate as string) || "",
-                    },
-                    status: ((c.status as string) || "pending") as ProposedChangeItem["status"],
-                    result: c.result as
-                      | { status: string; rows_affected: number }
-                      | undefined,
-                  })
-                )
-              : undefined,
-          };
-        });
-
-        setConversationId(id);
-        setMessages(loaded);
-      } catch (err) {
-        console.error("Failed to load conversation:", err);
-      }
-    },
-    [token, conversationId]
-  );
-
-  const handleDeleteConversation = useCallback(
-    async (id: number) => {
-      if (!token) return;
-      try {
-        await deleteConversation(token, id);
-        if (conversationId === id) {
-          setMessages([]);
-          setConversationId(null);
-        }
-        refreshConversations();
-      } catch (err) {
-        console.error("Failed to delete conversation:", err);
-      }
-    },
-    [token, conversationId, refreshConversations]
-  );
-
-  const sendMessage = useCallback(
-    async (text: string) => {
-      if (!text.trim() || !token || isStreaming) return;
-
-      const userMsg: ChatMessage = {
-        id: `user-${Date.now()}`,
-        role: "user",
-        content: text.trim(),
-      };
-
-      const assistantId = `assistant-${Date.now()}`;
-      const assistantMsg: ChatMessage = {
-        id: assistantId,
-        role: "assistant",
-        content: "",
-        queries: [],
-        proposedChanges: [],
-      };
-
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
-      setInput("");
-      setIsStreaming(true);
-
-      try {
-        const stream = streamAdminChat(text.trim(), token, conversationId);
-        for await (const event of stream) {
-          if (event.type === "meta") {
-            const meta = event.data as MetaData;
-            setConversationId(meta.conversation_id);
-          } else if (event.type === "text") {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, content: m.content + (event.data as string) }
-                  : m
-              )
-            );
-          } else if (event.type === "query") {
-            const queryData = event.data as QueryData;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, queries: [...(m.queries || []), queryData] }
-                  : m
-              )
-            );
-          } else if (event.type === "proposed_change") {
-            const changeData = event.data as ProposedChangeData;
-            const changeItem: ProposedChangeItem = {
-              id: `change-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              data: changeData,
-              status: "pending",
-            };
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? {
-                      ...m,
-                      proposedChanges: [
-                        ...(m.proposedChanges || []),
-                        changeItem,
-                      ],
-                    }
-                  : m
-              )
-            );
-          } else if (event.type === "done") {
-            break;
-          } else if (event.type === "error") {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? {
-                      ...m,
-                      content:
-                        m.content +
-                        "\n\n[Error: " +
-                        (event.data as string) +
-                        "]",
-                    }
-                  : m
-              )
-            );
-            break;
-          }
-        }
-      } catch (err) {
-        const errorText =
-          err instanceof Error ? err.message : "Something went wrong.";
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, content: m.content || errorText }
-              : m
-          )
-        );
-
-        // If unauthorized, clear token
-        if (errorText.includes("Unauthorized")) {
-          localStorage.removeItem("admin_token");
-          setToken(null);
-        }
-      } finally {
-        setIsStreaming(false);
-        refreshConversations();
-      }
-    },
-    [token, isStreaming, conversationId, refreshConversations]
-  );
-
-  const handleConfirmChange = useCallback(
-    async (messageId: string, changeId: string) => {
-      if (!token) return;
-
-      // Find the change
-      const msg = messages.find((m) => m.id === messageId);
-      const change = msg?.proposedChanges?.find((c) => c.id === changeId);
-      if (!change) return;
-
-      // Set executing
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? {
-                ...m,
-                proposedChanges: m.proposedChanges?.map((c) =>
-                  c.id === changeId
-                    ? { ...c, status: "executing" as const }
-                    : c
-                ),
-              }
-            : m
-        )
-      );
-
-      try {
-        const result = await executeChange(change.data.sql, token);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId
-              ? {
-                  ...m,
-                  proposedChanges: m.proposedChanges?.map((c) =>
-                    c.id === changeId
-                      ? { ...c, status: "executed" as const, result }
-                      : c
-                  ),
-                }
-              : m
-          )
-        );
-      } catch (err) {
-        const errorText =
-          err instanceof Error ? err.message : "Execution failed.";
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId
-              ? {
-                  ...m,
-                  proposedChanges: m.proposedChanges?.map((c) =>
-                    c.id === changeId
-                      ? { ...c, status: "error" as const, error: errorText }
-                      : c
-                  ),
-                }
-              : m
-          )
-        );
-      }
-    },
-    [token, messages]
-  );
-
-  const handleRejectChange = useCallback(
-    (messageId: string, changeId: string) => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? {
-                ...m,
-                proposedChanges: m.proposedChanges?.map((c) =>
-                  c.id === changeId
-                    ? { ...c, status: "rejected" as const }
-                    : c
-                ),
-              }
-            : m
-        )
-      );
-    },
-    []
-  );
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
-    }
-  };
-
-  // Auto-resize textarea
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    const el = e.target;
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 160) + "px";
-  };
-
-  /* ── Render ─────────────────────────────────────────────────────────── */
-
+    const id = setInterval(fetchOverview, 60000);
+    return () => clearInterval(id);
+  }, [fetchOverview, token]);
 
   if (!token) {
-    return <LoginGate onLogin={handleLogin} />;
+    return (
+      <LoginGate
+        onLogin={(t) => {
+          localStorage.setItem("admin_token", t);
+          setToken(t);
+        }}
+      />
+    );
   }
 
+  const ov = data?.overview;
+  const today = data?.today;
+  const dupes = data?.dupes;
+  const corrections = data?.corrections;
+
   return (
-    <>
-
-      {/* Main content: sidebar + chat */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Conversation sidebar */}
-        <ConversationSidebar
-          conversations={conversations}
-          activeId={conversationId}
-          onSelect={handleSelectConversation}
-          onNew={handleNewConversation}
-          onDelete={handleDeleteConversation}
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        />
-
-        {/* Chat area */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[var(--sr-surface-page)]">
-          {/* Chat Messages */}
-          <div
-            ref={chatContainerRef}
-            className="flex-1 overflow-y-auto px-4 sm:px-6 py-6"
-          >
-            <div className="max-w-3xl mx-auto space-y-4">
-              {/* Empty state with examples */}
-              {messages.length === 0 && (
-                <div className="py-16 text-center">
-                  <DatabaseIcon
-                    size={32}
-                    strokeWidth={1}
-                    className="text-[var(--sr-text-label)]/40 mx-auto mb-6"
-                  />
-                  <h2 className="heading-display text-2xl text-[var(--sr-text-primary)] mb-2">
-                    Ask me about the data
-                  </h2>
-                  <p className="text-[13px] text-[var(--sr-text-tertiary)] mb-10 max-w-md mx-auto">
-                    I can query the database, investigate data quality issues,
-                    and propose fixes. Ask me anything about boats,
-                    certificates, or race results.
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg mx-auto">
-                    {EXAMPLE_PROMPTS.map((prompt) => (
-                      <button
-                        key={prompt}
-                        onClick={() => sendMessage(prompt)}
-                        className="text-left px-4 py-3 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/12 hover:bg-[var(--sr-surface-interactive)] hover:border-[var(--sr-link)]/25 transition-colors rounded-[4px] shadow-sm"
-                      >
-                        <span className="text-[13px] text-[var(--sr-text-primary)]">
-                          {prompt}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Messages */}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[85%] sm:max-w-[75%] ${
-                      msg.role === "user"
-                        ? "bg-[var(--sr-link)]/10 border border-[var(--sr-link)]/20 px-4 py-3"
-                        : "w-full max-w-none sm:max-w-[75%]"
-                    } rounded-[4px]`}
-                  >
-                    {msg.role === "user" ? (
-                      <p className="text-[13px] text-[var(--sr-text-primary)] whitespace-pre-wrap">
-                        {msg.content}
-                      </p>
-                    ) : (
-                      <div>
-                        {/* Queries */}
-                        {msg.queries?.map((q, i) => (
-                          <QueryCard key={`q-${msg.id}-${i}`} query={q} />
-                        ))}
-
-                        {/* Text content */}
-                        {msg.content && (
-                          <div className="text-[13px] text-[var(--sr-text-primary)] whitespace-pre-wrap leading-relaxed px-1 py-1">
-                            {msg.content}
-                            {isStreaming &&
-                              msg.id ===
-                                messages[messages.length - 1]?.id && (
-                                <span className="inline-block w-0.5 h-3.5 bg-[var(--sr-link)] ml-0.5 align-text-bottom streaming-pulse" />
-                              )}
-                          </div>
-                        )}
-
-                        {/* Loading state when nothing rendered yet */}
-                        {isStreaming &&
-                          msg.id === messages[messages.length - 1]?.id &&
-                          !msg.content &&
-                          (!msg.queries || msg.queries.length === 0) && (
-                            <div className="flex items-center gap-2 px-1 py-2">
-                              <div
-                                className="w-3.5 h-3.5 border border-[var(--sr-link)]/20 border-t-[var(--sr-link)] animate-spin"
-                                style={{ borderRadius: "50%" }}
-                              />
-                              <span className="text-[13px] text-[var(--sr-text-label)] italic">
-                                Thinking...
-                              </span>
-                            </div>
-                          )}
-
-                        {/* Proposed changes */}
-                        {msg.proposedChanges?.map((change) => (
-                          <ProposedChangeCard
-                            key={change.id}
-                            change={change}
-                            onConfirm={() =>
-                              handleConfirmChange(msg.id, change.id)
-                            }
-                            onReject={() =>
-                              handleRejectChange(msg.id, change.id)
-                            }
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              <div ref={messagesEndRef} />
-            </div>
+    <div className="flex-1 overflow-y-auto bg-[var(--sr-surface-page)]">
+      <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+        {/* Header */}
+        <div className="flex items-end justify-between gap-6 flex-wrap">
+          <div>
+            <h1 className="heading-display text-2xl text-[var(--sr-text-primary)]">
+              Today
+            </h1>
+            <p className="text-[13px] text-[var(--sr-text-tertiary)] mt-1">
+              What needs a human today — sources, dupes, corrections and
+              fleet completeness in one call. Auto-refreshes every minute.
+            </p>
           </div>
-
-          {/* Input Area */}
-          <div className="flex-shrink-0 border-t border-[var(--sr-link)]/12 px-4 sm:px-6 py-4 bg-[var(--sr-surface-page)]">
-            <div className="max-w-3xl mx-auto">
-              <div className="flex items-end gap-3">
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask about the data..."
-                  disabled={isStreaming}
-                  rows={1}
-                  className="flex-1 min-h-[44px] max-h-[160px] resize-none px-4 py-3 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all disabled:opacity-50 rounded-[4px] shadow-sm"
-                />
-                <button
-                  onClick={() => sendMessage(input)}
-                  disabled={isStreaming || !input.trim()}
-                  className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-[var(--sr-link)] text-[var(--sr-text-primary)] hover:bg-[var(--sr-focus)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed rounded-[4px] shadow-sm"
-                  aria-label="SendIcon message"
-                >
-                  <SendIcon size={16} strokeWidth={2} />
-                </button>
-              </div>
-              <p className="admin-mono-font text-[9px] tracking-[0.16em] uppercase text-[var(--sr-text-label)] mt-3 text-center">
-                Shift+Enter for new line. Changes require confirmation before
-                executing.
-              </p>
-            </div>
+          <div className="flex items-center gap-3">
+            {data && (
+              <span className="admin-mono-font text-[10px] text-[var(--sr-text-label)]">
+                as of {fmtDateTime(data.as_of)}
+              </span>
+            )}
+            <button
+              onClick={fetchOverview}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.14em] text-[var(--sr-text-secondary)] hover:text-[var(--sr-text-primary)] border border-[var(--sr-border-subtle)] rounded-[4px] px-3 py-2 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={12} strokeWidth={2} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </button>
           </div>
         </div>
+
+        {error && (
+          <div className="flex items-center gap-2 border border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5 text-[var(--sr-action-pressed)] rounded-[4px] px-4 py-3 text-[13px]">
+            <AlertTriangle size={14} strokeWidth={2} />
+            {error}
+          </div>
+        )}
+
+        {/* Stat tiles */}
+        <div
+          data-testid="stat-tiles"
+          className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+        >
+          <StatTile
+            testId="tile-attention"
+            label="Needs attention"
+            value={ov?.attention_count ?? "—"}
+            sub={
+              ov
+                ? `${ov.sources_stale} stale · ${ov.sources_failed} failed`
+                : undefined
+            }
+            tone={
+              ov == null
+                ? "neutral"
+                : ov.attention_count === 0
+                  ? "ok"
+                  : "warn"
+            }
+            icon={<AlertTriangle size={16} strokeWidth={1.8} />}
+          />
+          <StatTile
+            testId="tile-new-today"
+            label="New rows today"
+            value={today?.new ?? "—"}
+            sub={
+              today
+                ? `${today.runs} run${today.runs === 1 ? "" : "s"} · ${today.failed} failed`
+                : undefined
+            }
+            tone={today && today.failed > 0 ? "bad" : "neutral"}
+            icon={<Waves size={16} strokeWidth={1.8} />}
+          />
+          <StatTile
+            testId="tile-dupes"
+            label="Dupe clusters pending"
+            value={dupes?.pending_clusters ?? "—"}
+            sub={
+              dupes?.available
+                ? `${dupes.pending} boats · ${Object.entries(dupes.by_tier)
+                    .map(([t, n]) => `${t}:${n}`)
+                    .join(" ")}`
+                : "queue unavailable"
+            }
+            tone={dupes && dupes.pending_clusters > 0 ? "warn" : "ok"}
+            icon={<GitMerge size={16} strokeWidth={1.8} />}
+          />
+          <StatTile
+            testId="tile-corrections"
+            label="Corrections pending"
+            value={corrections?.pending ?? "—"}
+            sub={corrections?.available ? undefined : "queue unavailable"}
+            tone={corrections && corrections.pending > 0 ? "warn" : "ok"}
+            icon={<ListChecks size={16} strokeWidth={1.8} />}
+          />
+        </div>
+
+        {/* Attention */}
+        <section>
+          <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.18em] text-[var(--sr-text-label)] mb-3">
+            Attention
+          </h2>
+          <AttentionList items={data?.attention ?? []} />
+        </section>
+
+        {/* Runs per day */}
+        <section>
+          <div className="flex items-baseline justify-between gap-3 mb-3">
+            <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.18em] text-[var(--sr-text-label)]">
+              Runs per day — trailing {data?.runs_per_day.days ?? 60} days
+            </h2>
+            <span className="admin-mono-font text-[9px] text-[var(--sr-text-label)] inline-flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-[1px] bg-[var(--sr-buoy)]/40" />
+              zero-run band
+            </span>
+          </div>
+          <div className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-4">
+            <RunsSparkline
+              testId="runs-per-day-sparkline"
+              series={data?.runs_per_day.series ?? []}
+            />
+          </div>
+        </section>
+
+        {/* Sources */}
+        <section>
+          <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.18em] text-[var(--sr-text-label)] mb-3">
+            Sources
+          </h2>
+          <SourcesTable sources={data?.sources ?? []} />
+        </section>
+
+        {/* Fleet */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div
+            data-testid="boats-tile"
+            className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-4"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="heading-display text-3xl leading-none text-[var(--sr-text-primary)]">
+                {data?.fleet.boats.toLocaleString() ?? "—"}
+              </div>
+              <span className="text-[var(--sr-text-label)] mt-0.5">
+                <Anchor size={16} strokeWidth={1.8} />
+              </span>
+            </div>
+            <div className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mt-2">
+              Boats in fleet
+            </div>
+            {today && (
+              <div className="admin-mono-font text-[10px] text-[var(--sr-text-tertiary)] mt-1 inline-flex items-center gap-1">
+                <Clock size={10} strokeWidth={2} />
+                {today.found.toLocaleString()} rows seen today
+              </div>
+            )}
+          </div>
+          <div className="md:col-span-2 border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-4">
+            <div className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3">
+              Fleet completeness
+            </div>
+            {data?.fleet.available ? (
+              <CompletenessMeters completeness={data.fleet.completeness} />
+            ) : (
+              <div className="admin-mono-font text-[10px] text-[var(--sr-text-label)]">
+                fleet table unavailable
+              </div>
+            )}
+          </div>
+        </section>
       </div>
-    </>
+    </div>
   );
 }

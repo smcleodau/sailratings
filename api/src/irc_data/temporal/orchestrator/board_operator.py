@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 import os
 import urllib.request
 import json
+import mimetypes
+import uuid
 
 class BoardOperator(ABC):
     @abstractmethod
@@ -13,7 +15,7 @@ class BoardOperator(ABC):
     def append_visual_evidence(self, issue_id: str, image_url: str) -> None:
         """Appends a screenshot/visual asset as evidence to the issue board."""
         pass
-        
+
     @abstractmethod
     def get_issue_content(self, issue_id: str) -> str:
         """Retrieves the full text/content body of the issue."""
@@ -76,7 +78,79 @@ class NotionAdapter(BoardOperator):
             ]
         }
         self._request(f"https://api.notion.com/v1/blocks/{issue_id}/children", method='PATCH', data=data)
-        
+
+    # ------------------------------------------------------------------
+    # File-upload visual evidence (SPEC-21 §4.1)
+    # ------------------------------------------------------------------
+    # Notion's hosted-image path (create file_upload → send bytes → attach
+    # block with type=file_upload) is used when the screenshot lives on the
+    # local filesystem and no public URL is available (the common case for
+    # Lane Worker sandboxes).
+
+    def _create_file_upload(self, filename: str, content_type: str) -> dict:
+        return self._request(
+            "https://api.notion.com/v1/file_uploads",
+            method="POST",
+            data={"filename": filename, "content_type": content_type},
+        )
+
+    def _send_file_upload(self, upload_url: str, file_path: str, content_type: str) -> dict:
+        boundary = f"----boardoperator-{uuid.uuid4().hex}"
+        filename = os.path.basename(file_path)
+        with open(file_path, "rb") as fh:
+            payload = fh.read()
+        body = b"\r\n".join(
+            [
+                f"--{boundary}".encode(),
+                (
+                    f'Content-Disposition: form-data; name="file"; '
+                    f'filename="{filename}"'
+                ).encode(),
+                f"Content-Type: {content_type}".encode(),
+                b"",
+                payload,
+                f"--{boundary}--".encode(),
+                b"",
+            ]
+        )
+        req = urllib.request.Request(
+            upload_url,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": self.headers["Authorization"],
+                "Notion-Version": self.headers["Notion-Version"],
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+        )
+        res = urllib.request.urlopen(req)
+        return json.loads(res.read())
+
+    def append_visual_evidence_file(self, issue_id: str, image_path: str) -> None:
+        """Upload a local image and append it as an image block."""
+        content_type = mimetypes.guess_type(image_path)[0] or "image/png"
+        filename = os.path.basename(image_path)
+        upload = self._create_file_upload(filename, content_type)
+        sent = self._send_file_upload(upload["upload_url"], image_path, content_type)
+        data = {
+            "children": [
+                {
+                    "object": "block",
+                    "type": "image",
+                    "image": {
+                        "type": "file_upload",
+                        "file_upload": {"id": sent["id"]},
+                    },
+                }
+            ]
+        }
+        self._request(
+            f"https://api.notion.com/v1/blocks/{issue_id}/children",
+            method="PATCH",
+            data=data,
+        )
+
+
     def get_issue_content(self, issue_id: str) -> str:
         res = self._request(f"https://api.notion.com/v1/blocks/{issue_id}/children")
         content = ""
