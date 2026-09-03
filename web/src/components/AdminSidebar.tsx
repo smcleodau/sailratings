@@ -44,6 +44,8 @@ const SECTIONS: SidebarSection[] = [
     items: [
       { href: "/admin/data-health", label: "Data health" },
       { href: "/admin/corrections", label: "Corrections" },
+      { href: "/admin/dupes", label: "Duplicates" },
+      { href: "/admin/dupes/history", label: "Merge history" },
       { href: "/admin/identity", label: "Identity" },
       { href: "/admin/tables", label: "Tables" },
     ],
@@ -90,6 +92,11 @@ function isItemActive(pathname: string, href: string): boolean {
       pathname.startsWith("/admin/tables") &&
       pathname !== "/admin/tables/admin_edits"
     );
+  }
+  if (href === "/admin/dupes") {
+    // The queue root highlights on /admin/dupes only; /admin/dupes/history
+    // is its own item (Merge history).
+    return pathname === "/admin/dupes";
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }

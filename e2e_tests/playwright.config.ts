@@ -48,6 +48,10 @@ const API_PY = resolveApiPython();
 
 export default defineConfig({
   testDir: './tests',
+  /* admin-dupes.spec.ts runs under playwright.dupes.config.ts — it needs the
+     AD-01-14 dupes fixture API on :4102, not the PAY-01-10 customers API
+     this config boots on :4101. */
+  testIgnore: 'admin-dupes.spec.ts',
   /* Maximum time one test can run for. */
   timeout: 30 * 1000,
   expect: {
