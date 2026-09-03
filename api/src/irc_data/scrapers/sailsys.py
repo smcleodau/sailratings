@@ -18,6 +18,8 @@ Handicap IDs (from handicappings array):
 """
 
 import asyncio
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -82,6 +84,43 @@ ORCGP_HANDICAP_ID = 4
 # elapsed times in the API response.
 COMPLETED_RACE_STATUSES = {3, 4}
 
+
+def _exc_text(e: BaseException) -> str:
+    """Render an exception as ``Type: message`` — never an empty string.
+
+    Several exception types str() to '' (e.g. ``RuntimeError()``,
+    ``asyncio.CancelledError``), which is how SailSys runs ended up with
+    ``completed_with_errors`` + empty ``error_message`` (OPS-02-02).
+    """
+    text = str(e).strip()
+    return f"{type(e).__name__}: {text}" if text else type(e).__name__
+
+
+@dataclass
+class ClubScrapeResult:
+    """Structured outcome of scraping one club.
+
+    ``errors`` carries per-series/per-race exception text so callers can
+    persist it to ``ingestion_log.error_message`` instead of letting
+    failures die in stdout (OPS-02-02).
+    """
+
+    club_id: int
+    club_name: str
+    results: list[RaceResult] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors
+
+    def error_text(self, max_items: int = 10) -> str:
+        if not self.errors:
+            return ""
+        shown = self.errors[:max_items]
+        suffix = f" (+{len(self.errors) - max_items} more)" if len(self.errors) > max_items else ""
+        return f"{self.club_name}: {len(self.errors)} errors [{'; '.join(shown)}{suffix}]"
+
 # Some clubs (like QCYC) don't expose their series through the public
 # grouping/list endpoint, but individual series + race endpoints work
 # fine when the IDs are known. Maintain known series here so we still
@@ -95,8 +134,14 @@ def _safe_decimal(val) -> Decimal | None:
     if val is None:
         return None
     try:
-        return Decimal(str(val).strip())
-    except (InvalidOperation, ValueError, AttributeError):
+        # str() first: SailSys sometimes returns handicap values as raw
+        # numbers; calling .strip() on a non-str raised AttributeError and
+        # silently dropped whole races (OPS-02-02).
+        s = str(val).strip()
+        if not s:
+            return None
+        return Decimal(s)
+    except (InvalidOperation, ValueError, AttributeError, TypeError):
         return None
 
 
@@ -276,7 +321,10 @@ async def scrape_race_results(
                 corrected = calc.get("correctedTime")
                 placings = calc.get("placings", [])
                 place = placings[0].get("place") if placings else None
-                placing_text = placings[0].get("placingText", "").strip() if placings else ""
+                # placingText can be explicitly null in the payload; `or ""`
+                # guards the .strip() that otherwise AttributeError'd and
+                # silently dropped the whole race (OPS-02-02).
+                placing_text = (placings[0].get("placingText") or "").strip() if placings else ""
 
                 if placing_text and placing_text in {"DNF", "DNC", "DSQ", "OCS", "RET", "DNS", "RAF", "STP"}:
                     status = placing_text
@@ -348,23 +396,20 @@ def _club_name_for_id(club_id: int) -> str:
     return f"Club_{club_id}"
 
 
-async def scrape_club_irc_results(
+async def scrape_club_irc_results_detailed(
     club_id: int = 3,
     max_series: int | None = None,
     since: date | None = None,
-) -> list[RaceResult]:
-    """Scrape all race results for a club via the SailSys REST API.
+) -> ClubScrapeResult:
+    """Scrape all race results for a club, capturing per-series/race errors.
 
-    Discovers series and races, then fetches structured results data
-    including IRC and PHS handicaps, corrected times, and placings.
-
-    Args:
-        club_id: SailSys club ID.
-        max_series: Limit number of series to scrape (for testing).
-        since: Only scrape races after this date (incremental mode).
+    Same discovery + parse logic as before, but every swallowed exception is
+    appended to ``ClubScrapeResult.errors`` (with series/race context) so the
+    caller can persist it to ``ingestion_log.error_message`` — this is the
+    OPS-02-02 fix for ``completed_with_errors`` rows with empty messages.
     """
-    all_results = []
     club_name = _club_name_for_id(club_id)
+    outcome = ClubScrapeResult(club_id=club_id, club_name=club_name)
 
     async with httpx.AsyncClient(timeout=30) as client:
         print(f"Getting series list for {club_name} (club {club_id})...")
@@ -382,6 +427,8 @@ async def scrape_club_irc_results(
             try:
                 races = await get_series_races(client, series_id)
             except Exception as e:
+                msg = f"series {series_id} ({series_name}): {_exc_text(e)}"
+                outcome.errors.append(msg)
                 print(f"    Error getting races: {e}")
                 continue
 
@@ -414,12 +461,45 @@ async def scrape_club_irc_results(
                         club_name=club_name,
                     )
                 except Exception as e:
+                    msg = (
+                        f"series {series_id} race {race['race_id']} "
+                        f"({race.get('name', '')}): {_exc_text(e)}"
+                    )
+                    outcome.errors.append(msg)
                     print(f"    Error scraping race {race['race_id']}: {e}")
                     continue
 
                 if results:
-                    all_results.extend(results)
+                    outcome.results.extend(results)
                     irc_count = sum(1 for r in results if r.raw_data.get("irc_tcc"))
                     print(f"    Race {race['race_id']} ({race['name']}): {len(results)} boats, {irc_count} with IRC")
 
-    return all_results
+    return outcome
+
+
+async def scrape_club_irc_results(
+    club_id: int = 3,
+    max_series: int | None = None,
+    since: date | None = None,
+    on_errors: Callable[[str], None] | None = None,
+) -> list[RaceResult]:
+    """Scrape all race results for a club via the SailSys REST API.
+
+    Discovers series and races, then fetches structured results data
+    including IRC and PHS handicaps, corrected times, and placings.
+
+    Args:
+        club_id: SailSys club ID.
+        max_series: Limit number of series to scrape (for testing).
+        since: Only scrape races after this date (incremental mode).
+        on_errors: Optional callback receiving a summary string when any
+            series/race failed during the scrape — lets the run supervisor
+            persist per-club error text without changing the list return
+            type (OPS-02-02).
+    """
+    outcome = await scrape_club_irc_results_detailed(
+        club_id, max_series=max_series, since=since,
+    )
+    if outcome.errors and on_errors is not None:
+        on_errors(outcome.error_text())
+    return outcome.results

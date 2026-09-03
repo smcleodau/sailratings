@@ -136,6 +136,7 @@ def import_sailsys_json(engine: Engine, json_path: Path) -> dict:
         "matched": 0,
         "skipped_no_name": 0,
         "errors": 0,
+        "error_details": [],
     }
 
     log_id = log_ingestion_start(engine, "sailsys_json_import", metadata={"file": str(json_path)})
@@ -202,15 +203,22 @@ def import_sailsys_json(engine: Engine, json_path: Path) -> dict:
             stats["imported"] += 1
         except Exception as e:
             stats["errors"] += 1
+            if len(stats["error_details"]) < 20:
+                stats["error_details"].append(f"{boat_name}: {type(e).__name__}: {e}")
             if stats["errors"] <= 5:
                 print(f"  Error importing {boat_name}: {e}")
 
+    if stats["errors"]:
+        _msg = f"{stats['errors']} errors: " + "; ".join(stats["error_details"])
+        _msg = _msg[:1000]
+    else:
+        _msg = None
     log_ingestion_end(
         engine, log_id,
         status="completed" if not stats["errors"] else "completed_with_errors",
         records_found=stats["total"],
         records_new=stats["imported"],
-        error_message=f"{stats['errors']} errors" if stats["errors"] else None,
+        error_message=_msg,
     )
 
     return stats
@@ -236,7 +244,7 @@ def import_scraper_results(
 
     Returns stats dict.
     """
-    stats = {"total": len(results), "imported": 0, "matched": 0, "errors": 0}
+    stats = {"total": len(results), "imported": 0, "matched": 0, "errors": 0, "error_details": []}
 
     log_id = log_ingestion_start(engine, source, metadata={"club": organizing_club})
 
@@ -294,14 +302,27 @@ def import_scraper_results(
             stats["imported"] += 1
         except Exception as e:
             stats["errors"] += 1
+            # OPS-02-02: capture the exception text — the completed_with_errors
+            # rows for SailSys previously logged error_message=NULL, hiding
+            # *why* rows failed (e.g. per-row upsert constraint violations).
+            if len(stats["error_details"]) < 20:
+                stats["error_details"].append(
+                    f"{boat_name or result.event_name or 'row'}: {type(e).__name__}: {e}"
+                )
             if stats["errors"] <= 5:
                 print(f"  Error: {e}")
 
+    if stats["errors"]:
+        _msg = f"{stats['errors']} errors: " + "; ".join(stats["error_details"])
+        _msg = _msg[:1000]
+    else:
+        _msg = None
     log_ingestion_end(
         engine, log_id,
         status="completed" if not stats["errors"] else "completed_with_errors",
         records_found=stats["total"],
         records_new=stats["imported"],
+        error_message=_msg,
     )
 
     return stats

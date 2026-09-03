@@ -23,6 +23,38 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
+# Terminal ingestion_log statuses that record why a run stopped.
+ERROR_STATUSES = frozenset({"failed", "completed_with_errors"})
+
+
+def require_error_message(
+    status: str,
+    error_message: str | None,
+    context: str = "unspecified errors",
+) -> str | None:
+    """Guarantee a non-empty message whenever the status reports errors.
+
+    OPS-02-02: 55 SailSys runs on 2026-09-02 ended ``completed_with_errors``
+    with ``error_message = NULL``/'' — the row claimed something went wrong
+    but carried no evidence, making the found>0/new=0 investigation blind.
+
+    Contract enforced here (single place so every caller benefits):
+      * ``status`` in {"failed", "completed_with_errors"} always yields a
+        non-empty, non-whitespace message. An empty/blank/None message is
+        replaced by a synthetic fallback built from ``context``.
+      * Non-error statuses pass ``error_message`` through untouched (a
+        ``completed`` row with an informational message is legal).
+
+    ``context`` should name *what* failed, e.g. "3 errors importing results"
+    or "club SASC" — it becomes the visible message when the caller failed
+    to capture the underlying exception text.
+    """
+    if status in ERROR_STATUSES:
+        if error_message and error_message.strip():
+            return error_message
+        return f"{status}: {context}"
+    return error_message
+
 
 @dataclass(frozen=True)
 class SourceConfig:
