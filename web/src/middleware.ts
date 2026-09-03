@@ -4,6 +4,12 @@ import { NextResponse, type NextRequest } from "next/server";
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const isProtectedRoute = createRouteMatcher(['/admin(.*)']);
 
+// E2E / local harness escape hatch: when NEXT_PUBLIC_ADMIN_E2E_BYPASS is set
+// (never in deployed environments — only the Playwright webServer and local
+// dev harnesses set it), /admin routes skip the Clerk gate. The page-level
+// admin-token gate (Authorization: Bearer …) still applies.
+const adminE2eBypass = !!process.env.NEXT_PUBLIC_ADMIN_E2E_BYPASS;
+
 function adminHostRedirect(req: NextRequest) {
   const url = req.nextUrl;
   const hostname = req.headers.get('host');
@@ -18,7 +24,7 @@ const clerkConfiguredMiddleware = clerkMiddleware(async (auth, req) => {
   const redirect = adminHostRedirect(req);
   if (redirect) return redirect;
 
-  if (isProtectedRoute(req)) {
+  if (isProtectedRoute(req) && !adminE2eBypass) {
     const authObject = await auth();
     if (!authObject.userId) {
       return NextResponse.redirect(new URL('/sign-in', req.url));
@@ -36,7 +42,7 @@ function unconfiguredMiddleware(req: NextRequest) {
   const redirect = adminHostRedirect(req);
   if (redirect) return redirect;
 
-  if (isProtectedRoute(req)) {
+  if (isProtectedRoute(req) && !adminE2eBypass) {
     return new NextResponse('Authentication is not configured on this environment.', {
       status: 503,
     });

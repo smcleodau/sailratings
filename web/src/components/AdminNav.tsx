@@ -12,10 +12,16 @@ interface AdminNavProps {
 const SECTIONS = [
   {
     href: "/admin",
+    label: "Today",
+    match: (p: string) => p === "/admin",
+  },
+  {
+    href: "/admin/chat",
     label: "Chat",
     match: (p: string) =>
-      p === "/admin" ||
+      p === "/admin/chat" ||
       (p.startsWith("/admin") &&
+        p !== "/admin" &&
         !p.startsWith("/admin/tables") &&
         !p.startsWith("/admin/corrections") &&
         !p.startsWith("/admin/scrapers") &&

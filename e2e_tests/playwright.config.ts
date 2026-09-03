@@ -68,6 +68,13 @@ export default defineConfig({
     url: 'http://localhost:4201',
     reuseExistingServer: false,
     timeout: 180 * 1000,
-    env: readClerkKeys(),
+    env: {
+      ...readClerkKeys(),
+      /* AD-01-13: let the e2e rig reach /admin pages without a Clerk
+         session. The admin pages still enforce the page-level admin token
+         (Authorization: Bearer …) against the API. Never set in deployed
+         environments. */
+      NEXT_PUBLIC_ADMIN_E2E_BYPASS: '1',
+    },
   },
 });
