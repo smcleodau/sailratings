@@ -22,6 +22,13 @@ cd /home/irc-data/code/sailratings/api
 # Without it, `op run` errors with "no account found".
 source /home/irc-data/.credentials/op-service-account.env
 
+# Clerk keys are not yet in the 1Password dev Environment, so the API could
+# not verify Clerk session JWTs and treated every signed-in caller as a
+# guest. Source them here if present; delete once they live in 1Password.
+if [ -f /home/irc-data/.credentials/clerk.env ]; then
+    source /home/irc-data/.credentials/clerk.env
+fi
+
 export OP_CACHE=false
 export PYTHONPATH=src
 

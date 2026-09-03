@@ -62,7 +62,12 @@ const SECTIONS: SidebarSection[] = [
     key: "customers",
     label: "Customers",
     icon: CustomersIcon,
-    items: [{ href: "/admin/stripe-events", label: "Payments" }],
+    items: [
+      { href: "/admin/users", label: "Users & plans" },
+      { href: "/admin/orders", label: "Reports & orders" },
+      { href: "/admin/billing", label: "Stripe & pricing" },
+      { href: "/admin/stripe-events", label: "Payments" },
+    ],
   },
   {
     key: "agents",
@@ -140,7 +145,7 @@ export function AdminSidebar({ counts }: AdminSidebarProps) {
           {SECTIONS.map((section) => {
             const SectionIcon = section.icon;
             const sectionActive = isSectionActive(pathname, section);
-            const count = counts[section.key] ?? 0;
+            const count = counts?.[section.key] ?? 0;
             return (
               <li key={section.key}>
                 <div

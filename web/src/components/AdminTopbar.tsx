@@ -16,6 +16,7 @@ import { SearchIcon, SignOutIcon } from "@/components/admin/AdminIcons";
 interface AdminTopbarProps {
   environment: string;
   health: AdminHealthPill[];
+  rightSlot?: React.ReactNode;
 }
 
 const PILL_STYLES: Record<AdminHealthStatus, string> = {
@@ -38,7 +39,7 @@ const ENV_BADGE_STYLES: Record<string, string> = {
   local: "border-[var(--sr-dusk)]/50 text-[var(--sr-dusk)]",
 };
 
-export function AdminTopbar({ environment, health }: AdminTopbarProps) {
+export function AdminTopbar({ environment, health, rightSlot }: AdminTopbarProps) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
@@ -118,6 +119,9 @@ export function AdminTopbar({ environment, health }: AdminTopbarProps) {
       </form>
 
       <div className="flex-1" />
+
+      {/* Page-injected right slot (e.g. conversation ID badge) */}
+      {rightSlot && <div className="flex items-center">{rightSlot}</div>}
 
       {/* Health pills */}
       <div className="flex items-center gap-2" data-testid="admin-health-pills" aria-label="Service health">

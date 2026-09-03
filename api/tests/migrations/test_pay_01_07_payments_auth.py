@@ -26,15 +26,15 @@ from sqlalchemy.exc import IntegrityError
 
 from irc_data.db import migration_verify as mv
 
-PAY_REVISION = "0027"  # 0027_payments_auth (canonical head)
-PAY_PARENT = "0026"  # 0026_policy_v1_rulings
+PAY_REVISION = "0034"  # 0034_admin_customers_zone (canonical head)
+PAY_PARENT = "0033"  # parent of the canonical head (0034)
 
 EXPECTED_TABLES = {"users", "subscriptions", "stripe_events", "boat_claims"}
 
 
 @pytest.fixture()
 def pay_db(admin_url):
-    """Throwaway database migrated to the canonical head (0026)."""
+    """Throwaway database migrated to the canonical head (0034)."""
     url = mv.create_temp_database(admin_url, prefix="pay07_test")
     try:
         mv.upgrade(url, "head")
@@ -120,7 +120,13 @@ def test_upgrade_head_creates_schema(pay_db):
             "updated_at",
         ):
             assert col in users_cols, f"users.{col} missing"
-        assert "subscription_status" not in users_cols
+        # 0027 deliberately kept subscription truth in `subscriptions` only.
+        # 0034 reverses that: it denormalises an entitlement mirror onto
+        # users.subscription_status (written by the Stripe webhook in
+        # checkout.py) and adds users.plan, both of which v_admin_users
+        # falls back to when a user has no subscription row.
+        for col in ("subscription_status", "plan"):
+            assert col in users_cols, f"users.{col} missing"
 
         # orders: new linkage columns
         orders_cols = _columns(engine, "orders")
@@ -161,8 +167,13 @@ def test_v_admin_users_returns(pay_db):
             )
             conn.execute(
                 text(
+                    # 0034's v_admin_users counts only genuinely-paid orders
+                    # (status IN ('paid','generated')); stripe_payment_status
+                    # alone leaves `status` at its default and reads as
+                    # abandoned, so set both.
                     "INSERT INTO orders (boat_id, user_id, amount_cents,"
-                    " stripe_payment_status) VALUES (:b, :u, 9900, 'paid')"
+                    " status, stripe_payment_status)"
+                    " VALUES (:b, :u, 9900, 'paid', 'paid')"
                 ),
                 {"b": boat_id, "u": user_id},
             )
@@ -170,10 +181,10 @@ def test_v_admin_users_returns(pay_db):
         assert len(rows) == 1
         row = rows[0]
         assert row["email"] == "skipper@example.com"
-        assert row["subscription_plan"] == "skipper"
+        assert row["plan"] == "skipper"
         assert row["subscription_status"] == "active"
         assert row["boats_claimed"] == 1
-        assert row["orders_count"] == 1
+        assert row["reports_bought"] == 1
         assert row["total_spend_cents"] == 9900
     finally:
         engine.dispose()
@@ -301,9 +312,16 @@ def test_downgrade_minus_one_round_trip(admin_url):
                     )
                 )
             }
-            assert "user_id" not in orders_cols
-            assert "stripe_payment_status" not in orders_cols
-        assert not (EXPECTED_TABLES & _table_names(engine))
+            # `downgrade -1` now unwinds 0034 -> 0033, not 0027 -> 0026.
+            # 0034 owns only v_admin_users and boat_claims; users,
+            # subscriptions, stripe_events and the orders linkage columns
+            # belong to 0027 and must survive (its downgrade says so
+            # explicitly: "leave them in place").
+            assert "user_id" in orders_cols
+            assert "stripe_payment_status" in orders_cols
+        remaining = _table_names(engine)
+        assert "boat_claims" not in remaining
+        assert {"users", "subscriptions", "stripe_events"} <= remaining
         engine.dispose()
 
         # and re-upgrading restores the schema (downgrade is non-destructive)

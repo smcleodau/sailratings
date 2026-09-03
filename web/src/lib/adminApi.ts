@@ -119,12 +119,41 @@ export const EMPTY_ADMIN_OVERVIEW: AdminOverview = {
   health: [],
 };
 
+/**
+ * Coerce whatever /admin/overview returns into the shell's contract.
+ *
+ * AD-01-12 (this shell) expects `{ counts, health }`. AD-01-13 shipped
+ * /v1/admin/overview with a different payload entirely (schema_version,
+ * today, sources, dupes, attention, …) and no `counts` or `health` key. The
+ * old blind cast therefore stored an object whose `counts` was undefined,
+ * and AdminSidebar's `counts[section.key]` threw — white-screening every
+ * admin page. Normalising here keeps the documented "counts render 0"
+ * behaviour instead of crashing when the shapes disagree.
+ */
+function normaliseOverview(raw: unknown): AdminOverview {
+  const src = (raw ?? {}) as Partial<AdminOverview>;
+  const counts = src.counts;
+  const health = src.health;
+  return {
+    counts:
+      counts && typeof counts === "object"
+        ? { ...EMPTY_ADMIN_OVERVIEW.counts, ...counts }
+        : { ...EMPTY_ADMIN_OVERVIEW.counts },
+    health: Array.isArray(health) ? health : [],
+    ...(typeof src.environment === "string"
+      ? { environment: src.environment }
+      : {}),
+  };
+}
+
 /** Fetch the admin overview; returns zeroed counts when AD-01-13 is absent. */
 export async function fetchAdminOverview(
   signal?: AbortSignal,
 ): Promise<AdminOverview> {
   try {
-    return await adminFetch<AdminOverview>("/admin/overview", { signal });
+    return normaliseOverview(
+      await adminFetch<unknown>("/admin/overview", { signal }),
+    );
   } catch (err) {
     // 404 = endpoint not shipped yet (AD-01-13); render 0s per the contract.
     if (err instanceof AdminApiError && err.status === 404) {

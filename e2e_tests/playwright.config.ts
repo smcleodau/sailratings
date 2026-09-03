@@ -99,6 +99,15 @@ export default defineConfig({
       env: {
         NEXT_PUBLIC_API_BASE: `${API_URL}/v1`,
         ENVIRONMENT: 'local',
+        // Force Clerk OFF. The header comment above assumes "pass no keys =
+        // Clerk unconfigured", but `npm run dev` auto-loads web/.env.local,
+        // which carries real pk_test_/sk_test_ keys — that flipped the
+        // middleware into enforced mode and bounced every /admin spec to
+        // /sign-in. Setting these explicitly wins over .env.local and
+        // restores the intended keyless run. playwright.auth.config.ts
+        // passes the real keys through to test the configured path.
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: '',
+        CLERK_SECRET_KEY: '',
       },
     },
   ],

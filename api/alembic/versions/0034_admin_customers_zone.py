@@ -36,7 +36,7 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
-            id                  BIGSERIAL PRIMARY KEY,
+            id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             clerk_id            TEXT UNIQUE,
             email               TEXT UNIQUE,
             full_name           TEXT,
@@ -63,6 +63,15 @@ def upgrade() -> None:
         """
     )
     # Columns the Customers zone needs, whichever branch created the table.
+    # 0027 creates `users` without subscription_status (it keeps subscription
+    # truth in the `subscriptions` table). The CREATE TABLE IF NOT EXISTS above
+    # is therefore a no-op on any database that ran 0027, so the column has to
+    # be added explicitly here or the v_admin_users view below fails with
+    # "column u.subscription_status does not exist".
+    op.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+        "subscription_status TEXT NOT NULL DEFAULT 'none'"
+    )
     op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'customer'")
     op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free'")
     op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ")
@@ -95,12 +104,17 @@ def upgrade() -> None:
         """
     )
 
-    # --- boat_claims --------------------------------------------------------
+    # --- boat_claims ---
+    # Types must match 0027, which owns these objects and declares them
+    # sa.Uuid. These CREATE TABLE IF NOT EXISTS blocks are dead code on the
+    # canonical chain (0027 runs first) and only fire after a downgrade — at
+    # which point BIGINT produced "foreign key ... incompatible types:
+    # bigint and uuid" against users.id.-----------------------------------------------------
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS boat_claims (
-            id          BIGSERIAL PRIMARY KEY,
-            user_id     BIGINT NOT NULL REFERENCES users(id),
+            id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id     UUID NOT NULL REFERENCES users(id),
             boat_id     INTEGER NOT NULL REFERENCES boats(id),
             status      TEXT NOT NULL DEFAULT 'pending',
             evidence    TEXT,
@@ -116,7 +130,7 @@ def upgrade() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS idx_boat_claims_status ON boat_claims (status)")
 
     # --- orders.user_id -----------------------------------------------------
-    op.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_id BIGINT")
+    op.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_id UUID")
     op.execute(
         """
         DO $$
@@ -144,16 +158,26 @@ def upgrade() -> None:
     )
 
     # --- v_admin_users ------------------------------------------------------
+    # 0027 ships a v_admin_users with a different column list, and
+    # CREATE OR REPLACE VIEW cannot rename/reorder existing columns
+    # ("cannot change name of view column"). Drop it and rebuild.
+    op.execute("DROP VIEW IF EXISTS v_admin_users")
     op.execute(
         """
-        CREATE OR REPLACE VIEW v_admin_users AS
+        CREATE VIEW v_admin_users AS
         SELECT
             u.id,
             u.email,
             u.full_name,
             u.role,
-            u.plan,
-            u.subscription_status,
+            -- Nothing writes users.plan (the Stripe webhook maintains the
+            -- `subscriptions` table and mirrors only onto
+            -- users.subscription_status), so reading u.plan directly showed
+            -- every paying customer as 'free'. Derive from the live
+            -- subscription and fall back to the users column.
+            COALESCE(s.plan, u.plan)                            AS plan,
+            COALESCE(s.status, u.subscription_status)           AS subscription_status,
+            s.current_period_end                                AS subscription_current_period_end,
             u.clerk_id,
             u.stripe_customer_id,
             u.created_at                                        AS joined_at,
@@ -164,6 +188,13 @@ def upgrade() -> None:
             oc.total_spend_cents,
             oc.last_order_currency
         FROM users u
+        LEFT JOIN LATERAL (
+            SELECT s1.plan, s1.status, s1.current_period_end
+            FROM subscriptions s1
+            WHERE s1.user_id = u.id
+            ORDER BY s1.updated_at DESC NULLS LAST, s1.created_at DESC
+            LIMIT 1
+        ) s ON true
         LEFT JOIN LATERAL (
             SELECT
                 count(*) FILTER (WHERE c.status = 'verified') AS boats_claimed,

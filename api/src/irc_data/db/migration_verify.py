@@ -64,16 +64,22 @@ def _socket_url(db_name: str) -> str:
 # the 0022 3NF backfill over real data (running it on an empty schema would
 # leave the column NOT NULL with no rows and prove nothing).
 PREVIOUS_SUPPORTED_REVISION = "0021"
-# The canonical head is the PAY-01-07 payments/auth schema revision (users,
-# subscriptions, stripe_events, boat_claims, orders.user_id, v_admin_users).
-# The DP-01-02 ``0026_policy_v1_rulings`` data migration is the canonical
-# 0025 -> 0026 step; its abandoned ``0026_canonical_merge_and_compat`` twin
-# and the other side branches are retired to ``alembic/legacy_versions/`` so
-# the canonical chain is a single linear lineage (base -> 0027) and bare
-# ``alembic upgrade head`` is unambiguous.
-CANONICAL_HEAD = "0027"
+# The canonical head is the PAY-01-10 admin Customers zone revision
+# (v_admin_users, boat_claims, users.role/plan on top of the PAY-01-07
+# payments/auth schema). The DP-01-02 ``0026_policy_v1_rulings`` data
+# migration is the canonical 0025 -> 0026 step; its abandoned
+# ``0026_canonical_merge_and_compat`` twin and the other side branches are
+# retired to ``alembic/legacy_versions/`` so the canonical chain is a single
+# linear lineage (base -> 0034) and bare ``alembic upgrade head`` is
+# unambiguous.
+#
+# These were pinned at "0027" long after the chain grew to 0034, so the
+# rollback/convergence machinery targeted a seven-revision-stale head.
+CANONICAL_HEAD = "0034"
 # The revision whose downgrade/upgrade pair is the tested rollback / restore
-# strategy (PAY-01-07: additive tables + views; rollback drops them).
+# strategy (PAY-01-07: additive tables + views; rollback drops them). This is
+# deliberately NOT the head — it names the DP-03-05 rollback drill, and
+# tests/migrations/test_rollback.py pairs it with CAPSTONE_DOWN_TARGET=0026.
 CAPSTONE_REVISION = "0027"
 
 # Default budget for a full scratch -> head migration on the synthetic

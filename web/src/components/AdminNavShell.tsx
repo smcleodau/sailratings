@@ -13,6 +13,9 @@
  */
 
 import {
+  createContext,
+  useCallback,
+  useContext,
   useEffect,
   useState,
 } from "react";
@@ -25,6 +28,20 @@ import {
 } from "@/lib/adminApi";
 import { AdminSidebar } from "@/components/AdminSidebar";
 import { AdminTopbar } from "@/components/AdminTopbar";
+
+/* ── Right-slot portal ───────────────────────────────────────────────── */
+
+type SlotSetter = (node: React.ReactNode) => void;
+const AdminNavRightSlotContext = createContext<SlotSetter>(() => {});
+
+/** Inject a React node into the topbar's right area from any admin page. */
+export function useAdminNavRightSlot(node: React.ReactNode) {
+  const setSlot = useContext(AdminNavRightSlotContext);
+  useEffect(() => {
+    setSlot(node);
+    return () => setSlot(null);
+  }); // no deps — keeps slot current on every page render
+}
 
 function resolveEnvironment(): string {
   const fromEnv = (process.env.NEXT_PUBLIC_ENVIRONMENT ?? "").toLowerCase();
@@ -44,6 +61,8 @@ function healthPillsFromOverview(overview: AdminOverview): AdminHealthPill[] {
 export function AdminNavShell({ children }: { children: React.ReactNode }) {
   const [overview, setOverview] = useState<AdminOverview>(EMPTY_ADMIN_OVERVIEW);
   const [health, setHealth] = useState<AdminHealthPill[]>([]);
+  const [rightSlot, setRightSlot] = useState<React.ReactNode>(null);
+  const setSlot = useCallback<SlotSetter>((node) => setRightSlot(node), []);
   // Lazy initializer keeps this a pure render — no setState-in-effect.
   const [environment] = useState(resolveEnvironment);
 
@@ -94,14 +113,16 @@ export function AdminNavShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="admin-theme" data-testid="admin-shell">
-      <div className="admin-box flex min-h-screen bg-[var(--sr-dusk-ground)] text-[var(--sr-text-primary)]">
-        <AdminSidebar counts={overview.counts} />
-        <div className="flex-1 flex flex-col min-w-0">
-          <AdminTopbar environment={environment} health={health} />
-          <main className="admin-container flex-1">{children}</main>
+    <AdminNavRightSlotContext.Provider value={setSlot}>
+      <div className="admin-theme" data-testid="admin-shell">
+        <div className="admin-box flex min-h-screen bg-[var(--sr-dusk-ground)] text-[var(--sr-text-primary)]">
+          <AdminSidebar counts={overview.counts} />
+          <div className="flex-1 flex flex-col min-w-0">
+            <AdminTopbar environment={environment} health={health} rightSlot={rightSlot} />
+            <main className="admin-container flex-1">{children}</main>
+          </div>
         </div>
       </div>
-    </div>
+    </AdminNavRightSlotContext.Provider>
   );
 }

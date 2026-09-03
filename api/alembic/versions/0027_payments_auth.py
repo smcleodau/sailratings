@@ -426,24 +426,30 @@ def downgrade() -> None:
     for stmt in _COMPAT_DOWN_STATEMENTS:
         op.execute(stmt)
 
-    op.drop_index("idx_orders_user", table_name="orders")
-    op.drop_column("orders", "stripe_payment_status")
-    op.drop_column("orders", "user_id")
+    # These drops must tolerate the objects already being gone. Later
+    # revisions own overlapping DDL — 0034's downgrade drops `boat_claims`
+    # outright — so a downgrade from head through 0027 previously died on
+    # `index "idx_boat_claims_status" does not exist`. Dropping a table
+    # removes its indexes anyway, so IF EXISTS is the correct form here and
+    # matches the defensive style used by the rest of the chain.
+    op.execute("DROP INDEX IF EXISTS idx_orders_user")
+    op.execute("ALTER TABLE orders DROP COLUMN IF EXISTS stripe_payment_status")
+    op.execute("ALTER TABLE orders DROP COLUMN IF EXISTS user_id")
 
-    op.drop_index("idx_boat_claims_status", table_name="boat_claims")
-    op.drop_index("idx_boat_claims_boat", table_name="boat_claims")
-    op.drop_table("boat_claims")
+    op.execute("DROP INDEX IF EXISTS idx_boat_claims_status")
+    op.execute("DROP INDEX IF EXISTS idx_boat_claims_boat")
+    op.execute("DROP TABLE IF EXISTS boat_claims")
 
-    op.drop_index("idx_stripe_events_processed_at", table_name="stripe_events")
-    op.drop_index("idx_stripe_events_type", table_name="stripe_events")
-    op.drop_table("stripe_events")
+    op.execute("DROP INDEX IF EXISTS idx_stripe_events_processed_at")
+    op.execute("DROP INDEX IF EXISTS idx_stripe_events_type")
+    op.execute("DROP TABLE IF EXISTS stripe_events")
 
-    op.drop_index("idx_subscriptions_status", table_name="subscriptions")
-    op.drop_index("idx_subscriptions_stripe_customer", table_name="subscriptions")
-    op.drop_index("idx_subscriptions_user", table_name="subscriptions")
-    op.drop_table("subscriptions")
+    op.execute("DROP INDEX IF EXISTS idx_subscriptions_status")
+    op.execute("DROP INDEX IF EXISTS idx_subscriptions_stripe_customer")
+    op.execute("DROP INDEX IF EXISTS idx_subscriptions_user")
+    op.execute("DROP TABLE IF EXISTS subscriptions")
 
-    op.drop_index("idx_users_stripe_customer_id", table_name="users")
-    op.drop_index("idx_users_email", table_name="users")
-    op.drop_index("idx_users_clerk_id", table_name="users")
-    op.drop_table("users")
+    op.execute("DROP INDEX IF EXISTS idx_users_stripe_customer_id")
+    op.execute("DROP INDEX IF EXISTS idx_users_email")
+    op.execute("DROP INDEX IF EXISTS idx_users_clerk_id")
+    op.execute("DROP TABLE IF EXISTS users")

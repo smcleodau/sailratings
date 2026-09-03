@@ -50,19 +50,39 @@ def _clerk_jwks_client() -> Optional[PyJWKClient]:
     """Build a JWKS client from CLERK_JWKS_URL or CLERK_SECRET_KEY."""
     url = os.environ.get("CLERK_JWKS_URL")
     if not url:
-        secret = os.environ.get("CLERK_SECRET_KEY")
-        if not secret:
-            return None
-        try:
-            domain = (
-                base64.urlsafe_b64decode(
-                    secret.removeprefix("sk_test_").removeprefix("sk_live_") + "=="
+        # Clerk encodes the frontend API domain in the *publishable* key
+        # (pk_test_<base64 domain>). Secret keys are opaque random strings and
+        # carry no domain, so deriving it from CLERK_SECRET_KEY always failed
+        # and silently disabled auth — every signed-in caller fell through to
+        # guest. Prefer the publishable key; keep the secret as a fallback for
+        # any environment that does set a decodable one.
+        domain = None
+        for var, prefixes in (
+            ("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", ("pk_test_", "pk_live_")),
+            ("CLERK_SECRET_KEY", ("sk_test_", "sk_live_")),
+        ):
+            raw = os.environ.get(var)
+            if not raw:
+                continue
+            body = raw
+            for prefix in prefixes:
+                body = body.removeprefix(prefix)
+            try:
+                candidate = (
+                    base64.urlsafe_b64decode(body + "==").decode().rstrip("$")
                 )
-                .decode()
-                .rstrip("$")
+            except Exception:
+                continue
+            if candidate.endswith(("clerk.accounts.dev", "clerk.com")) or (
+                "." in candidate and " " not in candidate
+            ):
+                domain = candidate
+                break
+        if not domain:
+            logger.warning(
+                "No decodable Clerk domain in NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY or "
+                "CLERK_SECRET_KEY, and CLERK_JWKS_URL is unset; Clerk auth disabled"
             )
-        except Exception:
-            logger.warning("CLERK_SECRET_KEY is not a decodable Clerk key; auth disabled")
             return None
         url = f"https://{domain}/.well-known/jwks.json"
     if url not in _JWKS_CLIENTS:
