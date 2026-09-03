@@ -1315,3 +1315,51 @@ async def admin_execute(
         return {"status": "executed", "rows_affected": rows_affected}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Stripe webhook events (PAY-01-09) ────────────────────────────────────
+
+
+@router.get("/stripe-events")
+async def list_stripe_events(
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+    parked_only: bool = False,
+    limit: int = 100,
+):
+    """List received Stripe webhook events, newest first.
+
+    Parked events (``error`` starting with 'parked:') are subscriptions that
+    could not be matched to a user — they need manual attention. Use
+    ``parked_only=true`` to show just those.
+    """
+    _verify_admin(authorization)
+
+    limit = max(1, min(limit, 500))
+    where = "WHERE error LIKE 'parked:%'" if parked_only else ""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(f"""
+                SELECT id, event_id, type, livemode, created_at, processed_at, error
+                FROM stripe_events
+                {where}
+                ORDER BY id DESC
+                LIMIT :limit
+            """),
+            {"limit": limit},
+        ).mappings().all()
+        counts = conn.execute(
+            text("""
+                SELECT
+                    count(*) AS total,
+                    count(*) FILTER (WHERE error LIKE 'parked:%') AS parked,
+                    count(*) FILTER (WHERE error IS NOT NULL
+                                     AND error NOT LIKE 'parked:%') AS failed
+                FROM stripe_events
+            """)
+        ).mappings().first()
+
+    return {
+        "counts": dict(counts) if counts else {"total": 0, "parked": 0, "failed": 0},
+        "events": [{k: _jsonable(v) for k, v in row.items()} for row in rows],
+    }
