@@ -58,6 +58,7 @@ from admin_scrapers_seed import seed_admin_scrapers  # noqa: E402
 from irc_data.api.deps import get_db  # noqa: E402
 from irc_data.api.routers import admin as admin_module  # noqa: E402
 from irc_data.api.routers import admin_customers  # noqa: E402
+from irc_data.api.routers import admin_tables  # noqa: E402
 
 # Both seeds use the same password; the combined app mirrors it into both
 # routers' module-level ADMIN_PASSWORD (read at request time).
@@ -84,7 +85,49 @@ def build_app() -> FastAPI:
     seed_admin_customers(customers_engine)
 
     scrapers_engine = _make_engine(Path(tmpdir) / "admin_scrapers.db")
+    
+    from sqlalchemy import event
+    @event.listens_for(scrapers_engine, "connect")
+    def connect(dbapi_connection, connection_record):
+        dbapi_connection.create_function("pg_total_relation_size", 1, lambda relid: 2048)
+        dbapi_connection.create_function("pg_relation_size", 1, lambda relid: 1024)
+        
     seed_admin_scrapers(scrapers_engine)
+    
+    with scrapers_engine.begin() as conn:
+        from sqlalchemy import text
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS admin_edits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                edited_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                table_name TEXT NOT NULL,
+                pk_value TEXT NOT NULL,
+                column_name TEXT NOT NULL,
+                old_value TEXT,
+                new_value TEXT
+            )
+        """))
+        conn.execute(text("""
+            CREATE VIEW IF NOT EXISTS pg_stat_user_tables AS
+            SELECT 'boats' AS relname, 3 AS n_live_tup, 1024 AS relid
+            UNION ALL
+            SELECT 'admin_edits' AS relname, 0 AS n_live_tup, 1025 AS relid
+            UNION ALL
+            SELECT 'users' AS relname, 10 AS n_live_tup, 1026 AS relid
+        """))
+        
+        # Add boats table if missing to prevent "no such table" errors on /admin/tables/boats
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS boats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                boat_name TEXT,
+                sail_number TEXT,
+                design TEXT,
+                design_canonical TEXT,
+                cert_number TEXT,
+                country TEXT
+            )
+        """))
 
     app = FastAPI(title="Combined E2E admin API (customers + scrapers)")
     app.add_middleware(
@@ -99,6 +142,7 @@ def build_app() -> FastAPI:
     # firecrawl/chat/…), so there are no route collisions.
     app.include_router(admin_customers.router, prefix="/v1")
     app.include_router(admin_module.router, prefix="/v1")
+    app.include_router(admin_tables.router, prefix="/v1")
 
     # Per-router database overrides: each seeded engine backs only the
     # routes of its own fixture. include_router copies the router's route
@@ -107,6 +151,7 @@ def build_app() -> FastAPI:
     # scrapers/discovery/firecrawl/chat/…), so path is an unambiguous key.
     customers_paths = {r.path for r in admin_customers.router.routes}
     scrapers_paths = {r.path for r in admin_module.router.routes}
+    tables_paths = {r.path for r in admin_tables.router.routes}
 
     def _customers_db() -> Engine:
         return customers_engine
@@ -124,6 +169,8 @@ def build_app() -> FastAPI:
         if rel in customers_paths:
             _override_route_db(route, _customers_db)
         elif rel in scrapers_paths:
+            _override_route_db(route, _scrapers_db)
+        elif rel in tables_paths:
             _override_route_db(route, _scrapers_db)
 
     @app.get("/v1/health")
@@ -166,11 +213,35 @@ def main() -> None:
     os.environ["STRIPE_SECRET_KEY"] = "sk_test_e2e_fixture"
     admin_customers.ADMIN_PASSWORD = ADMIN_PASSWORD
     admin_module.ADMIN_PASSWORD = ADMIN_PASSWORD
+    admin_tables.ADMIN_PASSWORD = ADMIN_PASSWORD
 
     app = build_app()
 
     # Fake "live" Stripe catalogue (PAY-01-10 billing page asserts on it).
     from admin_customers_api import _List, _fake_stripe_payload
+    
+    # Mock Postgres specific things for SQLite for E2E tests
+    def _mock_table_columns(eng, name):
+        if name == "boats":
+            return [
+                {"name": "id", "type": "integer", "nullable": False, "has_default": False, "max_length": None},
+                {"name": "boat_name", "type": "text", "nullable": True, "has_default": False, "max_length": None},
+                {"name": "sail_number", "type": "text", "nullable": True, "has_default": False, "max_length": None},
+                {"name": "design", "type": "text", "nullable": True, "has_default": False, "max_length": None},
+                {"name": "design_canonical", "type": "text", "nullable": True, "has_default": False, "max_length": None},
+                {"name": "cert_number", "type": "text", "nullable": True, "has_default": False, "max_length": None},
+                {"name": "country", "type": "text", "nullable": True, "has_default": False, "max_length": None},
+            ]
+        if name == "admin_edits":
+            return [
+                {"name": "id", "type": "integer", "nullable": False, "has_default": False, "max_length": None},
+                {"name": "table_name", "type": "text", "nullable": False, "has_default": False, "max_length": None},
+                {"name": "pk_value", "type": "text", "nullable": False, "has_default": False, "max_length": None},
+                {"name": "column_name", "type": "text", "nullable": False, "has_default": False, "max_length": None},
+            ]
+        return []
+    
+    admin_tables._table_columns = _mock_table_columns
 
     fake = _fake_stripe_payload()
     from unittest.mock import patch
