@@ -1,0 +1,1148 @@
+{
+  "boat": {
+    "design": "Sunfast 3300",
+    "id": 21068,
+    "name": "KESTREL",
+    "sail_number": "GBR6779R"
+  },
+  "engines": {
+    "design_model": {
+      "alpha": 0.0695,
+      "coefficients": [
+        {
+          "beta_per_unit": 0.009303,
+          "field": "mhw",
+          "rank": 1,
+          "std_beta": 0.007,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.001954,
+          "field": "p",
+          "rank": 2,
+          "std_beta": -0.0068,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.010662,
+          "field": "lh",
+          "rank": 3,
+          "std_beta": -0.0038,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.00061,
+          "field": "stl",
+          "rank": 4,
+          "std_beta": -0.0026,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.001011,
+          "field": "muw",
+          "rank": 5,
+          "std_beta": -0.002,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.001144,
+          "field": "displacement",
+          "rank": 6,
+          "std_beta": -0.0016,
+          "unit": "per 100kg"
+        },
+        {
+          "beta_per_unit": -0.001484,
+          "field": "hlp",
+          "rank": 7,
+          "std_beta": -0.0014,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.00208,
+          "field": "headsails",
+          "rank": 8,
+          "std_beta": 0.0011,
+          "unit": "per sail"
+        },
+        {
+          "beta_per_unit": -0.002783,
+          "field": "draft",
+          "rank": 9,
+          "std_beta": -0.0011,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.001996,
+          "field": "spinnakers",
+          "rank": 10,
+          "std_beta": 0.0011,
+          "unit": "per sail"
+        },
+        {
+          "beta_per_unit": -0.000574,
+          "field": "j",
+          "rank": 11,
+          "std_beta": -0.0009,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.000153,
+          "field": "hlu",
+          "rank": 12,
+          "std_beta": -0.0006,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.000717,
+          "field": "e",
+          "rank": 13,
+          "std_beta": -0.0005,
+          "unit": "per 0.1m"
+        }
+      ],
+      "collinearity_warnings": [
+        "p \u2194 j: r=-0.98 \u2014 interpret individual coefficients with caution",
+        "p \u2194 muw: r=-0.94 \u2014 interpret individual coefficients with caution",
+        "j \u2194 muw: r=0.95 \u2014 interpret individual coefficients with caution"
+      ],
+      "design": "Sunfast 3300",
+      "interpretation": "Mhw is the strongest TCC lever in the Sunfast 3300 class \u2014 more mhw increases TCC. P ranks second (std beta=-0.007).",
+      "is_one_design": false,
+      "model_tier": "A",
+      "n_boats": 18,
+      "r_squared": 0.9942,
+      "r_squared_cv": 0.5618
+    },
+    "fleet_wide_model": {
+      "alpha": 0.1833,
+      "coefficients": [
+        {
+          "beta_per_unit": 0.015934,
+          "field": "draft",
+          "rank": 1,
+          "std_beta": 0.0783,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.012715,
+          "field": "crew",
+          "rank": 2,
+          "std_beta": 0.0383,
+          "unit": "per person"
+        },
+        {
+          "beta_per_unit": -0.000657,
+          "field": "dlr",
+          "rank": 3,
+          "std_beta": -0.0355,
+          "unit": "per unit"
+        },
+        {
+          "beta_per_unit": -0.001274,
+          "field": "lh",
+          "rank": 4,
+          "std_beta": -0.0319,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.003112,
+          "field": "headsails",
+          "rank": 5,
+          "std_beta": 0.0032,
+          "unit": "per sail"
+        },
+        {
+          "beta_per_unit": 0.00376,
+          "field": "spinnakers",
+          "rank": 6,
+          "std_beta": 0.0029,
+          "unit": "per sail"
+        },
+        {
+          "beta_per_unit": 0.000251,
+          "field": "beam",
+          "rank": 7,
+          "std_beta": 0.0014,
+          "unit": "per 0.1m"
+        }
+      ],
+      "collinearity_warnings": [
+        "lh \u2194 crew: r=0.99 \u2014 interpret individual coefficients with caution"
+      ],
+      "design": "All Designs (Fleet-Wide)",
+      "interpretation": "Draft is the strongest TCC lever in the All Designs (Fleet-Wide) class \u2014 more draft increases TCC. Crew ranks second (std beta=+0.038).",
+      "is_one_design": false,
+      "model_tier": "C",
+      "n_boats": 298,
+      "r_squared": 0.9438,
+      "r_squared_cv": 0.9312
+    },
+    "rai": {
+      "avg_expected_pct": 0.643,
+      "avg_finish_pct": 0.282,
+      "boat_id": 21068,
+      "boat_name": "KESTREL",
+      "ci_lower": 26.66,
+      "ci_upper": 45.6,
+      "design": "Sunfast 3300",
+      "interpretation": "Strong positive RAI (+36.1): this boat consistently finishes better than its TCC predicts. Well-sailed or measurement-optimised.",
+      "n_races": 39,
+      "podiums": 4,
+      "rai": 36.13,
+      "sail_number": "GBR6779R",
+      "wins": 1
+    },
+    "smart_boats": {
+      "design": "Sunfast 3300",
+      "fleet_rai_distribution": {},
+      "n_total": 35,
+      "n_with_races": 35,
+      "smart_boats": []
+    }
+  },
+  "facts_sha256": "fb5d02b626abecbd8dfb92e3379fab44b9d516bc5bdb5db5e774549b5c1abd92",
+  "fixture": {
+    "boat_name": "KESTREL",
+    "description": "Modern-era fixture (2021-2026 racing, constant TCC).",
+    "design": "Sunfast 3300",
+    "sail_number": "GBR6779R",
+    "slug": "kestrel"
+  },
+  "schema_version": "ReportFactsV1",
+  "sections": {
+    "s01_executive": {
+      "boat_name": "KESTREL",
+      "class_median_tcc": 1.015,
+      "country": "GBR",
+      "design": "Sunfast 3300",
+      "finishes": 40,
+      "headline_finding_1": "Rates +0.0050 TCC above the Sunfast 3300 median (1.0200 vs 1.0150).",
+      "headline_finding_2": "1 wins and 4 podiums across 40 finishes (2% win rate).",
+      "headline_finding_3": "Largest rating driver: headsails (-0.0007 TCC vs class mean \u2014 this boat is 0.33 below the class mean).",
+      "podiums": 4,
+      "sail_number": "GBR6779R",
+      "tcc_now": 1.02,
+      "this_boat_percentile": null,
+      "top_recommendation": null,
+      "wins": 1
+    },
+    "s02_identity": {
+      "beam_max": null,
+      "boat_name": "KESTREL",
+      "builder": "Jeanneau",
+      "current_skipper": "SIMON BAMFORD",
+      "design": "Sunfast 3300",
+      "designer": "Daniel Andrieu / Guillaume Verdier",
+      "displacement_kg": null,
+      "home_club": "RORC",
+      "identities": [
+        {
+          "boat_name": "KESTREL",
+          "flag": "GBR",
+          "observed_date": "2026-05-14",
+          "owner": null,
+          "sail_number": "GBR6779R",
+          "source": "irc_tcc"
+        }
+      ],
+      "loa": null,
+      "lwl": null,
+      "sail_number": "GBR6779R",
+      "skipper_stints": [
+        {
+          "first_date": "2021-10-09",
+          "last_date": "2024-10-13",
+          "name": "Richard Jenkins",
+          "podiums": 2,
+          "races": 8,
+          "wins": 0
+        },
+        {
+          "first_date": "2023-09-01",
+          "last_date": "2026-07-03",
+          "name": "SIMON BAMFORD",
+          "podiums": 1,
+          "races": 29,
+          "wins": 0
+        },
+        {
+          "first_date": "2026-05-02",
+          "last_date": "2026-07-03",
+          "name": "SIMON BAMFORD & BEN IBBOTSON",
+          "podiums": 0,
+          "races": 2,
+          "wins": 0
+        },
+        {
+          "first_date": "2023-04-29",
+          "last_date": "2023-09-01",
+          "name": "SIMON BAMFORD & JEROME CARSON",
+          "podiums": 0,
+          "races": 4,
+          "wins": 0
+        },
+        {
+          "first_date": "2024-05-18",
+          "last_date": "2024-05-18",
+          "name": "SIMON BAMFORD, JEREMY GROGONO",
+          "podiums": 0,
+          "races": 1,
+          "wins": 0
+        }
+      ],
+      "year_built": 2019
+    },
+    "s03_rating_anatomy": {
+      "boat_name": "KESTREL",
+      "class_mean_tcc": 1.008314,
+      "class_median_tcc": 1.015,
+      "decomposition": [
+        {
+          "beta": 0.00208,
+          "class_mean": 2.333,
+          "contrib_tcc": -0.00069,
+          "delta": -0.333,
+          "field": "headsails",
+          "this_boat": 2.0,
+          "unit": "per sail"
+        },
+        {
+          "beta": -0.002783,
+          "class_mean": 1.966,
+          "contrib_tcc": 0.00045,
+          "delta": -0.016,
+          "field": "draft",
+          "this_boat": 1.95,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.001996,
+          "class_mean": 3.182,
+          "contrib_tcc": -0.00036,
+          "delta": -0.182,
+          "field": "spinnakers",
+          "this_boat": 3.0,
+          "unit": "per sail"
+        },
+        {
+          "beta": -0.010662,
+          "class_mean": 9.989,
+          "contrib_tcc": -0.00011,
+          "delta": 0.001,
+          "field": "lh",
+          "this_boat": 9.99,
+          "unit": "per 0.1m"
+        }
+      ],
+      "design": "Sunfast 3300",
+      "explained_variance_pct": 99.4,
+      "model_tier": "A",
+      "n_boats_in_class": 18,
+      "tcc_now": 1.02
+    },
+    "s04_rating_evolution": {
+      "boat_name": "KESTREL",
+      "cert_reissue_dates": [],
+      "first_snapshot_tcc": 1.02,
+      "largest_jump_date": null,
+      "largest_jump_tcc": 0.0,
+      "latest_snapshot_tcc": 1.02,
+      "snapshots": [
+        {
+          "cert_year": 2026,
+          "date": "2026-05-14",
+          "source": "irc_tcc",
+          "tcc": 1.02
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-15",
+          "source": "irc_tcc",
+          "tcc": 1.02
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-16",
+          "source": "irc_tcc",
+          "tcc": 1.02
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-17",
+          "source": "irc_tcc",
+          "tcc": 1.02
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-18",
+          "source": "irc_tcc",
+          "tcc": 1.02
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-19",
+          "source": "irc_tcc",
+          "tcc": 1.02
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-20",
+          "source": "irc_tcc",
+          "tcc": 1.02
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-21",
+          "source": "irc_tcc",
+          "tcc": 1.02
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-22",
+          "source": "irc_tcc",
+          "tcc": 1.02
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-06-01",
+          "source": "irc_tcc",
+          "tcc": 1.02
+        }
+      ],
+      "total_movement": 0.0
+    },
+    "s05_class_context": {
+      "class_n": 35,
+      "class_tcc_list": [
+        0.911,
+        0.972,
+        0.978,
+        0.99,
+        0.993,
+        0.994,
+        0.996,
+        0.996,
+        0.996,
+        1.003,
+        1.003,
+        1.003,
+        1.006,
+        1.01,
+        1.01,
+        1.011,
+        1.014,
+        1.015,
+        1.015,
+        1.016,
+        1.02,
+        1.02,
+        1.021,
+        1.022,
+        1.022,
+        1.022,
+        1.024,
+        1.024,
+        1.024,
+        1.025,
+        1.026,
+        1.026,
+        1.026,
+        1.028,
+        1.029
+      ],
+      "class_tcc_max": 1.029,
+      "class_tcc_mean": 1.008314,
+      "class_tcc_median": 1.015,
+      "class_tcc_min": 0.911,
+      "design": "Sunfast 3300",
+      "this_boat_percentile": 57.1,
+      "this_boat_tcc": 1.02,
+      "top_5_boats": [
+        {
+          "country": "FRA",
+          "name": "ABRACADABRA 2",
+          "sail": "FRA37454",
+          "tcc": 0.996,
+          "wins": 2
+        },
+        {
+          "country": "GBR",
+          "name": "BUG",
+          "sail": "GBR4849R",
+          "tcc": 1.028,
+          "wins": 0
+        },
+        {
+          "country": "GBR",
+          "name": "KESTREL",
+          "sail": "GBR6779R",
+          "tcc": 1.02,
+          "wins": 1
+        },
+        {
+          "country": "GBR",
+          "name": "ORBIT",
+          "sail": "GBR8438R",
+          "tcc": 1.021,
+          "wins": 1
+        },
+        {
+          "country": "GBR",
+          "name": "ROCKIT",
+          "sail": "GBR9473R",
+          "tcc": 1.029,
+          "wins": 0
+        }
+      ]
+    },
+    "s06_performance": {
+      "boat_name": "KESTREL",
+      "by_event_type": {
+        "offshore": {
+          "n": 6,
+          "podiums": 1,
+          "wins": 0
+        },
+        "series": {
+          "n": 34,
+          "podiums": 3,
+          "wins": 1
+        }
+      },
+      "distinct_events": 37,
+      "finishes": 40,
+      "head_to_head": [
+        {
+          "boat_id": 11998,
+          "country": "GBR",
+          "head_to_head_losses": 24,
+          "head_to_head_wins": 1,
+          "name": "BELLINO",
+          "recent_finishes_count": 19,
+          "sail_number": "GBR8657L",
+          "tcc": 1.023
+        },
+        {
+          "boat_id": 55566,
+          "country": "FRA",
+          "head_to_head_losses": 13,
+          "head_to_head_wins": 3,
+          "name": "CORA",
+          "recent_finishes_count": 14,
+          "sail_number": "FRA35829",
+          "tcc": 0.0
+        },
+        {
+          "boat_id": 20478,
+          "country": "GBR",
+          "head_to_head_losses": 11,
+          "head_to_head_wins": 9,
+          "name": "DIABLO",
+          "recent_finishes_count": 15,
+          "sail_number": "GBR795R",
+          "tcc": 1.027
+        },
+        {
+          "boat_id": 12100,
+          "country": "GBR",
+          "head_to_head_losses": 8,
+          "head_to_head_wins": 9,
+          "name": "GAME ON",
+          "recent_finishes_count": 14,
+          "sail_number": "GBR5176L",
+          "tcc": 1.02
+        },
+        {
+          "boat_id": 11882,
+          "country": "GBR",
+          "head_to_head_losses": 7,
+          "head_to_head_wins": 9,
+          "name": "GRIFFIN",
+          "recent_finishes_count": 15,
+          "sail_number": "GBR8936R",
+          "tcc": 1.035
+        },
+        {
+          "boat_id": 12121,
+          "country": "NED",
+          "head_to_head_losses": 9,
+          "head_to_head_wins": 7,
+          "name": "IL CORVO",
+          "recent_finishes_count": 13,
+          "sail_number": "NED1409",
+          "tcc": 1.019
+        },
+        {
+          "boat_id": 11127,
+          "country": "GBR",
+          "head_to_head_losses": 7,
+          "head_to_head_wins": 10,
+          "name": "MOJO RISIN",
+          "recent_finishes_count": 13,
+          "sail_number": "GBR8809R",
+          "tcc": 1.0
+        },
+        {
+          "boat_id": 10865,
+          "country": "GBR",
+          "head_to_head_losses": 1,
+          "head_to_head_wins": 16,
+          "name": "QUAILO III",
+          "recent_finishes_count": 13,
+          "sail_number": "GBR684",
+          "tcc": 1.033
+        },
+        {
+          "boat_id": 20732,
+          "country": "GBR",
+          "head_to_head_losses": 10,
+          "head_to_head_wins": 11,
+          "name": "TIGRIS",
+          "recent_finishes_count": 18,
+          "sail_number": "GBR914R",
+          "tcc": 1.034
+        },
+        {
+          "boat_id": 3574,
+          "country": "IRL",
+          "head_to_head_losses": 14,
+          "head_to_head_wins": 18,
+          "name": "ZEPHYR",
+          "recent_finishes_count": 15,
+          "sail_number": "IRL11100",
+          "tcc": 1.033
+        }
+      ],
+      "podiums": 4,
+      "rai_interpretation": "Strong positive RAI (+36.1): this boat consistently finishes better than its TCC predicts. Well-sailed or measurement-optimised.",
+      "rai_percentile": 36.130597,
+      "recent_results": [
+        {
+          "class_name": "Division 3 Multihull",
+          "club": "MYCQ",
+          "event_date": "2024-10-13",
+          "event_name": "2024 49th St Helena Cup - Race  2",
+          "fleet_size": 78,
+          "place": 2,
+          "race_name": "Race  2",
+          "skipper": "Richard Jenkins",
+          "status": "finished"
+        },
+        {
+          "class_name": "IRC Overall",
+          "club": null,
+          "event_date": "2025-03-23",
+          "event_name": "TeamO Great Escape",
+          "fleet_size": 25,
+          "place": 7,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "IRC Overall",
+          "club": null,
+          "event_date": "2025-04-18",
+          "event_name": "Marlow Ropes Cowes-Eastbourne",
+          "fleet_size": 21,
+          "place": 5,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "IRC Overall",
+          "club": null,
+          "event_date": "2025-04-20",
+          "event_name": "Marlow Ropes Eastbourne-Cowes",
+          "fleet_size": 20,
+          "place": 1,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-05-03",
+          "event_name": "Cervantes Trophy Race (R1 Cowes Offshore Racing Series)",
+          "fleet_size": 91,
+          "place": 2,
+          "race_name": "2025 RORC - Cervantes Trophy Race (R1 Cowes Offshore Racing Series) (Race #4)",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-05-17",
+          "event_name": "De Guingand Bowl Race (R2 Cowes Offshore Racing Series)",
+          "fleet_size": 68,
+          "place": 10,
+          "race_name": "2025 RORC - De Guingand Bowl Race (R2 Cowes Offshore Racing Series) (Race #5)",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-05-17",
+          "event_name": "Total results for IRC 2H:\u00a036",
+          "fleet_size": 36,
+          "place": 4,
+          "race_name": "2025 RORC - IRC 2H National Championship",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-05-24",
+          "event_name": "Myth of Malham Race (R3 Cowes Offshore Racing Series)",
+          "fleet_size": 128,
+          "place": 18,
+          "race_name": "2025 RORC - Myth of Malham Race (R3 Cowes Offshore Racing Series) (Race #6)",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-05-24",
+          "event_name": "Total results for IRC 2H:\u00a036",
+          "fleet_size": 36,
+          "place": 4,
+          "race_name": "2025 RORC - IRC 2H National Championship",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-05-30",
+          "event_name": "North Sea Race",
+          "fleet_size": 50,
+          "place": 23,
+          "race_name": "2025 RORC - North Sea Race (Race #7)",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-06-27",
+          "event_name": "Morgan Cup Race (R4 Cowes Offshore Racing Series)",
+          "fleet_size": 100,
+          "place": 24,
+          "race_name": "2025 RORC - Morgan Cup Race (R4 Cowes Offshore Racing Series) (Race #11)",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-07-19",
+          "event_name": "Channel Race (R6 Cowes Offshore Racing Series)",
+          "fleet_size": 57,
+          "place": 37,
+          "race_name": "2025 RORC - Channel Race (R6 Cowes Offshore Racing Series) (Race #14)",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-07-31",
+          "event_name": "Total results for IRC 2H:\u00a0100",
+          "fleet_size": 100,
+          "place": 57,
+          "race_name": "2025 RORC - IRC 2H European Championship - Race 2",
+          "skipper": "SIMON BAMFORD",
+          "status": "SCP"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-09-05",
+          "event_name": "Cherbourg Race (with JOG) (R7 Cowes Offshore Racing Series)",
+          "fleet_size": 51,
+          "place": 8,
+          "race_name": "2025 RORC - Cherbourg Race (with JOG) (R7 Cowes Offshore Racing Series) (Race #16)",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2025-09-20",
+          "event_name": "Salcombe Gin RORC Centenary Race",
+          "fleet_size": 30,
+          "place": 5,
+          "race_name": "2025 RORC - Salcombe Gin RORC Centenary Race",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2026-05-02",
+          "event_name": "Cervantes Trophy Race",
+          "fleet_size": 40,
+          "place": 14,
+          "race_name": "2026 RORC - Cervantes Trophy Race (Race #4)",
+          "skipper": "SIMON BAMFORD & BEN IBBOTSON",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2026-05-23",
+          "event_name": "Myth of Malham Race",
+          "fleet_size": 45,
+          "place": 8,
+          "race_name": "2026 RORC - Myth of Malham Race (Race #6)",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2026-05-30",
+          "event_name": "De Guingand Bowl Race",
+          "fleet_size": 33,
+          "place": 26,
+          "race_name": "2026 RORC - De Guingand Bowl Race (Race #7)",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2026-07-03",
+          "event_name": "Cowes Dinard St Malo Race",
+          "fleet_size": 72,
+          "place": 31,
+          "race_name": "2026 RORC - Cowes Dinard St Malo Race (Race #11)",
+          "skipper": "SIMON BAMFORD",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2026-07-03",
+          "event_name": "Provisional",
+          "fleet_size": 18,
+          "place": 11,
+          "race_name": "2026 RORC - IRC Double Handed National Championships - Cowes Dinard St Malo Race",
+          "skipper": "SIMON BAMFORD & BEN IBBOTSON",
+          "status": "finished"
+        }
+      ],
+      "wins": 1
+    },
+    "s07_sensitivity": {
+      "coefficients": [
+        {
+          "beta": -0.001144,
+          "class_mean": 0.0,
+          "contrib_tcc": 0.0,
+          "delta": 0.0,
+          "field": "displacement",
+          "this_boat": 0.0,
+          "unit": "per 100kg"
+        },
+        {
+          "beta": -0.002783,
+          "class_mean": 1.966,
+          "contrib_tcc": 0.00045,
+          "delta": -0.016,
+          "field": "draft",
+          "this_boat": 1.95,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.000717,
+          "class_mean": 0.0,
+          "contrib_tcc": 0.0,
+          "delta": 0.0,
+          "field": "e",
+          "this_boat": 0.0,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.00208,
+          "class_mean": 2.333,
+          "contrib_tcc": -0.00069,
+          "delta": -0.333,
+          "field": "headsails",
+          "this_boat": 2.0,
+          "unit": "per sail"
+        },
+        {
+          "beta": -0.001484,
+          "class_mean": 0.0,
+          "contrib_tcc": 0.0,
+          "delta": 0.0,
+          "field": "hlp",
+          "this_boat": 0.0,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.000153,
+          "class_mean": 0.0,
+          "contrib_tcc": 0.0,
+          "delta": 0.0,
+          "field": "hlu",
+          "this_boat": 0.0,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.000574,
+          "class_mean": 0.0,
+          "contrib_tcc": 0.0,
+          "delta": 0.0,
+          "field": "j",
+          "this_boat": 0.0,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.010662,
+          "class_mean": 9.989,
+          "contrib_tcc": -0.00011,
+          "delta": 0.001,
+          "field": "lh",
+          "this_boat": 9.99,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.009303,
+          "class_mean": 0.0,
+          "contrib_tcc": 0.0,
+          "delta": 0.0,
+          "field": "mhw",
+          "this_boat": 0.0,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.001011,
+          "class_mean": 0.0,
+          "contrib_tcc": 0.0,
+          "delta": 0.0,
+          "field": "muw",
+          "this_boat": 0.0,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.001954,
+          "class_mean": 0.0,
+          "contrib_tcc": 0.0,
+          "delta": 0.0,
+          "field": "p",
+          "this_boat": 0.0,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.001996,
+          "class_mean": 3.182,
+          "contrib_tcc": -0.00036,
+          "delta": -0.182,
+          "field": "spinnakers",
+          "this_boat": 3.0,
+          "unit": "per sail"
+        },
+        {
+          "beta": -0.00061,
+          "class_mean": 0.0,
+          "contrib_tcc": 0.0,
+          "delta": 0.0,
+          "field": "stl",
+          "this_boat": 0.0,
+          "unit": "per 0.1m"
+        }
+      ],
+      "design": "Sunfast 3300",
+      "model_tier": "A",
+      "n_boats_in_class": 18,
+      "r_squared": 0.9942
+    },
+    "s08_optimisation": {
+      "boat_name": "KESTREL",
+      "recommendations": [],
+      "top_3_summary": ""
+    },
+    "s09_formula_drift": {
+      "affected_measurements": [],
+      "design": "Sunfast 3300",
+      "drift_observed": false,
+      "this_boat_likely_impact": null,
+      "window_years": 17
+    },
+    "s10_rivals": {
+      "boat_name": "KESTREL",
+      "rivals": [
+        {
+          "boat_id": 11998,
+          "country": "GBR",
+          "head_to_head_losses": 0,
+          "head_to_head_wins": 0,
+          "name": "BELLINO",
+          "recent_finishes_count": 20,
+          "sail_number": "GBR8657L",
+          "tcc": 1.023
+        },
+        {
+          "boat_id": 12100,
+          "country": "GBR",
+          "head_to_head_losses": 0,
+          "head_to_head_wins": 0,
+          "name": "GAME ON",
+          "recent_finishes_count": 10,
+          "sail_number": "GBR5176L",
+          "tcc": 1.02
+        },
+        {
+          "boat_id": 10947,
+          "country": "GBR",
+          "head_to_head_losses": 0,
+          "head_to_head_wins": 0,
+          "name": "HUMMINGBIRD",
+          "recent_finishes_count": 6,
+          "sail_number": "GBR307R",
+          "tcc": 1.021
+        },
+        {
+          "boat_id": 12121,
+          "country": "NED",
+          "head_to_head_losses": 0,
+          "head_to_head_wins": 0,
+          "name": "IL CORVO",
+          "recent_finishes_count": 10,
+          "sail_number": "NED1409",
+          "tcc": 1.019
+        },
+        {
+          "boat_id": 12357,
+          "country": "GBR",
+          "head_to_head_losses": 0,
+          "head_to_head_wins": 0,
+          "name": "IN CODE",
+          "recent_finishes_count": 9,
+          "sail_number": "GBR6988R",
+          "tcc": 1.02
+        },
+        {
+          "boat_id": 1638,
+          "country": "GBR",
+          "head_to_head_losses": 0,
+          "head_to_head_wins": 0,
+          "name": "JUBILEE G",
+          "recent_finishes_count": 10,
+          "sail_number": "GBR8134T",
+          "tcc": 1.016
+        },
+        {
+          "boat_id": 1913,
+          "country": "GBR",
+          "head_to_head_losses": 0,
+          "head_to_head_wins": 0,
+          "name": "MALICE",
+          "recent_finishes_count": 6,
+          "sail_number": "GBR979R",
+          "tcc": 1.016
+        },
+        {
+          "boat_id": 12116,
+          "country": "GBR",
+          "head_to_head_losses": 0,
+          "head_to_head_wins": 0,
+          "name": "ORBIT",
+          "recent_finishes_count": 13,
+          "sail_number": "GBR8438R",
+          "tcc": 1.021
+        },
+        {
+          "boat_id": 2305,
+          "country": "GBR",
+          "head_to_head_losses": 0,
+          "head_to_head_wins": 0,
+          "name": "PANTHER",
+          "recent_finishes_count": 10,
+          "sail_number": "GBR8876T",
+          "tcc": 1.018
+        },
+        {
+          "boat_id": 12164,
+          "country": "GBR",
+          "head_to_head_losses": 0,
+          "head_to_head_wins": 0,
+          "name": "SURF",
+          "recent_finishes_count": 7,
+          "sail_number": "GBR2095R",
+          "tcc": 1.024
+        }
+      ]
+    },
+    "s11_appendix": {
+      "data_sources": [
+        "IRC TCC daily listings (RORC / ircrating.org)",
+        "IRC certificate PDFs (ircrating.org)",
+        "ORC certificates (data.orc.org)",
+        "SailSys race results (Australian + global SailSys clubs)",
+        "TopYacht race results (Australian regional series)",
+        "RHKYC + ISORA + SailRaceHQ + Sailwave + Cowes Week + Sydney\u2013Hobart (specialised race result feeds)"
+      ],
+      "glossary": [
+        [
+          "TCC",
+          "Time Correction Coefficient \u2014 the IRC handicap multiplier applied to elapsed time. Higher TCC = rated faster = bigger time correction owed."
+        ],
+        [
+          "IRC",
+          "International Rating Certificate \u2014 the secret-formula handicap administered by the RORC."
+        ],
+        [
+          "ORC",
+          "Offshore Racing Congress \u2014 a separate, open-formula handicap system used alongside or instead of IRC."
+        ],
+        [
+          "RAI",
+          "Rating Advantage Index \u2014 the gap between actual finish percentile and the percentile predicted by TCC. Positive = beating the rating; negative = underperforming."
+        ],
+        [
+          "Tier A / B / C",
+          "Regression model tier. A = full IRC certificate measurements (15 features). B = snapshot fields only (7 features). C = cross-design fleet-wide fallback."
+        ],
+        [
+          "R\u00b2",
+          "Coefficient of determination \u2014 fraction of TCC variance the regression model explains. 0.9 means 90% of the boat-to-boat variation in TCC is captured by the chosen measurements."
+        ],
+        [
+          "\u03b2 (beta)",
+          "Regression coefficient \u2014 the marginal change in TCC associated with a one-unit change in a given measurement, holding other measurements constant."
+        ],
+        [
+          "Standardised \u03b2",
+          "Coefficient on the standardised (z-scored) measurement scale \u2014 used to compare which levers move TCC most regardless of unit."
+        ],
+        [
+          "Class median",
+          "The median TCC across all boats of this design class with a current TCC on file."
+        ],
+        [
+          "Percentile rank",
+          "Where this boat's TCC sits within the class distribution. 50th percentile = median; 95th = top 5% by rating."
+        ],
+        [
+          "Head-to-head",
+          "Two boats finishing the same race. Counted only when both have finishing positions and shared event_date."
+        ],
+        [
+          "Drift",
+          "Change in the relationship between a measurement and TCC across the analysis window. Drift signals a shift in how the IRC formula treats that measurement, but the formula itself is not observable."
+        ]
+      ],
+      "methodology_blurb": "This report combines five quantitative engines: (1) a Ridge regression model that fits TCC against per-boat measurements within a design class; (2) a per-boat decomposition that translates the regression coefficients into the rating delta between this boat and the class median; (3) a Rating Advantage Index (RAI) that compares actual race finishes against the finish percentile a boat's TCC would predict; (4) a fleet-wide drift analysis that flags measurements whose relationship to TCC has moved over the sample window; (5) an optimisation engine that ranks measurement changes by estimated TCC impact and feasibility. All numerical claims in the body are grounded in the same data set; the truth-discipline auditor scans the generated prose for numbers outside the source payload and flags any that appear suspicious."
+    }
+  }
+}

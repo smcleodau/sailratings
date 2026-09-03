@@ -1,0 +1,1155 @@
+{
+  "boat": {
+    "design": "Sunfast 3300",
+    "id": 12067,
+    "name": "CHILLI PEPPER",
+    "sail_number": "GBR1663R"
+  },
+  "engines": {
+    "design_model": {
+      "alpha": 0.1129,
+      "coefficients": [
+        {
+          "beta_per_unit": 0.007249,
+          "field": "mhw",
+          "rank": 1,
+          "std_beta": 0.0052,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.017917,
+          "field": "draft",
+          "rank": 2,
+          "std_beta": 0.0049,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.003961,
+          "field": "hlp",
+          "rank": 3,
+          "std_beta": 0.0047,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.000844,
+          "field": "stl",
+          "rank": 4,
+          "std_beta": 0.0041,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.001108,
+          "field": "p",
+          "rank": 5,
+          "std_beta": -0.0039,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.003637,
+          "field": "headsails",
+          "rank": 6,
+          "std_beta": 0.0026,
+          "unit": "per sail"
+        },
+        {
+          "beta_per_unit": -0.001501,
+          "field": "displacement",
+          "rank": 7,
+          "std_beta": -0.0025,
+          "unit": "per 100kg"
+        },
+        {
+          "beta_per_unit": 0.000308,
+          "field": "hlu",
+          "rank": 8,
+          "std_beta": 0.0013,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.002185,
+          "field": "spinnakers",
+          "rank": 9,
+          "std_beta": 0.0013,
+          "unit": "per sail"
+        },
+        {
+          "beta_per_unit": 0.002056,
+          "field": "lh",
+          "rank": 10,
+          "std_beta": 0.0012,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.000765,
+          "field": "j",
+          "rank": 11,
+          "std_beta": -0.0012,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.00057,
+          "field": "muw",
+          "rank": 12,
+          "std_beta": -0.001,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.001526,
+          "field": "e",
+          "rank": 13,
+          "std_beta": 0.0008,
+          "unit": "per 0.1m"
+        }
+      ],
+      "collinearity_warnings": [
+        "j \u2194 muw: r=0.94 \u2014 interpret individual coefficients with caution"
+      ],
+      "design": "Sunfast 3300",
+      "interpretation": "Mhw is the strongest TCC lever in the Sunfast 3300 class \u2014 more mhw increases TCC. Draft ranks second (std beta=+0.005).",
+      "is_one_design": false,
+      "model_tier": "A",
+      "n_boats": 22,
+      "r_squared": 0.9778,
+      "r_squared_cv": 0.1661
+    },
+    "fleet_wide_model": {
+      "alpha": 0.1129,
+      "coefficients": [
+        {
+          "beta_per_unit": 0.013773,
+          "field": "draft",
+          "rank": 1,
+          "std_beta": 0.0829,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": -0.000616,
+          "field": "dlr",
+          "rank": 2,
+          "std_beta": -0.033,
+          "unit": "per unit"
+        },
+        {
+          "beta_per_unit": 0.007755,
+          "field": "crew",
+          "rank": 3,
+          "std_beta": 0.0244,
+          "unit": "per person"
+        },
+        {
+          "beta_per_unit": -0.000422,
+          "field": "lh",
+          "rank": 4,
+          "std_beta": -0.0109,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.000627,
+          "field": "beam",
+          "rank": 5,
+          "std_beta": 0.0035,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.002891,
+          "field": "headsails",
+          "rank": 6,
+          "std_beta": 0.003,
+          "unit": "per sail"
+        },
+        {
+          "beta_per_unit": 0.001709,
+          "field": "spinnakers",
+          "rank": 7,
+          "std_beta": 0.0014,
+          "unit": "per sail"
+        }
+      ],
+      "collinearity_warnings": [
+        "lh \u2194 beam: r=0.91 \u2014 interpret individual coefficients with caution",
+        "lh \u2194 crew: r=0.99 \u2014 interpret individual coefficients with caution"
+      ],
+      "design": "All Designs (Fleet-Wide)",
+      "interpretation": "Draft is the strongest TCC lever in the All Designs (Fleet-Wide) class \u2014 more draft increases TCC. Dlr ranks second (std beta=-0.033).",
+      "is_one_design": false,
+      "model_tier": "C",
+      "n_boats": 257,
+      "r_squared": 0.9505,
+      "r_squared_cv": 0.9176
+    },
+    "rai": {
+      "avg_expected_pct": 0.432,
+      "avg_finish_pct": 0.309,
+      "boat_id": 12067,
+      "boat_name": "CHILLI PEPPER",
+      "ci_lower": 4.14,
+      "ci_upper": 20.51,
+      "design": "Sunfast 3300",
+      "interpretation": "Strong positive RAI (+12.3): this boat consistently finishes better than its TCC predicts. Well-sailed or measurement-optimised.",
+      "n_races": 44,
+      "podiums": 4,
+      "rai": 12.33,
+      "sail_number": "GBR1663R",
+      "wins": 3
+    },
+    "smart_boats": {
+      "design": "Sunfast 3300",
+      "fleet_rai_distribution": {},
+      "n_total": 36,
+      "n_with_races": 36,
+      "smart_boats": []
+    }
+  },
+  "facts_sha256": "ca69ea8236d1e5284d229369896eb793bfb96306d642dea1f07b0eed8d0e6e36",
+  "fixture": {
+    "boat_name": "CHILLI PEPPER",
+    "description": "Tier-A design-class fixture (has a parsed IRC certificate).",
+    "design": "Sunfast 3300",
+    "sail_number": "GBR1663R",
+    "slug": "chilli_pepper"
+  },
+  "schema_version": "ReportFactsV1",
+  "sections": {
+    "s01_executive": {
+      "boat_name": "CHILLI PEPPER",
+      "class_median_tcc": 1.008,
+      "country": "GBR",
+      "design": "Sunfast 3300",
+      "finishes": 44,
+      "headline_finding_1": "Rates +0.0180 TCC above the Sunfast 3300 median (1.0260 vs 1.0080).",
+      "headline_finding_2": "3 wins and 4 podiums across 44 finishes (7% win rate).",
+      "headline_finding_3": "Largest rating driver: mhw (+0.0067 TCC vs class mean \u2014 this boat is 0.09m above the class mean).",
+      "podiums": 4,
+      "sail_number": "GBR1663R",
+      "tcc_now": 1.026,
+      "this_boat_percentile": null,
+      "top_recommendation": null,
+      "wins": 3
+    },
+    "s02_identity": {
+      "beam_max": 3.4,
+      "boat_name": "CHILLI PEPPER",
+      "builder": "Jeanneau",
+      "current_skipper": "JIM AND ELLIE DRIVER",
+      "design": "Sunfast 3300",
+      "designer": "Daniel Andrieu / Guillaume Verdier",
+      "displacement_kg": 3654.0,
+      "home_club": "RORC",
+      "identities": [
+        {
+          "boat_name": "CHILLI PEPPER",
+          "flag": "GBR",
+          "observed_date": "2026-03-14",
+          "owner": null,
+          "sail_number": "GBR1663R",
+          "source": "irc_tcc"
+        }
+      ],
+      "loa": 9.99,
+      "lwl": null,
+      "sail_number": "GBR1663R",
+      "skipper_stints": [
+        {
+          "first_date": "2023-05-27",
+          "last_date": "2023-08-12",
+          "name": "ELLIE DRIVER",
+          "podiums": 0,
+          "races": 3,
+          "wins": 0
+        },
+        {
+          "first_date": "2023-09-09",
+          "last_date": "2024-05-04",
+          "name": "ELLIE DRIVER & PHILIP BARNES",
+          "podiums": 0,
+          "races": 2,
+          "wins": 0
+        },
+        {
+          "first_date": "2023-07-07",
+          "last_date": "2023-07-07",
+          "name": "ELLIE DRIVER / ALARIC BATES",
+          "podiums": 0,
+          "races": 1,
+          "wins": 0
+        },
+        {
+          "first_date": "2023-05-13",
+          "last_date": "2023-05-13",
+          "name": "ELLIE DRIVER / PHILIP BARNES",
+          "podiums": 0,
+          "races": 1,
+          "wins": 0
+        },
+        {
+          "first_date": "2023-09-01",
+          "last_date": "2024-07-15",
+          "name": "JIM AND ELLIE DRIVER",
+          "podiums": 0,
+          "races": 5,
+          "wins": 0
+        },
+        {
+          "first_date": "2023-04-29",
+          "last_date": "2023-07-22",
+          "name": "JIM DRIVER",
+          "podiums": 0,
+          "races": 4,
+          "wins": 0
+        },
+        {
+          "first_date": "2023-09-01",
+          "last_date": "2023-09-01",
+          "name": "JIM DRIVER / ELLIE DRIVER",
+          "podiums": 0,
+          "races": 1,
+          "wins": 0
+        },
+        {
+          "first_date": "2023-07-02",
+          "last_date": "2023-07-02",
+          "name": "Owner",
+          "podiums": 0,
+          "races": 1,
+          "wins": 0
+        }
+      ],
+      "year_built": 2019
+    },
+    "s03_rating_anatomy": {
+      "boat_name": "CHILLI PEPPER",
+      "class_mean_tcc": 1.007333,
+      "class_median_tcc": 1.008,
+      "decomposition": [
+        {
+          "beta": 0.007249,
+          "class_mean": 2.737,
+          "contrib_tcc": 0.00674,
+          "delta": 0.093,
+          "field": "mhw",
+          "this_boat": 2.83,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.001501,
+          "class_mean": 4034.333,
+          "contrib_tcc": 0.00571,
+          "delta": -380.333,
+          "field": "displacement",
+          "this_boat": 3654.0,
+          "unit": "per 100kg"
+        },
+        {
+          "beta": -0.001108,
+          "class_mean": 12.388,
+          "contrib_tcc": 0.00463,
+          "delta": -0.418,
+          "field": "p",
+          "this_boat": 11.97,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.017917,
+          "class_mean": 1.974,
+          "contrib_tcc": -0.0043,
+          "delta": -0.024,
+          "field": "draft",
+          "this_boat": 1.95,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.000844,
+          "class_mean": 4.856,
+          "contrib_tcc": 0.00408,
+          "delta": 0.484,
+          "field": "stl",
+          "this_boat": 5.34,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.003637,
+          "class_mean": 2.029,
+          "contrib_tcc": 0.00353,
+          "delta": 0.971,
+          "field": "headsails",
+          "this_boat": 3.0,
+          "unit": "per sail"
+        },
+        {
+          "beta": 0.003961,
+          "class_mean": 4.055,
+          "contrib_tcc": 0.00297,
+          "delta": 0.075,
+          "field": "hlp",
+          "this_boat": 4.13,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.000765,
+          "class_mean": 3.983,
+          "contrib_tcc": -0.00151,
+          "delta": 0.197,
+          "field": "j",
+          "this_boat": 4.18,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.00057,
+          "class_mean": 1.12,
+          "contrib_tcc": -0.00142,
+          "delta": 0.25,
+          "field": "muw",
+          "this_boat": 1.37,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.002185,
+          "class_mean": 3.343,
+          "contrib_tcc": -0.00075,
+          "delta": -0.343,
+          "field": "spinnakers",
+          "this_boat": 3.0,
+          "unit": "per sail"
+        },
+        {
+          "beta": 0.001526,
+          "class_mean": 4.239,
+          "contrib_tcc": -0.0006,
+          "delta": -0.039,
+          "field": "e",
+          "this_boat": 4.2,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.000308,
+          "class_mean": 12.034,
+          "contrib_tcc": 0.00042,
+          "delta": 0.136,
+          "field": "hlu",
+          "this_boat": 12.17,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.002056,
+          "class_mean": 10.004,
+          "contrib_tcc": -0.00029,
+          "delta": -0.014,
+          "field": "lh",
+          "this_boat": 9.99,
+          "unit": "per 0.1m"
+        }
+      ],
+      "design": "Sunfast 3300",
+      "explained_variance_pct": 97.8,
+      "model_tier": "A",
+      "n_boats_in_class": 22,
+      "tcc_now": 1.026
+    },
+    "s04_rating_evolution": {
+      "boat_name": "CHILLI PEPPER",
+      "cert_reissue_dates": [
+        "2025-12-31"
+      ],
+      "first_snapshot_tcc": 1.026,
+      "largest_jump_date": null,
+      "largest_jump_tcc": 0.0,
+      "latest_snapshot_tcc": 1.026,
+      "snapshots": [
+        {
+          "cert_year": 2026,
+          "date": "2026-03-14",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-14",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-15",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-16",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-17",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-18",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-19",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-20",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-21",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-22",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-06-01",
+          "source": "irc_tcc",
+          "tcc": 1.026
+        }
+      ],
+      "total_movement": 0.0
+    },
+    "s05_class_context": {
+      "class_n": 36,
+      "class_tcc_list": [
+        0.978,
+        0.988,
+        0.988,
+        0.989,
+        0.989,
+        0.99,
+        0.991,
+        0.992,
+        0.993,
+        0.993,
+        0.994,
+        0.994,
+        0.996,
+        0.996,
+        0.996,
+        1.003,
+        1.003,
+        1.006,
+        1.01,
+        1.011,
+        1.011,
+        1.016,
+        1.02,
+        1.02,
+        1.021,
+        1.022,
+        1.022,
+        1.024,
+        1.024,
+        1.024,
+        1.025,
+        1.026,
+        1.026,
+        1.026,
+        1.028,
+        1.029
+      ],
+      "class_tcc_max": 1.029,
+      "class_tcc_mean": 1.007333,
+      "class_tcc_median": 1.008,
+      "class_tcc_min": 0.978,
+      "design": "Sunfast 3300",
+      "this_boat_percentile": 86.1,
+      "this_boat_tcc": 1.026,
+      "top_5_boats": [
+        {
+          "country": "GBR",
+          "name": "BUG",
+          "sail": "GBR4849R",
+          "tcc": 1.028,
+          "wins": 0
+        },
+        {
+          "country": "GBR",
+          "name": "CHILLI PEPPER",
+          "sail": "GBR1663R",
+          "tcc": 1.026,
+          "wins": 3
+        },
+        {
+          "country": "GBR",
+          "name": "GAME ON",
+          "sail": "GBR5176L",
+          "tcc": 1.02,
+          "wins": 1
+        },
+        {
+          "country": "GBR",
+          "name": "HOOLIGAN VIII",
+          "sail": "GBR833X",
+          "tcc": 1.026,
+          "wins": 0
+        },
+        {
+          "country": "GBR",
+          "name": "ROCKIT",
+          "sail": "GBR9473R",
+          "tcc": 1.029,
+          "wins": 2
+        }
+      ]
+    },
+    "s06_performance": {
+      "boat_name": "CHILLI PEPPER",
+      "by_event_type": {
+        "series": {
+          "n": 44,
+          "podiums": 4,
+          "wins": 3
+        }
+      },
+      "distinct_events": 27,
+      "finishes": 44,
+      "head_to_head": [
+        {
+          "boat_id": 11998,
+          "country": "GBR",
+          "head_to_head_losses": 27,
+          "head_to_head_wins": 8,
+          "name": "BELLINO",
+          "recent_finishes_count": 23,
+          "sail_number": "GBR8657L",
+          "tcc": 1.023
+        },
+        {
+          "boat_id": 792,
+          "country": "GBR",
+          "head_to_head_losses": 13,
+          "head_to_head_wins": 11,
+          "name": "DIABLO-J",
+          "recent_finishes_count": 9,
+          "sail_number": "GBR9205R",
+          "tcc": 0.996
+        },
+        {
+          "boat_id": 12100,
+          "country": "GBR",
+          "head_to_head_losses": 10,
+          "head_to_head_wins": 9,
+          "name": "GAME ON",
+          "recent_finishes_count": 16,
+          "sail_number": "GBR5176L",
+          "tcc": 1.02
+        },
+        {
+          "boat_id": 11882,
+          "country": "GBR",
+          "head_to_head_losses": 8,
+          "head_to_head_wins": 11,
+          "name": "GRIFFIN",
+          "recent_finishes_count": 14,
+          "sail_number": "GBR8936R",
+          "tcc": 1.035
+        },
+        {
+          "boat_id": 968,
+          "country": "GBR",
+          "head_to_head_losses": 12,
+          "head_to_head_wins": 10,
+          "name": "JAGO",
+          "recent_finishes_count": 14,
+          "sail_number": "GBR9779T",
+          "tcc": 0.996
+        },
+        {
+          "boat_id": 1550,
+          "country": "GBR",
+          "head_to_head_losses": 14,
+          "head_to_head_wins": 7,
+          "name": "JANGADA TOO",
+          "recent_finishes_count": 8,
+          "sail_number": "GBR8537R",
+          "tcc": 1.032
+        },
+        {
+          "boat_id": 1913,
+          "country": "GBR",
+          "head_to_head_losses": 3,
+          "head_to_head_wins": 16,
+          "name": "MALICE",
+          "recent_finishes_count": 11,
+          "sail_number": "GBR979R",
+          "tcc": 1.016
+        },
+        {
+          "boat_id": 12008,
+          "country": "GBR",
+          "head_to_head_losses": 5,
+          "head_to_head_wins": 16,
+          "name": "PURPLE MIST",
+          "recent_finishes_count": 10,
+          "sail_number": "GBR4867L",
+          "tcc": 0.998
+        },
+        {
+          "boat_id": 12165,
+          "country": "GBR",
+          "head_to_head_losses": 4,
+          "head_to_head_wins": 15,
+          "name": "ROCKIT",
+          "recent_finishes_count": 10,
+          "sail_number": "GBR9473R",
+          "tcc": 1.029
+        },
+        {
+          "boat_id": 3570,
+          "country": "GBR",
+          "head_to_head_losses": 6,
+          "head_to_head_wins": 14,
+          "name": "ZELDA",
+          "recent_finishes_count": 12,
+          "sail_number": "GBR8809R",
+          "tcc": 1.029
+        }
+      ],
+      "podiums": 4,
+      "rai_interpretation": "Strong positive RAI (+12.3): this boat consistently finishes better than its TCC predicts. Well-sailed or measurement-optimised.",
+      "rai_percentile": 12.326022,
+      "recent_results": [
+        {
+          "class_name": "Sun Fast 3300",
+          "club": null,
+          "event_date": "2022-08-07",
+          "event_name": "2022 IRC Two-Handed",
+          "fleet_size": 16,
+          "place": 6,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3300",
+          "club": null,
+          "event_date": "2022-09-02",
+          "event_name": "2022 IRC Two-Handed",
+          "fleet_size": 41,
+          "place": 4,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3300",
+          "club": null,
+          "event_date": "2022-09-02",
+          "event_name": "2022 RORC Mainseries IRC Overall",
+          "fleet_size": 80,
+          "place": 6,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-04-29",
+          "event_name": "Cervantes Trophy Race",
+          "fleet_size": 87,
+          "place": 33,
+          "race_name": "2023 RORC - Cervantes Trophy Race (Race #4)",
+          "skipper": "JIM DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-05-13",
+          "event_name": "De Guingand Bowl Race",
+          "fleet_size": 83,
+          "place": 12,
+          "race_name": "2023 RORC - De Guingand Bowl Race (Race #5)",
+          "skipper": "ELLIE DRIVER / PHILIP BARNES",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-05-27",
+          "event_name": "Myth of Malham Race",
+          "fleet_size": 147,
+          "place": 18,
+          "race_name": "2023 RORC - Myth of Malham Race (Race #7)",
+          "skipper": "ELLIE DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-06-16",
+          "event_name": "Morgan Cup Race",
+          "fleet_size": 91,
+          "place": 10,
+          "race_name": "2023 RORC - Morgan Cup Race (Race #10)",
+          "skipper": "ELLIE DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-07-02",
+          "event_name": "2H European Championship La Trinite - Cowes",
+          "fleet_size": 34,
+          "place": 24,
+          "race_name": "2023 RORC - 2H European Championship - La Trinite - Cowes",
+          "skipper": "JIM DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-07-02",
+          "event_name": "La Trinite to Cowes Race",
+          "fleet_size": 86,
+          "place": 39,
+          "race_name": "2023 RORC - La Trinite to Cowes Race (Race #11)",
+          "skipper": "Owner",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-07-07",
+          "event_name": "2H European Championship Cowes-Dinard-St Malo",
+          "fleet_size": 34,
+          "place": 19,
+          "race_name": "2023 RORC - 2H European Championship - Cowes-Dinard-St Malo",
+          "skipper": "JIM DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-07-07",
+          "event_name": "Cowes Dinard St Malo Race",
+          "fleet_size": 179,
+          "place": 60,
+          "race_name": "2023 RORC - Cowes Dinard St Malo Race (Race #12)",
+          "skipper": "ELLIE DRIVER / ALARIC BATES",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-07-22",
+          "event_name": "Rolex Fastnet Race",
+          "fleet_size": 358,
+          "place": 33,
+          "race_name": "2023 RORC - Rolex Fastnet Race (Race #13)",
+          "skipper": "JIM DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-08-12",
+          "event_name": "Channel Race",
+          "fleet_size": 23,
+          "place": 8,
+          "race_name": "2023 RORC - Channel Race (Race #14)",
+          "skipper": "ELLIE DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-09-01",
+          "event_name": "Salcombe Gin Castle Rock Race",
+          "fleet_size": 33,
+          "place": 10,
+          "race_name": "2023 RORC - Salcombe Gin Castle Rock Race (Race #15)",
+          "skipper": "JIM DRIVER / ELLIE DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2023-09-01",
+          "event_name": "Total results for IRC 2H:\u00a018",
+          "fleet_size": 18,
+          "place": 6,
+          "race_name": "2023 RORC - IRC 2H Nationals Race 1 (Race #1)",
+          "skipper": "JIM AND ELLIE DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2024-04-20",
+          "event_name": "Cervantes Trophy Race",
+          "fleet_size": 39,
+          "place": 19,
+          "race_name": "2024 RORC - Cervantes Trophy Race (Race #4)",
+          "skipper": "JIM AND ELLIE DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2024-05-04",
+          "event_name": "Myth of Malham Race",
+          "fleet_size": 55,
+          "place": 12,
+          "race_name": "2024 RORC - Myth of Malham Race (Race #5)",
+          "skipper": "ELLIE DRIVER & PHILIP BARNES",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2024-07-05",
+          "event_name": "Cowes Dinard St Malo Race (IRC 2H Europeans Race 1)",
+          "fleet_size": 73,
+          "place": 25,
+          "race_name": "2024 RORC - Cowes Dinard St Malo Race (IRC 2H Europeans Race 1) (Race #11)",
+          "skipper": "JIM AND ELLIE DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2024-07-05",
+          "event_name": "Total results for IRC 2H:\u00a035",
+          "fleet_size": 35,
+          "place": 10,
+          "race_name": "2024 RORC - IRC 2H European Championship - Race 1",
+          "skipper": "JIM AND ELLIE DRIVER",
+          "status": "finished"
+        },
+        {
+          "class_name": null,
+          "club": null,
+          "event_date": "2024-07-15",
+          "event_name": "Total results for IRC 2H:\u00a035",
+          "fleet_size": 35,
+          "place": 22,
+          "race_name": "2024 RORC - IRC 2H European Championship - Race 2",
+          "skipper": "JIM AND ELLIE DRIVER",
+          "status": "finished"
+        }
+      ],
+      "wins": 3
+    },
+    "s07_sensitivity": {
+      "coefficients": [
+        {
+          "beta": -0.001501,
+          "class_mean": 4034.333,
+          "contrib_tcc": 0.00571,
+          "delta": -380.333,
+          "field": "displacement",
+          "this_boat": 3654.0,
+          "unit": "per 100kg"
+        },
+        {
+          "beta": 0.017917,
+          "class_mean": 1.974,
+          "contrib_tcc": -0.0043,
+          "delta": -0.024,
+          "field": "draft",
+          "this_boat": 1.95,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.001526,
+          "class_mean": 4.239,
+          "contrib_tcc": -0.0006,
+          "delta": -0.039,
+          "field": "e",
+          "this_boat": 4.2,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.003637,
+          "class_mean": 2.029,
+          "contrib_tcc": 0.00353,
+          "delta": 0.971,
+          "field": "headsails",
+          "this_boat": 3.0,
+          "unit": "per sail"
+        },
+        {
+          "beta": 0.003961,
+          "class_mean": 4.055,
+          "contrib_tcc": 0.00297,
+          "delta": 0.075,
+          "field": "hlp",
+          "this_boat": 4.13,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.000308,
+          "class_mean": 12.034,
+          "contrib_tcc": 0.00042,
+          "delta": 0.136,
+          "field": "hlu",
+          "this_boat": 12.17,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.000765,
+          "class_mean": 3.983,
+          "contrib_tcc": -0.00151,
+          "delta": 0.197,
+          "field": "j",
+          "this_boat": 4.18,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.002056,
+          "class_mean": 10.004,
+          "contrib_tcc": -0.00029,
+          "delta": -0.014,
+          "field": "lh",
+          "this_boat": 9.99,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.007249,
+          "class_mean": 2.737,
+          "contrib_tcc": 0.00674,
+          "delta": 0.093,
+          "field": "mhw",
+          "this_boat": 2.83,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.00057,
+          "class_mean": 1.12,
+          "contrib_tcc": -0.00142,
+          "delta": 0.25,
+          "field": "muw",
+          "this_boat": 1.37,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": -0.001108,
+          "class_mean": 12.388,
+          "contrib_tcc": 0.00463,
+          "delta": -0.418,
+          "field": "p",
+          "this_boat": 11.97,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta": 0.002185,
+          "class_mean": 3.343,
+          "contrib_tcc": -0.00075,
+          "delta": -0.343,
+          "field": "spinnakers",
+          "this_boat": 3.0,
+          "unit": "per sail"
+        },
+        {
+          "beta": 0.000844,
+          "class_mean": 4.856,
+          "contrib_tcc": 0.00408,
+          "delta": 0.484,
+          "field": "stl",
+          "this_boat": 5.34,
+          "unit": "per 0.1m"
+        }
+      ],
+      "design": "Sunfast 3300",
+      "model_tier": "A",
+      "n_boats_in_class": 22,
+      "r_squared": 0.9778
+    },
+    "s08_optimisation": {
+      "boat_name": "CHILLI PEPPER",
+      "recommendations": [],
+      "top_3_summary": ""
+    },
+    "s09_formula_drift": {
+      "affected_measurements": [],
+      "design": "Sunfast 3300",
+      "drift_observed": false,
+      "this_boat_likely_impact": null,
+      "window_years": 17
+    },
+    "s10_rivals": {
+      "boat_name": "CHILLI PEPPER",
+      "rivals": []
+    },
+    "s11_appendix": {
+      "data_sources": [
+        "IRC TCC daily listings (RORC / ircrating.org)",
+        "IRC certificate PDFs (ircrating.org)",
+        "ORC certificates (data.orc.org)",
+        "SailSys race results (Australian + global SailSys clubs)",
+        "TopYacht race results (Australian regional series)",
+        "RHKYC + ISORA + SailRaceHQ + Sailwave + Cowes Week + Sydney\u2013Hobart (specialised race result feeds)"
+      ],
+      "glossary": [
+        [
+          "TCC",
+          "Time Correction Coefficient \u2014 the IRC handicap multiplier applied to elapsed time. Higher TCC = rated faster = bigger time correction owed."
+        ],
+        [
+          "IRC",
+          "International Rating Certificate \u2014 the secret-formula handicap administered by the RORC."
+        ],
+        [
+          "ORC",
+          "Offshore Racing Congress \u2014 a separate, open-formula handicap system used alongside or instead of IRC."
+        ],
+        [
+          "RAI",
+          "Rating Advantage Index \u2014 the gap between actual finish percentile and the percentile predicted by TCC. Positive = beating the rating; negative = underperforming."
+        ],
+        [
+          "Tier A / B / C",
+          "Regression model tier. A = full IRC certificate measurements (15 features). B = snapshot fields only (7 features). C = cross-design fleet-wide fallback."
+        ],
+        [
+          "R\u00b2",
+          "Coefficient of determination \u2014 fraction of TCC variance the regression model explains. 0.9 means 90% of the boat-to-boat variation in TCC is captured by the chosen measurements."
+        ],
+        [
+          "\u03b2 (beta)",
+          "Regression coefficient \u2014 the marginal change in TCC associated with a one-unit change in a given measurement, holding other measurements constant."
+        ],
+        [
+          "Standardised \u03b2",
+          "Coefficient on the standardised (z-scored) measurement scale \u2014 used to compare which levers move TCC most regardless of unit."
+        ],
+        [
+          "Class median",
+          "The median TCC across all boats of this design class with a current TCC on file."
+        ],
+        [
+          "Percentile rank",
+          "Where this boat's TCC sits within the class distribution. 50th percentile = median; 95th = top 5% by rating."
+        ],
+        [
+          "Head-to-head",
+          "Two boats finishing the same race. Counted only when both have finishing positions and shared event_date."
+        ],
+        [
+          "Drift",
+          "Change in the relationship between a measurement and TCC across the analysis window. Drift signals a shift in how the IRC formula treats that measurement, but the formula itself is not observable."
+        ]
+      ],
+      "methodology_blurb": "This report combines five quantitative engines: (1) a Ridge regression model that fits TCC against per-boat measurements within a design class; (2) a per-boat decomposition that translates the regression coefficients into the rating delta between this boat and the class median; (3) a Rating Advantage Index (RAI) that compares actual race finishes against the finish percentile a boat's TCC would predict; (4) a fleet-wide drift analysis that flags measurements whose relationship to TCC has moved over the sample window; (5) an optimisation engine that ranks measurement changes by estimated TCC impact and feasibility. All numerical claims in the body are grounded in the same data set; the truth-discipline auditor scans the generated prose for numbers outside the source payload and flags any that appear suspicious."
+    }
+  }
+}
