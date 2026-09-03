@@ -113,6 +113,16 @@ class ScheduleRegistry:
     # Schedule construction
     # ------------------------------------------------------------------
 
+    def _schedule_id_for(self, source: Any) -> str:
+        """Resolve the schedule id for a register row.
+
+        OPS-02-04: the schedule id **is** the persisted
+        ``source_schedule_state.schedule_id`` when the row carries one (so
+        ops-renamed schedules keep their identity); otherwise the canonical
+        ``source-<slug>`` form is used (and persisted by the mirror).
+        """
+        return getattr(source, "schedule_id", None) or schedule_id_for_slug(source.slug)
+
     def _build_schedule(self, source: Any, *, paused: bool, note: str) -> Schedule:
         """Build the desired Temporal schedule for a register row.
 
@@ -124,10 +134,13 @@ class ScheduleRegistry:
         ``backoff_seconds`` from ``docs/SCHEDULING-POLICY.md``), falling
         back to :data:`_SOURCE_RUN_RETRY` when the row predates the
         scheduling-policy columns.
+
+        OPS-02-04: the schedule id is ``source_schedule_state.schedule_id``
+        (falling back to ``source-<slug>``).
         """
         slug = source.slug
         interval = cadence_to_timedelta(getattr(source, "cadence", None) or "nightly")
-        schedule_id = schedule_id_for_slug(slug)
+        schedule_id = self._schedule_id_for(source)
 
         action = ScheduleActionStartWorkflow(
             "SourceRunWorkflow",
@@ -188,8 +201,19 @@ class ScheduleRegistry:
     # Public API — upsert / pause / sync
     # ------------------------------------------------------------------
 
+    async def ensure_schedule_id(self, source: Any) -> str:
+        """Ensure the schedule for *source* exists; return its schedule id.
+
+        Like :meth:`ensure_schedule` but returns the id instead of the
+        outcome bucket — used by the admin start/pause/resume helpers
+        (OPS-02-04 / AD-01-06) which need the id to pause/trigger.
+        """
+        schedule_id = self._schedule_id_for(source)
+        await self.ensure_schedule(source)
+        return schedule_id
+
     async def ensure_schedule(self, source: Any) -> str:
-        """Create or update the schedule for *source*; return the schedule id.
+        """Create or update the schedule for *source*; return the outcome.
 
         * Idempotent: re-calling with an unchanged source is a no-op
           ("unchanged").
@@ -197,7 +221,7 @@ class ScheduleRegistry:
           mapping register→schedule is total).
         """
         slug = source.slug
-        schedule_id = schedule_id_for_slug(slug)
+        schedule_id = self._schedule_id_for(source)
         desired_paused = not (bool(source.enabled) and source.legal_status == "approved")
         note = (
             f"register: {'enabled' if not desired_paused else 'paused'}"
@@ -301,6 +325,23 @@ class ScheduleRegistry:
                 )()
                 for r in rows
             ]
+            # OPS-02-04: the schedule id is source_schedule_state.schedule_id
+            # when the mirror already carries one (best-effort — the mirror
+            # table predating this change is fine).
+            try:
+                from sqlalchemy import text as _text
+
+                mirror_ids = {
+                    r.source_slug: r.schedule_id
+                    for r in session.execute(
+                        _text("SELECT source_slug, schedule_id FROM source_schedule_state")
+                    )
+                }
+                for s in sources:
+                    if mirror_ids.get(s.slug):
+                        s.schedule_id = mirror_ids[s.slug]
+            except Exception:
+                pass
 
         for source in sources:
             try:
@@ -353,7 +394,7 @@ class ScheduleRegistry:
                     ),
                     {
                         "slug": source.slug,
-                        "schedule_id": schedule_id_for_slug(source.slug),
+                        "schedule_id": self._schedule_id_for(source),
                         "cadence": getattr(source, "cadence", None) or "nightly",
                         "paused": paused,
                         "notes": "enabled" if not paused else "disabled/unapproved",

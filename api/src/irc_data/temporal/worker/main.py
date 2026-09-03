@@ -100,6 +100,9 @@ async def main() -> None:
                 ledger_activities.run_registered_adapter,
                 ledger_activities.close_source_run,
                 ledger_activities.sync_schedules_from_register,
+                # OPS-02-04 / AD-01-06 admin start/pause/resume helpers
+                ledger_activities.set_schedule_paused,
+                ledger_activities.trigger_source_run,
                 # legacy DP-00 scrape activities (interim adapters)
                 scrape_activities.scrape_orc,
                 scrape_activities.scrape_tcc,
@@ -107,6 +110,12 @@ async def main() -> None:
                 scrape_activities.scrape_topyacht,
                 scrape_activities.scrape_boat_news,
                 scrape_activities.scrape_certs_exhaustive,
+                scrape_activities.parse_certs,
+                scrape_activities.scrape_isora,
+                scrape_activities.scrape_rhkyc,
+                scrape_activities.scrape_sailracehq,
+                scrape_activities.scrape_wayback,
+                scrape_activities.scrape_wayback_tcc,
                 # DP-00-03 raw capture (Yacht Scoring + Manage2Sail)
                 raw_capture_ys_m2s_activities.list_sources_activity,
                 raw_capture_ys_m2s_activities.capture_source_activity,

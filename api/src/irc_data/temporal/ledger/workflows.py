@@ -86,6 +86,19 @@ class SourceRunWorkflow:
             max(1.0, cadence_interval.total_seconds() * MAX_JITTER_FRACTION),
         )
 
+        # OPS-02-04: per-source timeout derived from data_sources — the
+        # register row's ``run_timeout_seconds`` (when set) else the
+        # cadence-scaled default (one cadence interval, floored at 1 h,
+        # capped at 6 h).
+        timeout_seconds = record.get("run_timeout_seconds")
+        try:
+            run_timeout = timedelta(seconds=float(timeout_seconds))
+        except (TypeError, ValueError):
+            run_timeout = min(
+                timedelta(hours=6),
+                max(timedelta(hours=1), cadence_interval),
+            )
+
         # Deterministic jitter seeded by the run identity → stable on replay.
         rng = workflow.random()
         jitter_seconds = rng.uniform(0.0, jitter_cap)
@@ -93,8 +106,10 @@ class SourceRunWorkflow:
 
         # --------------------------------------------------------------
         # 2. Open the ledger row (idempotent upsert on (slug, run_key)).
+        #    OPS-02-04: also opens the ingestion_log mirror row(s); the ids
+        #    come back so the close activity updates the same rows.
         # --------------------------------------------------------------
-        await workflow.execute_activity(
+        opened = await workflow.execute_activity(
             ledger_activities.open_source_run,
             args=[source_slug, run_key, "schedule", workflow_id],
             start_to_close_timeout=timedelta(minutes=1),
@@ -105,6 +120,7 @@ class SourceRunWorkflow:
                 maximum_attempts=5,
             ),
         )
+        ingestion_log_ids = (opened or {}).get("ingestion_log_ids") or {}
 
         # --------------------------------------------------------------
         # 3. Run the registered adapter (bounded retries + backoff +
@@ -117,7 +133,7 @@ class SourceRunWorkflow:
             result = await workflow.execute_activity(
                 ledger_activities.run_registered_adapter,
                 args=[record, run_key],
-                start_to_close_timeout=timedelta(hours=6),
+                start_to_close_timeout=run_timeout,
                 heartbeat_timeout=timedelta(minutes=5),
                 retry_policy=RetryPolicy(
                     initial_interval=timedelta(seconds=10),
@@ -135,11 +151,12 @@ class SourceRunWorkflow:
             detail = f"{type(exc).__name__}: {exc}"
 
         # --------------------------------------------------------------
-        # 4. Close the ledger row — always, so a run → a ledger row.
+        # 4. Close the ledger row — always, so a run → a ledger row
+        #    (and an ingestion_log row, until the admin reads source_runs).
         # --------------------------------------------------------------
         await workflow.execute_activity(
             ledger_activities.close_source_run,
-            args=[source_slug, run_key, status, detail, result],
+            args=[source_slug, run_key, status, detail, result, None, ingestion_log_ids],
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=RetryPolicy(
                 initial_interval=timedelta(seconds=2),
