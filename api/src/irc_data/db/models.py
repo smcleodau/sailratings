@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -479,6 +480,7 @@ class Order(Base):
     __table_args__ = (
         Index("idx_orders_boat", "boat_id"),
         Index("idx_orders_status", "status"),
+        Index("idx_orders_user", "user_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -486,11 +488,13 @@ class Order(Base):
         Uuid, unique=True, nullable=False, default=uuid.uuid4
     )
     boat_id: Mapped[int] = mapped_column(ForeignKey("boats.id"), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     email: Mapped[str | None] = mapped_column(Text)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(Text, nullable=False, server_default="usd")
     stripe_session_id: Mapped[str | None] = mapped_column(Text, unique=True)
     stripe_payment_intent: Mapped[str | None] = mapped_column(Text)
+    stripe_payment_status: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     report_markdown: Mapped[str | None] = mapped_column(Text)
     report_analytics: Mapped[dict | None] = mapped_column(JSON)
@@ -505,6 +509,164 @@ class Order(Base):
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     boat: Mapped["Boat"] = relationship()
+    user: Mapped["User"] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# Users, subscriptions, Stripe events, boat claims (PAY-01-07 / SPEC-23 §1)
+#
+# Subscription truth lives in ``subscriptions`` and is derived exclusively
+# from Stripe webhooks — it is never hand-edited.  ``users`` therefore has
+# no ``subscription_status`` column.
+# ---------------------------------------------------------------------------
+
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("clerk_id", name="uq_users_clerk_id"),
+        UniqueConstraint("email", name="uq_users_email"),
+        Index("idx_users_clerk_id", "clerk_id"),
+        Index("idx_users_email", "email"),
+        Index("idx_users_stripe_customer_id", "stripe_customer_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    clerk_id: Mapped[str] = mapped_column(Text, nullable=False)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    full_name: Mapped[str | None] = mapped_column(Text)
+    stripe_customer_id: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text, nullable=False, server_default="member")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    subscriptions: Mapped[list["Subscription"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    boat_claims: Mapped[list["BoatClaim"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="BoatClaim.user_id",
+    )
+    orders: Mapped[list["Order"]] = relationship(back_populates="user")
+
+
+class Subscription(Base):
+    """Mirror of a Stripe subscription — written only by webhook handlers.
+
+    ``plan`` is derived from the Stripe price ``lookup_key`` prefix (e.g.
+    ``skipper_monthly`` -> ``skipper``); ``status`` is the Stripe
+    subscription status stored verbatim.
+    """
+
+    __tablename__ = "subscriptions"
+    __table_args__ = (
+        UniqueConstraint(
+            "stripe_subscription_id", name="uq_subscriptions_stripe_subscription_id"
+        ),
+        Index("idx_subscriptions_user", "user_id"),
+        Index("idx_subscriptions_stripe_customer", "stripe_customer_id"),
+        Index("idx_subscriptions_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    stripe_subscription_id: Mapped[str] = mapped_column(Text, nullable=False)
+    stripe_customer_id: Mapped[str] = mapped_column(Text, nullable=False)
+    plan: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    current_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    cancel_at_period_end: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    cancel_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="subscriptions")
+
+
+class StripeEvent(Base):
+    """Stripe webhook event ledger — ``id`` is the ``evt_…`` id so a
+    redelivered event is idempotently rejected by primary-key conflict."""
+
+    __tablename__ = "stripe_events"
+    __table_args__ = (
+        Index("idx_stripe_events_type", "type"),
+        Index("idx_stripe_events_processed_at", "processed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    type: Mapped[str] = mapped_column(Text, nullable=False)
+    livemode: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    payload: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+    processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class BoatClaim(Base):
+    """A user's claim to own a boat; moderated pending -> verified/rejected."""
+
+    __tablename__ = "boat_claims"
+    __table_args__ = (
+        UniqueConstraint("user_id", "boat_id", name="uq_boat_claims_user_boat"),
+        Index("idx_boat_claims_boat", "boat_id"),
+        Index("idx_boat_claims_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    boat_id: Mapped[int] = mapped_column(
+        ForeignKey("boats.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    evidence: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    user: Mapped["User"] = relationship(
+        back_populates="boat_claims", foreign_keys=[user_id]
+    )
+    boat: Mapped["Boat"] = relationship()
+    verifier: Mapped["User"] = relationship(foreign_keys=[verified_by])
 
 
 # ---------------------------------------------------------------------------

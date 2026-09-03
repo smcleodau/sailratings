@@ -64,10 +64,17 @@ def _socket_url(db_name: str) -> str:
 # the 0022 3NF backfill over real data (running it on an empty schema would
 # leave the column NOT NULL with no rows and prove nothing).
 PREVIOUS_SUPPORTED_REVISION = "0021"
-CANONICAL_HEAD = "0026"
-# The capstone revision whose downgrade/upgrade pair is the tested
-# rollback / restore strategy (additive views + bookkeeping only).
-CAPSTONE_REVISION = "0026"
+# The canonical head is the PAY-01-07 payments/auth schema revision (users,
+# subscriptions, stripe_events, boat_claims, orders.user_id, v_admin_users).
+# The DP-01-02 ``0026_policy_v1_rulings`` data migration is the canonical
+# 0025 -> 0026 step; its abandoned ``0026_canonical_merge_and_compat`` twin
+# and the other side branches are retired to ``alembic/legacy_versions/`` so
+# the canonical chain is a single linear lineage (base -> 0027) and bare
+# ``alembic upgrade head`` is unambiguous.
+CANONICAL_HEAD = "0027"
+# The revision whose downgrade/upgrade pair is the tested rollback / restore
+# strategy (PAY-01-07: additive tables + views; rollback drops them).
+CAPSTONE_REVISION = "0027"
 
 # Default budget for a full scratch -> head migration on the synthetic
 # production-sized dataset.  Generous so CI is not flaky; tune via env.
@@ -109,6 +116,13 @@ def get_heads(db_url: str) -> List[str]:
 
 
 def upgrade(db_url: str, target: str = "head") -> None:
+    """Run ``alembic upgrade``.
+
+    Since PAY-01-07 the canonical chain (``alembic/versions/``) is a single
+    linear lineage — the abandoned side branches were retired to
+    ``alembic/legacy_versions/`` — so bare ``head`` resolves unambiguously
+    to :data:`CANONICAL_HEAD`.
+    """
     command.upgrade(make_alembic_config(db_url), target)
 
 

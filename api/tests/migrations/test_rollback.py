@@ -1,12 +1,14 @@
-"""Rollback / restore strategy tests (DP-03-05).
+"""Rollback / restore strategy tests (DP-03-05, updated for PAY-01-07).
 
 The acceptance criterion requires a *tested rollback or restore strategy*.
-The canonical capstone revision (``0026``) is deliberately **additive** — it
-only creates compatibility views and two bookkeeping tables — so its
-downgrade/upgrade pair is a safe, reversible operation.  These tests prove
-that:
+The canonical head revision (``0027_payments_auth``) is deliberately
+**additive** — it only creates new tables (users, subscriptions,
+stripe_events, boat_claims, the DP-03-05 evidence tables), the stable
+``v1_*`` / ``v_admin_users`` views and two nullable ``orders`` columns — so
+its downgrade/upgrade pair is a safe, reversible operation.  These tests
+prove that:
 
-  * downgrading the capstone drops the views + bookkeeping tables,
+  * downgrading the capstone drops the views + new tables,
   * user data is untouched by the downgrade, and
   * re-upgrading (restore) recreates the views and leaves data identical.
 """
@@ -18,7 +20,7 @@ from sqlalchemy import create_engine, text
 
 from irc_data.db import migration_verify as mv
 
-CAPSTONE_DOWN_TARGET = "20260526a"  # the revision directly below 0026
+CAPSTONE_DOWN_TARGET = "0026"  # the revision directly below the capstone
 
 
 def _views(engine) -> set:
@@ -57,6 +59,7 @@ def test_rollback_and_restore_capstone(admin_url):
         engine = create_engine(url)
         pre = mv.snapshot_counts_hashes(engine)
         assert {"v1_boat_ratings", "v1_race_results", "v1_fact_assertions_current"} <= _views(engine)
+        assert "v_admin_users" in _views(engine)
         assert _table_exists(engine, "schema_migrations")
         assert _table_exists(engine, "backup_checks")
         engine.dispose()
@@ -64,8 +67,8 @@ def test_rollback_and_restore_capstone(admin_url):
         # --- rollback the additive capstone ---
         mv.downgrade(url, CAPSTONE_DOWN_TARGET)
         engine = create_engine(url)
-        # views + bookkeeping gone
-        assert not ({"v1_boat_ratings", "v1_race_results", "v1_fact_assertions_current"} & _views(engine))
+        # views + new tables gone
+        assert not ({"v1_boat_ratings", "v1_race_results", "v1_fact_assertions_current", "v_admin_users"} & _views(engine))
         assert not _table_exists(engine, "schema_migrations")
         assert not _table_exists(engine, "backup_checks")
         # user data untouched
