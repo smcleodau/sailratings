@@ -896,10 +896,28 @@ async def firecrawl_summary(
     from irc_data.discovery.firecrawl_client import get_credit_usage
     remaining = get_credit_usage()  # may be None if API down or key missing
 
+    # OPS-02-06 daily hard-stop state, surfaced on the admin Firecrawl page
+    # (AD-01-08): how many credits have been spent since UTC midnight vs the
+    # configured daily cap, and whether the cap is currently refusing calls.
+    from irc_data.discovery import crawl_telemetry
+    try:
+        daily = {
+            "daily_credit_cap": (s := crawl_telemetry._get_settings(engine, crawl_telemetry.DEFAULT_PROVIDER)).get("daily_credit_cap"),
+            "used_today": crawl_telemetry._day_spend(engine, crawl_telemetry.DEFAULT_PROVIDER),
+        }
+        daily["daily_capped"] = bool(
+            daily["daily_credit_cap"]
+            and daily["daily_credit_cap"] > 0
+            and daily["used_today"] >= daily["daily_credit_cap"]
+        )
+    except Exception:  # noqa: BLE001 — dashboard must never 500 on budget state
+        daily = {"daily_credit_cap": None, "used_today": None, "daily_capped": False}
+
     return {
         "as_of": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "remaining": remaining,            # {"remaining_credits": …, "plan_credits": …} | null
         "windows": by_window,              # {"today": {...}, "7d": {...}, "30d": {...}}
+        "daily": daily,                    # OPS-02-06 daily hard-stop state
     }
 
 

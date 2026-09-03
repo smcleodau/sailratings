@@ -61,6 +61,10 @@ DEFAULT_PROVIDER = os.environ.get("CRAWL_PROVIDER", "firecrawl")
 DEFAULT_PERIOD_CREDITS = int(os.environ.get("CRAWL_CREDIT_PERIOD_BUDGET", "100000"))
 DEFAULT_SOFT_CAP_FRAC = float(os.environ.get("CRAWL_SOFT_CAP_FRAC", "0.80"))
 DEFAULT_HARD_CAP_FRAC = float(os.environ.get("CRAWL_HARD_CAP_FRAC", "0.95"))
+#: Daily hard-stop cap (OPS-02-06). ``0`` / unset = no daily cap. Once the
+#: credits spent since local midnight reach this, every non-manual call is
+#: refused until the day rolls — independent of the period soft/hard caps.
+DEFAULT_DAILY_CREDIT_CAP = int(os.environ.get("CRAWL_DAILY_CREDIT_CAP", "0"))
 
 #: Callers matching these substrings do bulk, deferrable work — they are the
 #: first thing refused at the soft cap so interactive/ingest flows keep
@@ -81,13 +85,15 @@ class ThrottleDecision:
     """Outcome of one ``check_throttle`` evaluation."""
 
     allowed: bool
-    action: str           # 'allow' | 'warn' | 'soft_block' | 'hard_block'
+    action: str           # 'allow' | 'warn' | 'soft_block' | 'hard_block' | 'daily_block'
     reason: str
     provider: str
     used_credits: int
     soft_cap: int
     hard_cap: int
     utilization: float
+    used_today: int = 0
+    daily_cap: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -99,6 +105,8 @@ class ThrottleDecision:
             "soft_cap": self.soft_cap,
             "hard_cap": self.hard_cap,
             "utilization": round(self.utilization, 4),
+            "used_today": self.used_today,
+            "daily_cap": self.daily_cap,
         }
 
 
@@ -364,6 +372,17 @@ def _period_spend(engine: Engine, provider: str, since: datetime) -> int:
         """), {"since": since}).scalar() or 0)
 
 
+def _day_start(now: datetime | None = None) -> datetime:
+    """Start of the current UTC day (the daily-cap window anchor)."""
+    n = now or datetime.now(timezone.utc)
+    return datetime(n.year, n.month, n.day, tzinfo=timezone.utc)
+
+
+def _day_spend(engine: Engine, provider: str, now: datetime | None = None) -> int:
+    """Credits spent since UTC midnight today (daily-cap window)."""
+    return _period_spend(engine, provider, _day_start(now))
+
+
 def _month_start() -> datetime:
     now = datetime.now(timezone.utc)
     return datetime(now.year, now.month, 1, tzinfo=timezone.utc)
@@ -377,11 +396,30 @@ def _coerce_dt(v: Any) -> datetime | None:
     return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
 
 
+def _table_has_column(engine: Engine, table: str, column: str) -> bool:
+    """True when ``table`` has ``column`` (dialect-portable, never raises)."""
+    try:
+        from sqlalchemy import inspect as _sa_inspect
+
+        insp = _sa_inspect(engine)
+        return any(c["name"] == column for c in insp.get_columns(table))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _get_settings(engine: Engine, provider: str) -> dict[str, Any]:
+    # daily_credit_cap is new in migration 0030; read it only when present so
+    # the telemetry layer keeps working against a pre-0030 schema. We probe
+    # the schema via the inspector rather than try/except so a missing column
+    # doesn't abort the connection's transaction on Postgres.
+    has_daily = _table_has_column(engine, "crawl_budget_settings",
+                                  "daily_credit_cap")
+    cols = "period_credits, soft_cap_frac, hard_cap_frac, period_start"
+    if has_daily:
+        cols += ", daily_credit_cap"
     with engine.connect() as conn:
-        row = conn.execute(text("""
-            SELECT period_credits, soft_cap_frac, hard_cap_frac, period_start
-            FROM crawl_budget_settings WHERE provider = :p
+        row = conn.execute(text(f"""
+            SELECT {cols} FROM crawl_budget_settings WHERE provider = :p
         """), {"p": provider}).first()
     if row:
         return {
@@ -389,12 +427,16 @@ def _get_settings(engine: Engine, provider: str) -> dict[str, Any]:
             "soft_cap_frac": float(row[1]),
             "hard_cap_frac": float(row[2]),
             "period_start": _coerce_dt(row[3]),
+            "daily_credit_cap": (
+                int(row[4]) if (has_daily and row[4] is not None) else None
+            ),
         }
     return {
         "period_credits": DEFAULT_PERIOD_CREDITS,
         "soft_cap_frac": DEFAULT_SOFT_CAP_FRAC,
         "hard_cap_frac": DEFAULT_HARD_CAP_FRAC,
         "period_start": None,
+        "daily_credit_cap": (DEFAULT_DAILY_CREDIT_CAP or None),
     }
 
 
@@ -406,15 +448,21 @@ def upsert_settings(
     soft_cap_frac: float | None = None,
     hard_cap_frac: float | None = None,
     period_start: datetime | None = None,
+    daily_credit_cap: int | None = None,
 ) -> None:
     """Create/update the budget row for a provider (admin surface).
 
     Unspecified fields keep their current values (or the env-var defaults
     on first insert); ``period_start`` defaults to the start of the
-    current month.
+    current month. ``daily_credit_cap`` is the OPS-02-06 hard stop — set an
+    integer to arm it, leave ``None`` to keep the current value (or no cap).
     """
     eng = _get_engine(engine)
-    defaults = {
+    has_daily = _table_has_column(eng, "crawl_budget_settings",
+                                  "daily_credit_cap")
+    # INSERT-path defaults (only used when creating the row); period_start
+    # defaults to the start of the current month.
+    insert_defaults = {
         "period_credits": period_credits
         if period_credits is not None else DEFAULT_PERIOD_CREDITS,
         "soft_cap_frac": soft_cap_frac
@@ -422,23 +470,32 @@ def upsert_settings(
         "hard_cap_frac": hard_cap_frac
         if hard_cap_frac is not None else DEFAULT_HARD_CAP_FRAC,
         "period_start": period_start or _month_start(),
+        "daily_credit_cap": daily_credit_cap,
+    }
+    # UPDATE-path values: ONLY the fields the caller actually supplied.
+    # (Critical: period_start must not be touched on update unless supplied,
+    # otherwise an UPDATE would silently reset the budget period anchor and
+    # the gate would lose track of period spend.)
+    supplied = {
+        "period_credits": period_credits,
+        "soft_cap_frac": soft_cap_frac,
+        "hard_cap_frac": hard_cap_frac,
+        "period_start": period_start,
+        "daily_credit_cap": daily_credit_cap,
     }
     with eng.begin() as conn:
         exists = conn.execute(text("""
             SELECT 1 FROM crawl_budget_settings WHERE provider = :p
         """), {"p": provider}).first()
         if exists:
-            # Update only the fields the caller actually supplied.
             sets: list[str] = ["updated_at = CURRENT_TIMESTAMP"]
             params: dict[str, Any] = {"p": provider}
-            for field in ("period_credits", "soft_cap_frac", "hard_cap_frac",
-                          "period_start"):
-                val = {
-                    "period_credits": period_credits,
-                    "soft_cap_frac": soft_cap_frac,
-                    "hard_cap_frac": hard_cap_frac,
-                    "period_start": period_start,
-                }[field]
+            updatable = ["period_credits", "soft_cap_frac", "hard_cap_frac",
+                         "period_start"]
+            if has_daily:
+                updatable.append("daily_credit_cap")
+            for field in updatable:
+                val = supplied[field]
                 if val is not None:
                     sets.append(f"{field} = :{field}")
                     params[field] = val
@@ -447,16 +504,31 @@ def upsert_settings(
                 "WHERE provider = :p"
             ), params)
         else:
-            conn.execute(text("""
-                INSERT INTO crawl_budget_settings
-                  (provider, period_credits, soft_cap_frac, hard_cap_frac,
-                   period_start)
-                VALUES (:p, :pc, :sc, :hc, :ps)
-            """), {
-                "p": provider, "pc": defaults["period_credits"],
-                "sc": defaults["soft_cap_frac"], "hc": defaults["hard_cap_frac"],
-                "ps": defaults["period_start"],
-            })
+            if has_daily:
+                conn.execute(text("""
+                    INSERT INTO crawl_budget_settings
+                      (provider, period_credits, soft_cap_frac, hard_cap_frac,
+                       period_start, daily_credit_cap)
+                    VALUES (:p, :pc, :sc, :hc, :ps, :dc)
+                """), {
+                    "p": provider, "pc": insert_defaults["period_credits"],
+                    "sc": insert_defaults["soft_cap_frac"],
+                    "hc": insert_defaults["hard_cap_frac"],
+                    "ps": insert_defaults["period_start"],
+                    "dc": insert_defaults["daily_credit_cap"],
+                })
+            else:
+                conn.execute(text("""
+                    INSERT INTO crawl_budget_settings
+                      (provider, period_credits, soft_cap_frac, hard_cap_frac,
+                       period_start)
+                    VALUES (:p, :pc, :sc, :hc, :ps)
+                """), {
+                    "p": provider, "pc": insert_defaults["period_credits"],
+                    "sc": insert_defaults["soft_cap_frac"],
+                    "hc": insert_defaults["hard_cap_frac"],
+                    "ps": insert_defaults["period_start"],
+                })
 
 
 def credit_balance(
@@ -481,6 +553,11 @@ def credit_balance(
     period_spend = _period_spend(eng, provider, period_start)
     windows = window_aggregates(eng, provider=provider, now=now)
     burn_7d = windows.get("7d", {}).get("credits", 0)
+
+    # OPS-02-06 daily hard-stop state (for the admin Firecrawl page).
+    daily_cap = settings.get("daily_credit_cap")
+    used_today = _day_spend(eng, provider, now)
+    daily_capped = bool(daily_cap and daily_cap > 0 and used_today >= daily_cap)
 
     probe: dict[str, Any] | None = None
     if provider_balance is not None:
@@ -514,6 +591,10 @@ def credit_balance(
         "headroom_credits": headroom,
         "soft_cap": int(settings["period_credits"] * settings["soft_cap_frac"]),
         "hard_cap": int(settings["period_credits"] * settings["hard_cap_frac"]),
+        # OPS-02-06 daily hard stop (AD-01-08 admin surface).
+        "daily_credit_cap": daily_cap,
+        "used_today": used_today,
+        "daily_capped": daily_capped,
         "as_of": (now or datetime.now(timezone.utc)).isoformat(),
     }
 
@@ -619,6 +700,12 @@ def check_throttle(
     - used ≥ hard (or reserve would tip) → everything except ``manual``-class
       callers is refused (``hard_block``)
 
+    A **daily hard-stop cap** (OPS-02-06) is evaluated first, independently
+    of the period caps: once the credits spent since UTC midnight reach
+    ``daily_credit_cap``, every non-``manual`` caller is refused
+    (``daily_block``) until the day rolls. ``daily_credit_cap`` of
+    ``None``/``0`` disables the daily cap.
+
     Decisions at/above the soft cap — including allows — are written to
     ``crawl_throttle_events`` so the throttling onset is auditable rather
     than silent. Telemetry failures fail-open (allow) — a broken ledger must
@@ -631,22 +718,40 @@ def check_throttle(
         period_credits = settings["period_credits"]
         soft_cap = int(period_credits * settings["soft_cap_frac"])
         hard_cap = int(period_credits * settings["hard_cap_frac"])
+        daily_cap = settings.get("daily_credit_cap")
         period_start = settings["period_start"] or _period_start(eng, provider)
         used = _period_spend(eng, provider, period_start)
+        used_today = _day_spend(eng, provider)
     except Exception as e:  # noqa: BLE001 — fail-open
         logger.exception("check_throttle: budget state unavailable, allowing")
         return ThrottleDecision(
             allowed=True, action="allow",
             reason=f"budget state unavailable ({e}); failing open",
             provider=provider, used_credits=0, soft_cap=0, hard_cap=0,
-            utilization=0.0,
+            utilization=0.0, used_today=0, daily_cap=None,
         )
 
     util = (used / period_credits) if period_credits else 1.0
     discovery = _is_discovery_caller(caller_norm)
     never_block = _is_never_block(caller_norm)
 
-    if used >= hard_cap or (used + max(0, reserve_credits)) > hard_cap:
+    # --- Daily hard stop (OPS-02-06), checked first ----------------------
+    if daily_cap and daily_cap > 0 and used_today >= daily_cap:
+        if never_block:
+            action, allowed, why = (
+                "warn", True,
+                f"manual caller over daily cap ({used_today}/{daily_cap} "
+                "today); allowed",
+            )
+        else:
+            action, allowed, why = (
+                "daily_block", False,
+                f"daily credit cap reached: {used_today}/{daily_cap} credits "
+                f"used today; refusing {caller_norm!r} until the day rolls "
+                "(hard stop, OPS-02-06)",
+            )
+    # --- Period soft/hard caps -------------------------------------------
+    elif used >= hard_cap or (used + max(0, reserve_credits)) > hard_cap:
         if never_block:
             action, allowed, why = (
                 "warn", True,
@@ -675,13 +780,14 @@ def check_throttle(
     else:
         action, allowed, why = (
             "allow", True,
-            f"under caps ({used}/{soft_cap} soft, {hard_cap} hard)",
+            f"under caps ({used}/{soft_cap} soft, {hard_cap} hard, "
+            f"{used_today}/{daily_cap or '∞'} today)",
         )
 
     decision = ThrottleDecision(
         allowed=allowed, action=action, reason=why, provider=provider,
         used_credits=used, soft_cap=soft_cap, hard_cap=hard_cap,
-        utilization=util,
+        utilization=util, used_today=used_today, daily_cap=daily_cap,
     )
     if record and action != "allow":
         _record_throttle(engine, decision, caller=caller_norm, mode=mode, url=url)
