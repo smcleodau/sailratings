@@ -2,17 +2,24 @@ import { defineConfig, devices } from '@playwright/test';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
-/* PAY-01-10 E2E rig.
+/* Combined admin E2E rig (PAY-01-10 Customers + AD-01-06 Scrapers).
  *
  * Two dev servers are started automatically before the tests run:
  *
- *   1. Admin Customers API (http://127.0.0.1:4101) — a self-contained
- *      FastAPI process serving the admin_customers router against a freshly
- *      seeded SQLite fixture (5 users / 6 claims / 47 orders incl. 37
- *      abandoned) with the Stripe SDK patched to return the live catalogue
- *      (pro_monthly_gbp £29, pro_annual_gbp £290/yr, LAUNCH20 promo).
- *      See fixtures/admin_customers_api.py.  No external DB / Stripe / Clerk
+ *   1. Combined Admin API (http://127.0.0.1:4101) — a self-contained FastAPI
+ *      process serving BOTH the admin_customers router (5 users / 6 claims /
+ *      47 orders incl. 37 abandoned, fake live Stripe catalogue) AND the
+ *      admin router's scrapers endpoints (the AD-01-06 ledger fixture), each
+ *      backed by its own seeded SQLite database. See
+ *      fixtures/admin_combined_api.py.  No external DB / Stripe / Clerk
  *      needed, so `npm run test` works from a clean checkout.
+ *
+ *      Why combined? The default config's testDir includes
+ *      admin-scrapers.spec.ts, and the frontend is pointed at a single
+ *      NEXT_PUBLIC_API_BASE. Serving only the customers API here left the
+ *      scrapers page's /v1/admin/scrapers calls 404ing (the exact
+ *      Gatekeeper failure), because the scrapers-only fixture lived on a
+ *      different port under a different config.
  *
  *   2. The Next.js frontend (http://localhost:4201) pointed at that API via
  *      NEXT_PUBLIC_API_BASE.
@@ -82,11 +89,20 @@ export default defineConfig({
     },
   ],
 
-  /* Start the seeded admin API, then the frontend, before the tests. */
+  /* Start the seeded combined admin API, then the frontend, before the
+   * tests.
+   *
+   * The readiness probe hits the real scrapers endpoint (not /v1/health).
+   * Rationale: this box also runs a live dev API and the scrapers fixture on
+   * adjacent ports, and both expose /v1/health — a stray server squatting on
+   * this port would otherwise satisfy a /v1/health probe and get "reused"
+   * while serving the wrong data (every /admin/scrapers assertion then reads
+   * the live ledger, not the fixture). Probing the scrapers route itself
+   * guarantees the combined fixture is the process actually serving. */
   webServer: [
     {
-      command: `${API_PY} fixtures/admin_customers_api.py`,
-      url: `${API_URL}/v1/health`,
+      command: `${API_PY} fixtures/admin_combined_api.py`,
+      url: `${API_URL}/v1/admin/scrapers/ping`,
       reuseExistingServer: !process.env.CI,
       timeout: 60 * 1000,
       env: { PW_API_PORT: API_PORT },

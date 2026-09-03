@@ -38,7 +38,11 @@ const SUPERVISED_SOURCES = [
   'rorc',
 ] as const;
 
-const API_BASE = process.env.PW_SCRAPERS_API_BASE || 'http://127.0.0.1:4102/v1';
+// Default to the combined admin fixture on :4101 (started by the default
+// playwright.config.ts). The scrapers-dedicated config
+// (playwright.scrapers.config.ts) exports PW_SCRAPERS_API_BASE pointing at
+// its scrapers-only fixture on :4102.
+const API_BASE = process.env.PW_SCRAPERS_API_BASE || 'http://127.0.0.1:4101/v1';
 
 async function openScrapers(page: Page, query = '') {
   // Wait for the summary fetch to actually resolve OK *while* the page

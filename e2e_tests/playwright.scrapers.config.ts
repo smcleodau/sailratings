@@ -29,6 +29,13 @@ const WEB_PORT = process.env.PW_SCRAPERS_WEB_PORT || '4203';
 const API_URL = `http://127.0.0.1:${API_PORT}`;
 const WEB_URL = process.env.PW_SCRAPERS_BASE_URL || `http://localhost:${WEB_PORT}`;
 
+/* Tell the spec where the scrapers fixture lives under THIS config. The
+   spec's beforeEach pings /admin/scrapers/ping to prove the scrapers router
+   is mounted; without this it would default to the combined fixture's port
+   (4101) and report ECONNREFUSED when only this scrapers-only fixture runs.
+   Set as a process env var so the test worker inherits it. */
+process.env.PW_SCRAPERS_API_BASE = `${API_URL}/v1`;
+
 /* Resolve the API interpreter: PW_API_PYTHON wins, then the worktree's own
    api/.venv, then the sibling checkout's venv, then PATH python3. */
 function resolveApiPython(): string {
