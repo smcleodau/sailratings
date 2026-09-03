@@ -109,6 +109,16 @@ class NotionPoller:
         done_epics = {_rt(e, 'ID') for e in epic_rows if _sel(e, 'Status') == 'Done'}
         logger.info(f"Done epics: {done_epics or '(none)'}")
 
+        # A "Blocked By" field can legitimately name a specific task (e.g.
+        # OPS-01 was blocked by "DP-00-01", a single policy-approval issue,
+        # not its whole parent epic "DP-00") as well as an epic. Checking
+        # only done_epics meant a genuinely-completed task blocker could
+        # never clear automatically — observed: OPS-01 stayed ineligible
+        # indefinitely despite DP-00-01 being approved weeks earlier, which
+        # in turn kept OPS-02 (and everything behind it) from ever
+        # activating. done_ids covers both.
+        done_ids = {_rt(p, 'ID') for p in all_pages if _sel(p, 'Status') == 'Done'}
+
         def _sprint_key(epic):
             s = _rt(epic, 'Sprint')
             if not s or s.lower() == 'interim':
@@ -120,7 +130,7 @@ class NotionPoller:
             blocked = _rt(epic, 'Blocked By').strip()
             if not blocked:
                 return True
-            return all(b.strip() in done_epics for b in re.split(r'[;,]', blocked) if b.strip())
+            return all(b.strip() in done_ids for b in re.split(r'[;,]', blocked) if b.strip())
 
         eligible_epics = sorted(
             [e for e in epic_rows
