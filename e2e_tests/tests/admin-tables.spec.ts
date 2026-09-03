@@ -2,9 +2,9 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Admin Tables", () => {
   test("requires admin authentication", async ({ page }) => {
-    // Clear any existing auth state
+    // Set an invalid token so the API returns 401 and forces the signed-out state
     await page.addInitScript(() => {
-      window.localStorage.removeItem("admin_token");
+      window.localStorage.setItem("admin_token", "invalid_token");
     });
     
     await page.goto("/admin/tables");
