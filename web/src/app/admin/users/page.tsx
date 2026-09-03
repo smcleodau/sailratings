@@ -11,16 +11,16 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Anchor,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
-  RefreshCw,
-  Search,
-  Ship,
-  X,
-} from "lucide-react";
+  AnchorIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ExternalLinkIcon,
+  RefreshIcon,
+  SearchIcon,
+  ShipIcon,
+  XIcon,
+} from "@/components/admin/AdminIcons";
 import {
   AdminOrder,
   AdminUser,
@@ -180,7 +180,7 @@ export default function AdminUsersPage() {
           disabled={loading}
           className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
         >
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          <RefreshIcon size={12} className={loading ? "animate-spin" : ""} />
           Refresh
         </button>
       </div>
@@ -195,7 +195,7 @@ export default function AdminUsersPage() {
             load();
           }}
         >
-          <Search
+          <SearchIcon
             size={13}
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--sr-text-tertiary)]"
           />
@@ -251,7 +251,7 @@ export default function AdminUsersPage() {
               : "border-[var(--sr-border-strong)] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)]"
           }`}
         >
-          <Anchor size={11} className="inline mr-1 -mt-0.5" />
+          <AnchorIcon size={11} className="inline mr-1 -mt-0.5" />
           Claims pending
         </button>
       </div>
@@ -288,7 +288,7 @@ export default function AdminUsersPage() {
                   data-testid={`user-row-${u.email}`}
                 >
                   <td className="px-4 py-3 text-[var(--sr-text-tertiary)]">
-                    {expanded === u.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    {expanded === u.id ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-[var(--sr-text-primary)] font-medium leading-tight">
@@ -351,7 +351,7 @@ export default function AdminUsersPage() {
                         title="Open in Stripe"
                         className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.1em] text-[var(--sr-link)] hover:text-[var(--sr-link-hover)]"
                       >
-                        <ExternalLink size={11} />
+                        <ExternalLinkIcon size={11} />
                         Stripe
                       </a>
                     )}
@@ -370,7 +370,7 @@ export default function AdminUsersPage() {
                           {/* Boats */}
                           <div>
                             <h3 className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-2 flex items-center gap-1.5">
-                              <Ship size={11} /> Boats ({detail.boats.length})
+                              <ShipIcon size={11} /> Boats ({detail.boats.length})
                             </h3>
                             {detail.boats.length === 0 ? (
                               <p className="text-[12px] text-[var(--sr-text-tertiary)]">
@@ -406,7 +406,7 @@ export default function AdminUsersPage() {
                                           title="Verify claim"
                                           className="p-1 border border-[var(--sr-starboard)]/50 text-[var(--sr-starboard)] rounded-[3px] hover:bg-[var(--sr-starboard)]/10"
                                         >
-                                          <Check size={11} />
+                                          <CheckIcon size={11} />
                                         </button>
                                         <button
                                           onClick={(e) => {
@@ -416,7 +416,7 @@ export default function AdminUsersPage() {
                                           title="Reject claim"
                                           className="p-1 border border-[var(--sr-signal-500)]/50 text-[var(--sr-signal-500)] rounded-[3px] hover:bg-[var(--sr-signal-500)]/10"
                                         >
-                                          <X size={11} />
+                                          <XIcon size={11} />
                                         </button>
                                       </span>
                                     ) : (

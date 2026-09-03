@@ -393,11 +393,132 @@ export function PauseIcon(p: AdminIconProps) {
   );
 }
 
+export function PlayIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M6 4.5v15l13-7.5Z" />
+    </Icon>
+  );
+}
+
 export function RotateCcwIcon(p: AdminIconProps) {
   return (
     <Icon {...p}>
       <path d="M3 12a9 9 0 1 0 2.64-6.36" />
       <path d="M3 3v6h6" />
+    </Icon>
+  );
+}
+
+/* ── AD-01-16 additions (Today page + chat migration) ─────────────────── */
+
+export function AnchorIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <circle cx="12" cy="5" r="2.5" />
+      <path d="M12 7.5V21" />
+      <path d="M4 13c0 4.5 3.5 8 8 8s8-3.5 8-8" />
+      <path d="M4 13H2m2 0h2m14 0h2m-2 0h-2M9 11h6" />
+    </Icon>
+  );
+}
+
+export function ListChecksIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <path d="m3 6 1.5 1.5L7 5" />
+      <path d="m3 13 1.5 1.5L7 12" />
+      <path d="M11 6h10M11 13h10M3 20h18" />
+    </Icon>
+  );
+}
+
+export function WavesIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M2 8c2 0 2.5 1.5 4.5 1.5S9 8 11 8s2.5 1.5 4.5 1.5S18 8 20 8" />
+      <path d="M2 13c2 0 2.5 1.5 4.5 1.5S9 13 11 13s2.5 1.5 4.5 1.5S18 13 20 13" />
+      <path d="M2 18c2 0 2.5 1.5 4.5 1.5S9 18 11 18s2.5 1.5 4.5 1.5S18 18 20 18" />
+    </Icon>
+  );
+}
+
+export function PanelLeftCloseIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9.5 4v16" />
+      <path d="m15 10-2 2 2 2" />
+    </Icon>
+  );
+}
+
+export function PanelLeftOpenIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9.5 4v16" />
+      <path d="m13 10 2 2-2 2" />
+    </Icon>
+  );
+}
+
+export function GlobeIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3c2.5 2.5 3.8 5.6 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.6-3.8-9s1.3-6.5 3.8-9Z" />
+    </Icon>
+  );
+}
+
+/* ── Customers-zone glyphs (billing / orders / users de-Lucide) ───────── */
+
+export function TagIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M20.6 13.4 11 3.8A2 2 0 0 0 9.6 3.2H4a1 1 0 0 0-1 1v5.6c0 .5.2 1 .6 1.4l9.6 9.6a2 2 0 0 0 2.8 0l4.6-4.6a2 2 0 0 0 0-2.8Z" />
+      <circle cx="7.5" cy="7.7" r="1.2" />
+    </Icon>
+  );
+}
+
+export function WalletIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M20 7H5a2 2 0 0 1 0-4h13v4" />
+      <path d="M3 5v13a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1" />
+      <circle cx="16.5" cy="13.5" r="1.2" />
+    </Icon>
+  );
+}
+
+export function FileTextIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8Z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6M9 17h6" />
+    </Icon>
+  );
+}
+
+export function ShipIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M4 16 2.5 11.5 12 9l9.5 2.5L20 16" />
+      <path d="M12 9V3H9.5" />
+      <path d="M4 16c0 3 3.6 5 8 5s8-2 8-5" />
+    </Icon>
+  );
+}
+
+export function RotateCwIcon(p: AdminIconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
     </Icon>
   );
 }

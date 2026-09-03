@@ -17,15 +17,15 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle,
-  Anchor,
-  CheckCircle2,
-  Clock,
-  GitMerge,
-  ListChecks,
-  RefreshCw,
-  Waves,
-} from "lucide-react";
+  AlertTriangleIcon,
+  AnchorIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  GitMergeIcon,
+  ListChecksIcon,
+  RefreshIcon,
+  WavesIcon,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -144,7 +144,7 @@ function StatTile({
 }) {
   const colour =
     tone === "bad"
-      ? "text-[var(--sr-action-pressed)]"
+      ? "text-[var(--sr-status-danger)]"
       : tone === "warn"
         ? "text-[var(--sr-status-warning)]"
         : tone === "ok"
@@ -153,7 +153,7 @@ function StatTile({
   return (
     <div
       data-testid={testId}
-      className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-3"
+      className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-md px-4 py-3"
     >
       <div className="flex items-start justify-between gap-2">
         <div className={`heading-display text-3xl leading-none ${colour}`}>
@@ -197,9 +197,9 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
     return (
       <div
         data-testid="attention-empty"
-        className="flex items-center gap-2 text-[var(--sr-status-success)] border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-6 justify-center"
+        className="flex items-center gap-2 text-[var(--sr-status-success)] border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-md px-4 py-6 justify-center"
       >
-        <CheckCircle2 size={16} strokeWidth={2} />
+        <CheckCircleIcon size={16} strokeWidth={2} />
         <span className="text-[13px]">Nothing needs a human today.</span>
       </div>
     );
@@ -210,7 +210,7 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
         <li key={`${item.kind}-${item.source ?? "fleet"}-${idx}`}>
           <Link
             href={item.href}
-            className="flex items-start gap-3 border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-3 hover:border-[var(--sr-border-strong)] transition-colors"
+            className="flex items-start gap-3 border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-md px-4 py-3 hover:border-[var(--sr-border-strong)] transition-colors"
           >
             <SeverityDot severity={item.severity} />
             <div className="min-w-0 flex-1">
@@ -261,7 +261,7 @@ function RunsSparkline({
           d.runs === 0
             ? "bg-[var(--sr-buoy)]/25"
             : d.failed > 0
-              ? "bg-[var(--sr-action-pressed)]"
+              ? "bg-[var(--sr-status-danger)]"
               : "bg-[var(--sr-marine-400)]";
         return (
           <div
@@ -295,7 +295,7 @@ function Last14Sparkline({ days }: { days: Last14Day[] }) {
           d.runs === 0
             ? "bg-[var(--sr-buoy)]/30"
             : d.failed > 0
-              ? "bg-[var(--sr-action-pressed)]"
+              ? "bg-[var(--sr-status-danger)]"
               : d.new > 0
                 ? "bg-[var(--sr-status-success)]"
                 : "bg-[var(--sr-marine-400)]";
@@ -326,7 +326,7 @@ function StalePill({ row }: { row: SourceRow }) {
   }
   if (row.stale_days == null) {
     return (
-      <span className="admin-mono-font text-[9px] uppercase tracking-[0.12em] px-1.5 py-0.5 border rounded-[3px] text-[var(--sr-action-pressed)] border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5">
+      <span className="admin-mono-font text-[9px] uppercase tracking-[0.12em] px-1.5 py-0.5 border rounded-[3px] text-[var(--sr-status-danger)] border-[var(--sr-status-danger)]/40 bg-[var(--sr-status-danger)]/5">
         never run
       </span>
     );
@@ -354,7 +354,7 @@ function StatusCell({ status }: { status: string | null }) {
     status === "completed"
       ? "text-[var(--sr-status-success)]"
       : status === "failed"
-        ? "text-[var(--sr-action-pressed)]"
+        ? "text-[var(--sr-status-danger)]"
         : "text-[var(--sr-status-info)]";
   return (
     <span className={`admin-mono-font text-[11px] ${colour}`}>{status}</span>
@@ -365,7 +365,7 @@ function SourcesTable({ sources }: { sources: SourceRow[] }) {
   return (
     <div
       data-testid="sources-table"
-      className="border border-[var(--sr-border-subtle)] rounded-[4px] overflow-hidden"
+      className="border border-[var(--sr-border-subtle)] rounded-md overflow-hidden"
     >
       <table className="w-full text-left">
         <thead>
@@ -467,7 +467,7 @@ function CompletenessMeters({
                     ? "bg-[var(--sr-status-success)]"
                     : m.pct >= 60
                       ? "bg-[var(--sr-buoy)]"
-                      : "bg-[var(--sr-action-pressed)]"
+                      : "bg-[var(--sr-status-danger)]"
                 }`}
                 style={{ width: `${Math.min(100, m.pct)}%` }}
               />
@@ -500,11 +500,11 @@ function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
           value={pwInput}
           onChange={(e) => setPwInput(e.target.value)}
           placeholder="Admin password"
-          className="w-full h-12 px-4 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-ink)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+          className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-border-strong)] text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-tertiary)] focus:border-[var(--sr-dusk)] focus:ring-1 focus:ring-[var(--sr-dusk)]/40 outline-none transition-all rounded-md"
         />
         <button
           type="submit"
-          className="w-full h-12 bg-[var(--sr-link)] text-white text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
+          className="w-full h-12 bg-[var(--sr-dusk)] text-white text-[13px] font-medium hover:bg-[var(--sr-link)] transition-colors rounded-md"
         >
           Sign in
         </button>
@@ -600,17 +600,17 @@ export default function AdminTodayPage() {
             <button
               onClick={fetchOverview}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.14em] text-[var(--sr-text-secondary)] hover:text-[var(--sr-text-primary)] border border-[var(--sr-border-subtle)] rounded-[4px] px-3 py-2 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.14em] text-[var(--sr-text-secondary)] hover:text-[var(--sr-text-primary)] border border-[var(--sr-border-subtle)] rounded-md px-3 py-2 transition-colors disabled:opacity-50"
             >
-              <RefreshCw size={12} strokeWidth={2} className={loading ? "animate-spin" : ""} />
+              <RefreshIcon size={12} strokeWidth={2} className={loading ? "animate-spin" : ""} />
               Refresh
             </button>
           </div>
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 border border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5 text-[var(--sr-action-pressed)] rounded-[4px] px-4 py-3 text-[13px]">
-            <AlertTriangle size={14} strokeWidth={2} />
+          <div className="flex items-center gap-2 border border-[var(--sr-status-danger)]/40 bg-[var(--sr-status-danger)]/10 text-[var(--sr-status-danger)] rounded-md px-4 py-3 text-[13px]">
+            <AlertTriangleIcon size={14} strokeWidth={2} />
             {error}
           </div>
         )}
@@ -636,7 +636,7 @@ export default function AdminTodayPage() {
                   ? "ok"
                   : "warn"
             }
-            icon={<AlertTriangle size={16} strokeWidth={1.8} />}
+            icon={<AlertTriangleIcon size={16} strokeWidth={1.8} />}
           />
           <StatTile
             testId="tile-new-today"
@@ -648,7 +648,7 @@ export default function AdminTodayPage() {
                 : undefined
             }
             tone={today && today.failed > 0 ? "bad" : "neutral"}
-            icon={<Waves size={16} strokeWidth={1.8} />}
+            icon={<WavesIcon size={16} strokeWidth={1.8} />}
           />
           <StatTile
             testId="tile-dupes"
@@ -662,7 +662,7 @@ export default function AdminTodayPage() {
                 : "queue unavailable"
             }
             tone={dupes && dupes.pending_clusters > 0 ? "warn" : "ok"}
-            icon={<GitMerge size={16} strokeWidth={1.8} />}
+            icon={<GitMergeIcon size={16} strokeWidth={1.8} />}
           />
           <StatTile
             testId="tile-corrections"
@@ -670,7 +670,7 @@ export default function AdminTodayPage() {
             value={corrections?.pending ?? "—"}
             sub={corrections?.available ? undefined : "queue unavailable"}
             tone={corrections && corrections.pending > 0 ? "warn" : "ok"}
-            icon={<ListChecks size={16} strokeWidth={1.8} />}
+            icon={<ListChecksIcon size={16} strokeWidth={1.8} />}
           />
         </div>
 
@@ -693,7 +693,7 @@ export default function AdminTodayPage() {
               zero-run band
             </span>
           </div>
-          <div className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-4">
+          <div className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-md px-4 py-4">
             <RunsSparkline
               testId="runs-per-day-sparkline"
               series={data?.runs_per_day.series ?? []}
@@ -713,14 +713,14 @@ export default function AdminTodayPage() {
         <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div
             data-testid="boats-tile"
-            className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-4"
+            className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-md px-4 py-4"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="heading-display text-3xl leading-none text-[var(--sr-text-primary)]">
                 {data?.fleet.boats.toLocaleString() ?? "—"}
               </div>
               <span className="text-[var(--sr-text-label)] mt-0.5">
-                <Anchor size={16} strokeWidth={1.8} />
+                <AnchorIcon size={16} strokeWidth={1.8} />
               </span>
             </div>
             <div className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mt-2">
@@ -728,12 +728,12 @@ export default function AdminTodayPage() {
             </div>
             {today && (
               <div className="admin-mono-font text-[10px] text-[var(--sr-text-tertiary)] mt-1 inline-flex items-center gap-1">
-                <Clock size={10} strokeWidth={2} />
+                <ClockIcon size={10} strokeWidth={2} />
                 {today.found.toLocaleString()} rows seen today
               </div>
             )}
           </div>
-          <div className="md:col-span-2 border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-4">
+          <div className="md:col-span-2 border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-md px-4 py-4">
             <div className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3">
               Fleet completeness
             </div>

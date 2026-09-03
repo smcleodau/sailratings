@@ -79,16 +79,16 @@ export default function SwarmChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-60px)] bg-[var(--sr-surface-page)] text-[var(--sr-text-primary)]">
+    <div data-testid="swarm-page" className="flex flex-col h-[calc(100vh-64px)] text-[var(--sr-text-primary)]">
       {/* Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] flex items-center justify-between shadow-sm">
+      <div className="flex-shrink-0 px-6 py-4 border-b border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[var(--sr-action)]/15 border border-[var(--sr-action)]/30 flex items-center justify-center">
-            <OrbitIcon className="w-4 h-4 text-[var(--sr-action)]" />
+          <div className="w-8 h-8 rounded-md bg-[var(--sr-dusk-interactive)] border border-[var(--sr-border-strong)] flex items-center justify-center">
+            <OrbitIcon className="w-4 h-4 text-[var(--sr-dusk)]" />
           </div>
           <div>
-            <h1 className="font-bold text-[var(--sr-text-primary)] text-sm font-display uppercase tracking-wide">Unified Agent Swarm</h1>
-            <p className="text-xs text-[var(--sr-text-secondary)] font-mono">Talk to Sprint Manager, Spec Writer, and other autonomous agents.</p>
+            <h1 className="heading-display text-base text-[var(--sr-text-primary)]">Unified Agent Swarm</h1>
+            <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)]">Talk to Sprint Manager, Spec Writer, and other autonomous agents.</p>
           </div>
         </div>
       </div>
@@ -96,25 +96,25 @@ export default function SwarmChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"} animate-in fade-in slide-in-from-bottom-2`}>
-            <div className={`max-w-[75%] rounded-xl p-4 shadow-md border ${
-              m.role === "user" 
-                ? "bg-[var(--sr-surface-interactive)] text-[var(--sr-text-primary)] border-[var(--sr-marine-600)]" 
+          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[75%] rounded-md p-4 border ${
+              m.role === "user"
+                ? "bg-[var(--sr-dusk-interactive)] text-[var(--sr-text-primary)] border-[var(--sr-border-strong)]"
                 : m.role === "system"
-                ? "bg-[var(--sr-surface-deep)] text-[var(--sr-text-primary)] border-[var(--sr-action)]/30"
-                : "bg-[var(--sr-surface-card)] text-[var(--sr-text-primary)] border-[var(--sr-border-strong)]"
+                ? "bg-[var(--sr-surface-deep)] text-[var(--sr-text-primary)] border-[var(--sr-dusk)]/40"
+                : "bg-[var(--sr-surface-card)] text-[var(--sr-text-primary)] border-[var(--sr-border-subtle)]"
             }`}>
               <div className="flex items-center gap-2 mb-2">
                 {m.role === "user" ? (
-                  <UserIcon className="w-4 h-4 text-[var(--sr-marine-200)]" />
+                  <UserIcon className="w-4 h-4 text-[var(--sr-link)]" />
                 ) : (
-                  <BotIcon className="w-4 h-4 text-[var(--sr-action)]" />
+                  <BotIcon className="w-4 h-4 text-[var(--sr-dusk)]" />
                 )}
-                <span className="text-[10px] font-mono tracking-wider uppercase font-semibold text-[var(--sr-text-label)]">
+                <span className="admin-mono-font text-[9px] tracking-[0.14em] uppercase text-[var(--sr-text-label)]">
                   {m.role === "user" ? "You" : m.agent || "Agent"}
                 </span>
               </div>
-              <div className="text-sm leading-relaxed whitespace-pre-wrap font-sans">
+              <div className="text-[13px] leading-relaxed whitespace-pre-wrap">
                 {m.content}
               </div>
             </div>
@@ -122,9 +122,9 @@ export default function SwarmChatPage() {
         ))}
         {isSending && (
           <div className="flex justify-start">
-             <div className="bg-[var(--sr-surface-card)] border border-[var(--sr-border-strong)] rounded-xl p-4 flex items-center gap-3 shadow-md">
-                <SpinnerIcon className="w-4 h-4 animate-spin text-[var(--sr-action)]" />
-                <span className="text-xs font-mono text-[var(--sr-text-secondary)] uppercase tracking-wider">Sending signal...</span>
+             <div className="bg-[var(--sr-surface-card)] border border-[var(--sr-border-subtle)] rounded-md p-4 flex items-center gap-3">
+                <SpinnerIcon className="w-4 h-4 animate-spin text-[var(--sr-dusk)]" />
+                <span className="admin-mono-font text-[10px] text-[var(--sr-text-secondary)] uppercase tracking-[0.14em]">Sending signal…</span>
              </div>
           </div>
         )}
@@ -133,25 +133,25 @@ export default function SwarmChatPage() {
 
       {/* Input */}
       <div className="flex-shrink-0 p-6 bg-[var(--sr-surface-card)] border-t border-[var(--sr-border-subtle)]">
-        <div className="max-w-4xl mx-auto relative group">
+        <div className="max-w-4xl mx-auto relative">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Tell the swarm what to build, or ask the Sprint Manager for an update..."
-            className="w-full bg-[var(--sr-surface-deep)] border border-[var(--sr-border-strong)] text-[var(--sr-text-primary)] placeholder:text-[var(--sr-text-tertiary)] rounded-xl px-4 py-4 pr-14 text-sm font-sans resize-none focus:outline-none focus:border-[var(--sr-action)] focus:ring-1 focus:ring-[var(--sr-action)]/50 transition-all shadow-inner"
+            className="w-full bg-[var(--sr-surface-deep)] border border-[var(--sr-border-strong)] text-[var(--sr-text-primary)] placeholder:text-[var(--sr-text-tertiary)] rounded-md px-4 py-4 pr-14 text-[13px] resize-none focus:outline-none focus:border-[var(--sr-dusk)] focus:ring-1 focus:ring-[var(--sr-dusk)]/40 transition-all"
             rows={3}
           />
           <button
             onClick={handleSend}
             disabled={!input.trim() || isSending}
-            className="absolute bottom-4 right-4 p-2.5 bg-[var(--sr-action)] hover:bg-[var(--sr-action-pressed)] text-[var(--sr-action-text)] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md font-bold"
+            className="absolute bottom-4 right-4 p-2.5 bg-[var(--sr-dusk)] hover:bg-[var(--sr-link)] text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <SendIcon className="w-4 h-4" />
           </button>
         </div>
         <div className="max-w-4xl mx-auto mt-2.5 text-center">
-            <span className="text-[10px] text-[var(--sr-text-tertiary)] font-mono">Shift + Enter for new line. Enter to send via Temporal Signal.</span>
+            <span className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-tertiary)]">Shift + Enter for new line · Enter sends via Temporal signal</span>
         </div>
       </div>
     </div>

@@ -164,17 +164,17 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
 
   if (!token) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[var(--sr-surface-page)]">
+      <div className="flex-1 flex items-center justify-center">
         <p className="text-[13px] text-[var(--sr-text-tertiary)]">
-          Sign in via <a className="text-[var(--sr-link)] underline hover:text-[var(--sr-focus)]" href="/admin">/admin</a> first.
+          Sign in via <a className="text-[var(--sr-link)] underline hover:text-[var(--sr-link-hover)]" href="/admin">/admin</a> first.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-[var(--sr-surface-page)]">
-      <div className="px-6 py-3 border-b border-[var(--sr-link)]/12 flex items-center justify-between gap-4 flex-wrap bg-[var(--sr-surface-interactive)]">
+    <div data-testid="table-editor-page" className="flex flex-col h-full">
+      <div className="px-6 py-3 border-b border-[var(--sr-border-subtle)] flex items-center justify-between gap-4 flex-wrap bg-[var(--sr-surface-card)]">
         <div className="flex items-center gap-3 min-w-0">
           <Link
             href="/admin/tables"
@@ -192,7 +192,7 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
             </span>
           )}
           {data && !data.editable && (
-            <span className="inline-flex items-center gap-1.5 admin-mono-font text-[9px] uppercase tracking-wider text-[var(--sr-status-warning)] bg-[var(--sr-status-warning)]/15 px-2 py-0.5 rounded-[2px]">
+            <span className="admin-pill !border-[var(--sr-status-warning)]/40 !text-[var(--sr-status-warning)]">
               <LockIcon size={10} />
               read-only
             </span>
@@ -213,14 +213,14 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
               }
             }}
             placeholder="search… or col=val, col~text"
-            className="bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] placeholder:text-[var(--sr-text-label)] px-3 py-1.5 text-[11px] admin-mono-font w-72 focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="bg-[var(--sr-surface-deep)] border border-[var(--sr-border-strong)] text-[var(--sr-text-primary)] placeholder:text-[var(--sr-text-tertiary)] px-3 py-1.5 text-[11px] admin-mono-font w-72 focus:border-[var(--sr-dusk)] focus:ring-1 focus:ring-[var(--sr-dusk)]/40 outline-none transition-all rounded-md"
           />
           <button
             onClick={() => {
               setOffset(0);
               setFilterApplied(filter);
             }}
-            className="admin-mono-font text-[10px] uppercase tracking-wider bg-[var(--sr-link)] text-[var(--sr-text-primary)] hover:bg-[var(--sr-focus)] px-3 py-1.5 rounded-[4px] shadow-sm transition-colors"
+            className="admin-mono-font text-[10px] uppercase tracking-wider bg-[var(--sr-dusk)] text-white hover:bg-[var(--sr-link)] px-3 py-1.5 rounded-md transition-colors"
           >
             Filter
           </button>
@@ -228,15 +228,15 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
       </div>
 
       {error && (
-        <div className="bg-[var(--sr-action-pressed)]/5 border-b border-[var(--sr-action-pressed)]/20 px-6 py-2">
-          <p className="admin-mono-font text-[10px] text-[var(--sr-action-pressed)]">{error}</p>
+        <div className="bg-[var(--sr-status-danger)]/10 border-b border-[var(--sr-status-danger)]/30 px-6 py-2">
+          <p className="admin-mono-font text-[10px] text-[var(--sr-status-danger)]">{error}</p>
         </div>
       )}
 
-      <div className="flex-1 overflow-auto bg-[var(--sr-surface-page)]">
+      <div className="flex-1 overflow-auto">
         {data && (
           <table className="w-full admin-mono-font text-[11px]">
-            <thead className="sticky top-0 bg-[var(--sr-surface-interactive)] z-10 border-b border-[var(--sr-link)]/12 shadow-sm">
+            <thead className="sticky top-0 bg-[var(--sr-surface-card)] z-10 border-b border-[var(--sr-border-subtle)]">
               <tr>
                 {data.columns.map((c) => {
                   const isSort = data.order_by === c.name;
@@ -244,7 +244,7 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
                     <th
                       key={c.name}
                       onClick={() => headerSort(c.name)}
-                      className={`text-left px-3 py-2 whitespace-nowrap cursor-pointer hover:bg-[var(--sr-border-strong)]/50 transition-colors ${
+                      className={`text-left px-3 py-2 whitespace-nowrap cursor-pointer hover:bg-[var(--sr-surface-interactive)] transition-colors ${
                         isSort ? "text-[var(--sr-link)] font-semibold" : "text-[var(--sr-text-label)] font-medium"
                       }`}
                       title={`${c.type}${c.nullable ? " · nullable" : ""}`}
@@ -262,7 +262,7 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
               {data.rows.map((row, ri) => {
                 const pk = String(row[data.pk]);
                 return (
-                  <tr key={`${pk}-${ri}`} className="border-b border-[var(--sr-link)]/5 hover:bg-[var(--sr-surface-interactive)]">
+                  <tr key={`${pk}-${ri}`} className="border-b border-[var(--sr-border-subtle)] hover:bg-[var(--sr-surface-interactive)]">
                     {data.columns.map((c) => {
                       const v = row[c.name];
                       const editable = data.editable && !FORBIDDEN.has(c.name);
@@ -272,7 +272,7 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
                           key={c.name}
                           onClick={() => editable && !isEditing && startEdit(pk, c.name, v)}
                           className={`px-3 py-1.5 align-top transition-colors ${
-                            editable ? "cursor-text text-[var(--sr-text-primary)] hover:bg-[var(--sr-link)]/5" : "cursor-default text-[var(--sr-text-tertiary)]"
+                            editable ? "cursor-text text-[var(--sr-text-primary)] hover:bg-[var(--sr-surface-interactive)]" : "cursor-default text-[var(--sr-text-tertiary)]"
                           } ${isEditing ? "bg-[var(--sr-surface-card)]" : ""}`}
                           style={{ maxWidth: 320 }}
                         >
@@ -286,19 +286,19 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
                                   if (e.key === "Enter") void saveEdit();
                                   if (e.key === "Escape") cancelEdit();
                                 }}
-                                className="bg-[var(--sr-surface-card)] border border-[var(--sr-link)] text-[var(--sr-text-primary)] px-1.5 py-0.5 text-[11px] admin-mono-font w-44 focus:outline-none rounded-[2px] shadow-sm"
+                                className="bg-[var(--sr-surface-deep)] border border-[var(--sr-dusk)] text-[var(--sr-text-primary)] px-1.5 py-0.5 text-[11px] admin-mono-font w-44 focus:outline-none rounded-[2px]"
                               />
                               <button
                                 onClick={() => void saveEdit()}
                                 disabled={saving}
-                                className="text-[var(--sr-link)] hover:text-[var(--sr-focus)] disabled:opacity-30"
+                                className="text-[var(--sr-link)] hover:text-[var(--sr-link-hover)] disabled:opacity-30"
                                 title="Save"
                               >
                                 <CheckIcon size={11} />
                               </button>
                               <button
                                 onClick={cancelEdit}
-                                className="text-[var(--sr-text-label)] hover:text-[var(--sr-action-pressed)]"
+                                className="text-[var(--sr-text-label)] hover:text-[var(--sr-status-danger)]"
                                 title="Cancel"
                               >
                                 <XIcon size={11} />
@@ -331,7 +331,7 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
 
       {/* Pagination */}
       {data && data.total > PAGE_SIZE && (
-        <div className="flex-shrink-0 border-t border-[var(--sr-link)]/12 px-6 py-3 flex items-center justify-between bg-[var(--sr-surface-interactive)]">
+        <div className="flex-shrink-0 border-t border-[var(--sr-border-subtle)] px-6 py-3 flex items-center justify-between bg-[var(--sr-surface-card)]">
           <span className="admin-mono-font text-[10px] uppercase tracking-wider text-[var(--sr-text-label)]">
             {data.offset + 1}–{Math.min(data.offset + data.rows.length, data.total)} of{" "}
             {data.total.toLocaleString()}
@@ -340,14 +340,14 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
             <button
               onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
               disabled={offset === 0}
-              className="admin-mono-font text-[10px] uppercase tracking-wider bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/20 text-[var(--sr-link)] hover:bg-[var(--sr-surface-card)] px-3 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1 rounded-[4px] shadow-sm"
+              className="admin-mono-font text-[10px] uppercase tracking-wider bg-transparent border border-[var(--sr-border-strong)] text-[var(--sr-text-secondary)] hover:text-[var(--sr-text-primary)] hover:border-[var(--sr-dusk)] px-3 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1 rounded-md"
             >
               <ChevronLeftIcon size={12} /> Prev
             </button>
             <button
               onClick={() => setOffset(offset + PAGE_SIZE)}
               disabled={offset + PAGE_SIZE >= data.total}
-              className="admin-mono-font text-[10px] uppercase tracking-wider bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/20 text-[var(--sr-link)] hover:bg-[var(--sr-surface-card)] px-3 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1 rounded-[4px] shadow-sm"
+              className="admin-mono-font text-[10px] uppercase tracking-wider bg-transparent border border-[var(--sr-border-strong)] text-[var(--sr-text-secondary)] hover:text-[var(--sr-text-primary)] hover:border-[var(--sr-dusk)] px-3 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1 rounded-md"
             >
               Next <ChevronRightIcon size={12} />
             </button>

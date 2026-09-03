@@ -10,12 +10,12 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ExternalLink,
-  FileText,
-  RefreshCw,
-  RotateCw,
-  Search,
-} from "lucide-react";
+  ExternalLinkIcon,
+  FileTextIcon,
+  RefreshIcon,
+  RotateCwIcon,
+  SearchIcon,
+} from "@/components/admin/AdminIcons";
 import {
   AdminOrder,
   MONEY_CLASS,
@@ -101,7 +101,7 @@ export default function AdminOrdersPage() {
           disabled={loading}
           className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
         >
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          <RefreshIcon size={12} className={loading ? "animate-spin" : ""} />
           Refresh
         </button>
       </div>
@@ -116,7 +116,7 @@ export default function AdminOrdersPage() {
             load();
           }}
         >
-          <Search
+          <SearchIcon
             size={13}
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--sr-text-tertiary)]"
           />
@@ -217,7 +217,7 @@ export default function AdminOrdersPage() {
                         title="Open report"
                         className="p-1.5 border border-[var(--sr-border-strong)] text-[var(--sr-text-secondary)] rounded-[3px] hover:text-[var(--sr-text-primary)]"
                       >
-                        <FileText size={12} />
+                        <FileTextIcon size={12} />
                       </a>
                     )}
                     {o.stripe_dashboard_url && (
@@ -228,7 +228,7 @@ export default function AdminOrdersPage() {
                         title="Open in Stripe"
                         className="p-1.5 border border-[var(--sr-border-strong)] text-[var(--sr-text-secondary)] rounded-[3px] hover:text-[var(--sr-text-primary)]"
                       >
-                        <ExternalLink size={12} />
+                        <ExternalLinkIcon size={12} />
                       </a>
                     )}
                     {(o.status === "paid" || o.status === "generated" || o.status === "error") && (
@@ -238,7 +238,7 @@ export default function AdminOrdersPage() {
                         title="Regenerate report"
                         className="p-1.5 border border-[var(--sr-marine-400)]/50 text-[var(--sr-marine-200)] rounded-[3px] hover:bg-[var(--sr-marine-400)]/10 disabled:opacity-40"
                       >
-                        <RotateCw size={12} className={busy === o.id ? "animate-spin" : ""} />
+                        <RotateCwIcon size={12} className={busy === o.id ? "animate-spin" : ""} />
                       </button>
                     )}
                   </div>

@@ -53,6 +53,7 @@ const SECTIONS: SidebarSection[] = [
     label: "Operations",
     icon: OperationsIcon,
     items: [
+      { href: "/admin/sources", label: "Sources" },
       { href: "/admin/scrapers", label: "Scrapers" },
       { href: "/admin/discovery", label: "Discovery" },
       { href: "/admin/firecrawl", label: "Firecrawl" },
@@ -74,6 +75,7 @@ const SECTIONS: SidebarSection[] = [
     label: "Agents",
     icon: AgentsIcon,
     items: [
+      { href: "/admin/chat", label: "Data chat" },
       { href: "/admin/swarm", label: "Swarm" },
       { href: "/admin/tables/admin_edits", label: "Audit" },
     ],

@@ -9,7 +9,13 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { CreditCard, ExternalLink, RefreshCw, Tag, Wallet } from "lucide-react";
+import {
+  CreditCardIcon,
+  ExternalLinkIcon,
+  RefreshIcon,
+  TagIcon,
+  WalletIcon,
+} from "@/components/admin/AdminIcons";
 import {
   BillingResponse,
   MONEY_CLASS,
@@ -78,7 +84,7 @@ export default function AdminBillingPage() {
           disabled={loading}
           className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
         >
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          <RefreshIcon size={12} className={loading ? "animate-spin" : ""} />
           Refresh
         </button>
       </div>
@@ -100,7 +106,7 @@ export default function AdminBillingPage() {
         {/* Plans */}
         <section className="lg:col-span-2">
           <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3 flex items-center gap-2">
-            <CreditCard size={12} /> Plans (live catalogue)
+            <CreditCardIcon size={12} /> Plans (live catalogue)
           </h2>
           <div className="admin-table-container">
             <table className="w-full text-[13px]">
@@ -136,7 +142,7 @@ export default function AdminBillingPage() {
                         title="Open in Stripe"
                         className="text-[var(--sr-link)] hover:text-[var(--sr-link-hover)]"
                       >
-                        <ExternalLink size={12} />
+                        <ExternalLinkIcon size={12} />
                       </a>
                     </td>
                   </tr>
@@ -163,7 +169,7 @@ export default function AdminBillingPage() {
                         title="Open in Stripe"
                         className="text-[var(--sr-link)] hover:text-[var(--sr-link-hover)]"
                       >
-                        <ExternalLink size={12} />
+                        <ExternalLinkIcon size={12} />
                       </a>
                     </td>
                   </tr>
@@ -184,7 +190,7 @@ export default function AdminBillingPage() {
         <section className="space-y-6">
           <div>
             <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3 flex items-center gap-2">
-              <Wallet size={12} /> Balance
+              <WalletIcon size={12} /> Balance
             </h2>
             <div className="admin-table-container px-4 py-4 space-y-2">
               <div className="flex items-center justify-between text-[13px]">
@@ -204,7 +210,7 @@ export default function AdminBillingPage() {
 
           <div>
             <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3 flex items-center gap-2">
-              <Tag size={12} /> Promo codes ({data?.promo_codes.length ?? 0})
+              <TagIcon size={12} /> Promo codes ({data?.promo_codes.length ?? 0})
             </h2>
             <div className="admin-table-container">
               {data && data.promo_codes.length === 0 ? (
@@ -290,7 +296,7 @@ export default function AdminBillingPage() {
                       title="Open in Stripe"
                       className="text-[var(--sr-link)] hover:text-[var(--sr-link-hover)]"
                     >
-                      <ExternalLink size={12} />
+                      <ExternalLinkIcon size={12} />
                     </a>
                   </td>
                 </tr>

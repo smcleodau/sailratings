@@ -207,7 +207,7 @@ export default function ScrapersPage() {
 
   if (!token) {
     return (
-      <div className="flex-1 flex items-center justify-center px-6 bg-[var(--sr-surface-page)]">
+      <div className="flex-1 flex items-center justify-center px-6">
         <form
           className="w-full max-w-sm space-y-4"
           onSubmit={(e) => {
@@ -224,9 +224,9 @@ export default function ScrapersPage() {
             value={pwInput}
             onChange={(e) => setPwInput(e.target.value)}
             placeholder="Admin password"
-            className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-border-strong)] text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-tertiary)] focus:border-[var(--sr-dusk)] focus:ring-1 focus:ring-[var(--sr-dusk)]/40 outline-none transition-all rounded-md"
           />
-          <button type="submit" className="w-full h-12 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm">
+          <button type="submit" className="w-full h-12 bg-[var(--sr-dusk)] text-white text-[13px] font-medium hover:bg-[var(--sr-link)] transition-colors rounded-md">
             Sign in
           </button>
         </form>
@@ -235,7 +235,7 @@ export default function ScrapersPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[var(--sr-surface-page)]">
+    <div data-testid="scrapers-page" className="flex-1 overflow-y-auto">
       <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-end justify-between mb-8 gap-6 flex-wrap">
@@ -254,7 +254,7 @@ export default function ScrapersPage() {
             <button
               onClick={fetchSummary}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] border border-[var(--sr-border-subtle)] rounded-md px-2.5 py-1.5 transition-colors disabled:opacity-40"
             >
               <RefreshIcon size={12} strokeWidth={2} className={loading ? "animate-spin" : ""} />
               Refresh
@@ -263,7 +263,7 @@ export default function ScrapersPage() {
         </div>
 
         {error && (
-          <div className="border border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5 px-4 py-3 mb-6 text-[13px] text-[var(--sr-action-pressed)] rounded-[4px]">
+          <div className="border border-[var(--sr-status-danger)]/40 bg-[var(--sr-status-danger)]/10 px-4 py-3 mb-6 text-[13px] text-[var(--sr-status-danger)] rounded-md">
             {error}
           </div>
         )}
@@ -279,7 +279,7 @@ export default function ScrapersPage() {
         return (
           <div className="mb-[18px]">
             {cronBreached.length > 0 && (
-              <div className="border border-[rgba(166,124,31,0.4)] bg-[rgba(232,178,58,0.12)] rounded-[10px] p-[12px_16px] mb-[18px]">
+              <div className="border border-[var(--sr-status-warning)]/40 bg-[var(--sr-status-warning)]/10 rounded-md px-4 py-3 mb-4">
                 <div className="text-[13px] text-[var(--sr-text-primary)]">
                   <span className="text-[var(--sr-status-warning)] font-semibold">
                     Cron health: {cronBreached.length} source{cronBreached.length === 1 ? " is" : "s are"} not running.
@@ -292,9 +292,9 @@ export default function ScrapersPage() {
               </div>
             )}
             {dataBreached.length > 0 && (
-              <div className="border border-[rgba(201,43,18,0.4)] bg-[rgba(201,43,18,0.12)] rounded-[10px] p-[12px_16px] mb-[18px]">
+              <div className="border border-[var(--sr-status-danger)]/40 bg-[var(--sr-status-danger)]/10 rounded-md px-4 py-3 mb-4">
                 <div className="text-[13px] text-[var(--sr-text-primary)]">
-                  <span className="text-[var(--sr-action-pressed)] font-semibold">
+                  <span className="text-[var(--sr-status-danger)] font-semibold">
                     Data tap: no new rows beyond seasonal lull for {dataBreached.length} source{dataBreached.length === 1 ? "" : "s"}.
                   </span>{" "}
                   {dataBreached.map((s) => s.label).join(", ")}.
@@ -317,7 +317,7 @@ export default function ScrapersPage() {
         {data?.sources.map((src) => {
           const open = openRow === src.source;
           return (
-            <div key={src.source} className="border-b border-[var(--sr-link)]/12 last:border-b-0">
+            <div key={src.source} className="border-b border-[var(--sr-border-subtle)] last:border-b-0">
               <div
                 onClick={() => handleRowClick(src.source)}
                 className="grid grid-cols-[1.6fr_1fr_1fr_150px_40px] gap-[14px] p-[12px_16px] items-start cursor-pointer hover:bg-[var(--sr-surface-interactive)] transition-colors"
@@ -356,7 +356,7 @@ export default function ScrapersPage() {
                 <div className="text-right">
                   <div className="admin-mono-font text-[11px] text-[var(--sr-text-primary)]">
                     {src.runs_7d} <span className="text-[var(--sr-text-secondary)]">/</span>{" "}
-                    <span className={src.failed_7d > 0 ? "text-[var(--sr-action-pressed)]" : ""}>{src.failed_7d}</span>
+                    <span className={src.failed_7d > 0 ? "text-[var(--sr-status-danger)]" : ""}>{src.failed_7d}</span>
                   </div>
                   <div className="admin-mono-font text-[10px] text-[var(--sr-status-success)] mt-[2px]">
                     {src.new_records_7d > 0 ? `+${src.new_records_7d} rec` : "0 rec"}
@@ -388,20 +388,20 @@ export default function ScrapersPage() {
                       
                       {runs[src.source]!.map((r) => (
                         <React.Fragment key={r.id}>
-                          <span className="text-[var(--sr-text-primary)] border-t border-[var(--sr-link)]/12 pt-[5px] tabular-nums">{fmtDateTime(r.started_at)}</span>
-                          <span className="text-[var(--sr-text-tertiary)] text-right border-t border-[var(--sr-link)]/12 pt-[5px] tabular-nums">
+                          <span className="text-[var(--sr-text-primary)] border-t border-[var(--sr-border-subtle)] pt-[5px] tabular-nums">{fmtDateTime(r.started_at)}</span>
+                          <span className="text-[var(--sr-text-tertiary)] text-right border-t border-[var(--sr-border-subtle)] pt-[5px] tabular-nums">
                             {r.duration_seconds != null ? `${r.duration_seconds.toFixed(1)}s` : "—"}
                           </span>
-                          <span className={`text-right border-t border-[var(--sr-link)]/12 pt-[5px] ${
+                          <span className={`text-right border-t border-[var(--sr-border-subtle)] pt-[5px] ${
                             r.status === "completed" ? "text-[var(--sr-status-success)]"
-                            : r.status === "failed" ? "text-[var(--sr-action-pressed)]"
+                            : r.status === "failed" ? "text-[var(--sr-status-danger)]"
                             : "text-[var(--sr-status-warning)]"
                           }`}>
                             {r.status ?? "—"}
                           </span>
-                          <span className="text-[var(--sr-text-tertiary)] text-right border-t border-[var(--sr-link)]/12 pt-[5px] tabular-nums">{r.records_found ?? "—"}</span>
-                          <span className="text-[var(--sr-text-tertiary)] text-right border-t border-[var(--sr-link)]/12 pt-[5px] tabular-nums">{r.records_new ?? "—"}</span>
-                          <span className="text-[var(--sr-action-pressed)] border-t border-[var(--sr-link)]/12 pt-[5px] truncate max-w-xs" title={r.error_message ?? undefined}>
+                          <span className="text-[var(--sr-text-tertiary)] text-right border-t border-[var(--sr-border-subtle)] pt-[5px] tabular-nums">{r.records_found ?? "—"}</span>
+                          <span className="text-[var(--sr-text-tertiary)] text-right border-t border-[var(--sr-border-subtle)] pt-[5px] tabular-nums">{r.records_new ?? "—"}</span>
+                          <span className="text-[var(--sr-status-danger)] border-t border-[var(--sr-border-subtle)] pt-[5px] truncate max-w-xs" title={r.error_message ?? undefined}>
                             {r.error_message ? r.error_message.slice(0, 80) : ""}
                           </span>
                         </React.Fragment>

@@ -123,12 +123,12 @@ function StatCard({
 }) {
   const valueClass =
     tone === "warn"
-      ? "text-[var(--sr-action-pressed)]"
+      ? "text-[var(--sr-status-danger)]"
       : tone === "good"
       ? "text-[var(--sr-status-success)]"
       : "text-[var(--sr-text-primary)]";
   return (
-    <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-3 shadow-sm">
+    <div className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-md px-4 py-3">
       <p className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
         {label}
       </p>
@@ -146,10 +146,10 @@ function ModePill({ mode }: { mode: CallMode }) {
   const cls =
     mode === "scrape"
       ? "bg-[var(--sr-status-warning)]/15 text-[var(--sr-status-warning)] border-[var(--sr-status-warning)]/30"
-      : "bg-[var(--sr-link)]/10 text-[var(--sr-link)] border-[var(--sr-link)]/20";
+      : "bg-[var(--sr-dusk-interactive)] text-[var(--sr-link)] border-[var(--sr-border-strong)]";
   return (
     <span
-      className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2 py-0.5 border rounded-[2px] ${cls}`}
+      className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2 py-0.5 border rounded-full ${cls}`}
     >
       {mode}
     </span>
@@ -172,7 +172,7 @@ function StatusPill({ status }: { status: CallStatus }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-action-pressed)]">
+    <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-status-danger)]">
       <AlertTriangleIcon size={11} strokeWidth={2} /> error
     </span>
   );
@@ -256,7 +256,7 @@ export default function FirecrawlPage() {
 
   if (!token) {
     return (
-      <div className="flex-1 flex items-center justify-center px-6 bg-[var(--sr-surface-page)]">
+      <div className="flex-1 flex items-center justify-center px-6">
         <form
           className="w-full max-w-sm space-y-4"
           onSubmit={(e) => {
@@ -275,11 +275,11 @@ export default function FirecrawlPage() {
             value={pwInput}
             onChange={(e) => setPwInput(e.target.value)}
             placeholder="Admin password"
-            className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-border-strong)] text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-tertiary)] focus:border-[var(--sr-dusk)] focus:ring-1 focus:ring-[var(--sr-dusk)]/40 outline-none transition-all rounded-md"
           />
           <button
             type="submit"
-            className="w-full h-12 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
+            className="w-full h-12 bg-[var(--sr-dusk)] text-white text-[13px] font-medium hover:bg-[var(--sr-link)] transition-colors rounded-md"
           >
             Sign in
           </button>
@@ -316,7 +316,7 @@ export default function FirecrawlPage() {
   /* ── Render ─────────────────────────────────────────────────────── */
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[var(--sr-surface-page)]">
+    <div data-testid="firecrawl-page" className="flex-1 overflow-y-auto">
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-end justify-between mb-8 gap-6 flex-wrap">
@@ -336,7 +336,7 @@ export default function FirecrawlPage() {
             <button
               onClick={fetchAll}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] border border-[var(--sr-border-subtle)] rounded-md px-2.5 py-1.5 transition-colors disabled:opacity-40"
             >
               <RefreshIcon
                 size={12}
@@ -349,14 +349,14 @@ export default function FirecrawlPage() {
         </div>
 
         {error && (
-          <div className="border border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5 px-4 py-3 mb-6 text-[13px] text-[var(--sr-action-pressed)] rounded-[4px]">
+          <div className="border border-[var(--sr-status-danger)]/40 bg-[var(--sr-status-danger)]/10 px-4 py-3 mb-6 text-[13px] text-[var(--sr-status-danger)] rounded-md">
             {error}
           </div>
         )}
 
         {/* Credit-balance banner — the authoritative number from Firecrawl */}
         {summary?.remaining ? (
-          <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm p-4 mb-6">
+          <div className="border border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)] rounded-md p-4 mb-6">
             <div className="flex items-baseline justify-between gap-4 flex-wrap mb-2">
               <span className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
                 Credit balance · Firecrawl
@@ -364,7 +364,7 @@ export default function FirecrawlPage() {
               <span
                 className={`admin-mono-font text-[10px] uppercase tracking-[0.16em] ${
                   remainingTone === "warn"
-                    ? "text-[var(--sr-action-pressed)]"
+                    ? "text-[var(--sr-status-danger)]"
                     : remainingTone === "good"
                     ? "text-[var(--sr-status-success)]"
                     : "text-[var(--sr-text-tertiary)]"
@@ -379,10 +379,10 @@ export default function FirecrawlPage() {
                 <div
                   className={`h-full ${
                     remainingTone === "warn"
-                      ? "bg-[var(--sr-action-pressed)]"
+                      ? "bg-[var(--sr-status-danger)]"
                       : remainingTone === "good"
                       ? "bg-[var(--sr-status-success)]"
-                      : "bg-[var(--sr-link)]/60"
+                      : "bg-[var(--sr-dusk)]/70"
                   }`}
                   style={{ width: `${planUsedPct * 100}%` }}
                 />
@@ -397,7 +397,7 @@ export default function FirecrawlPage() {
                 cr ·{" "}
                 <span
                   className={
-                    monthlyBurn > plan ? "text-[var(--sr-action-pressed)]" : "text-[var(--sr-status-success)]"
+                    monthlyBurn > plan ? "text-[var(--sr-status-danger)]" : "text-[var(--sr-status-success)]"
                   }
                 >
                   {monthlyBurn > plan
@@ -408,10 +408,10 @@ export default function FirecrawlPage() {
             )}
           </div>
         ) : (
-          <div className="border border-[var(--sr-status-warning)]/30 bg-[var(--sr-status-warning)]/10 px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px]">
+          <div className="border border-[var(--sr-status-warning)]/30 bg-[var(--sr-status-warning)]/10 px-4 py-3 mb-6 flex items-start gap-3 rounded-md">
             <AlertTriangleIcon size={16} className="text-[var(--sr-status-warning)] flex-shrink-0 mt-0.5" />
             <p className="text-[13px] text-[var(--sr-status-warning)]">
-              Credit balance unavailable. CheckIcon that FIRECRAWL_API_KEY is set on
+              Credit balance unavailable. Check that FIRECRAWL_API_KEY is set on
               the API process.
             </p>
           </div>
@@ -420,16 +420,16 @@ export default function FirecrawlPage() {
         {/* Daily hard-stop banner (OPS-02-06 / AD-01-08) */}
         {summary?.daily && summary.daily.daily_credit_cap != null && (
           <div
-            className={`border px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px] ${
+            className={`border px-4 py-3 mb-6 flex items-start gap-3 rounded-md ${
               summary.daily.daily_capped
-                ? "border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5"
-                : "border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)]"
-            } shadow-sm`}
+                ? "border-[var(--sr-status-danger)]/40 bg-[var(--sr-status-danger)]/5"
+                : "border-[var(--sr-border-subtle)] bg-[var(--sr-surface-card)]"
+            }`}
           >
             {summary.daily.daily_capped ? (
               <AlertTriangleIcon
                 size={16}
-                className="text-[var(--sr-action-pressed)] flex-shrink-0 mt-0.5"
+                className="text-[var(--sr-status-danger)] flex-shrink-0 mt-0.5"
               />
             ) : (
               <CheckCircleIcon
@@ -441,7 +441,7 @@ export default function FirecrawlPage() {
               <p
                 className={`text-[13px] font-medium ${
                   summary.daily.daily_capped
-                    ? "text-[var(--sr-action-pressed)]"
+                    ? "text-[var(--sr-status-danger)]"
                     : "text-[var(--sr-text-primary)]"
                 }`}
               >
@@ -463,8 +463,8 @@ export default function FirecrawlPage() {
                     <div
                       className={`h-full ${
                         summary.daily.daily_capped
-                          ? "bg-[var(--sr-action-pressed)]"
-                          : "bg-[var(--sr-link)]/60"
+                          ? "bg-[var(--sr-status-danger)]"
+                          : "bg-[var(--sr-dusk)]/70"
                       }`}
                       style={{
                         width: `${Math.min(
@@ -521,8 +521,8 @@ export default function FirecrawlPage() {
               {domains.length} domain{domains.length === 1 ? "" : "s"}
             </span>
           </div>
-          <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm overflow-hidden">
-            <div className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-3 bg-[var(--sr-surface-interactive)] border-b border-[var(--sr-link)]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium">
+          <div className="admin-table-container">
+            <div className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-3 bg-[var(--sr-surface-card)] border-b border-[var(--sr-border-subtle)] admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium">
               <span>Domain</span>
               <span className="text-right">Calls</span>
               <span className="text-right">Cr</span>
@@ -541,11 +541,11 @@ export default function FirecrawlPage() {
                   ? "text-[var(--sr-status-success)]"
                   : d.success_rate >= 0.7
                   ? "text-[var(--sr-text-tertiary)]"
-                  : "text-[var(--sr-action-pressed)]";
+                  : "text-[var(--sr-status-danger)]";
               return (
                 <div
                   key={d.domain}
-                  className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-2.5 items-center border-b border-[var(--sr-link)]/5 last:border-b-0 hover:bg-[var(--sr-surface-interactive)] transition-colors"
+                  className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-2.5 items-center border-b border-[var(--sr-border-subtle)] last:border-b-0 hover:bg-[var(--sr-surface-interactive)] transition-colors"
                 >
                   <p className="text-[13px] text-[var(--sr-text-primary)] truncate">
                     {d.domain}
@@ -588,24 +588,24 @@ export default function FirecrawlPage() {
                 <button
                   key={s}
                   onClick={() => setStatusFilter(s)}
-                  className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border rounded-[4px] transition-colors ${
+                  className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border rounded-full transition-colors ${
                     statusFilter === s
-                      ? "border-[var(--sr-link)] text-[var(--sr-link)] bg-[var(--sr-surface-card)]"
-                      : "border-[var(--sr-link)]/12 text-[var(--sr-text-label)] bg-[var(--sr-surface-card)] hover:text-[var(--sr-text-primary)]"
+                      ? "border-[var(--sr-dusk)] text-[var(--sr-link)] bg-[var(--sr-dusk-interactive)]"
+                      : "border-[var(--sr-border-subtle)] text-[var(--sr-text-label)] bg-transparent hover:text-[var(--sr-text-primary)] hover:border-[var(--sr-border-strong)]"
                   }`}
                 >
                   {s}
                 </button>
               ))}
-              <span className="text-[var(--sr-link)]/20 mx-1">·</span>
+              <span className="text-[var(--sr-text-tertiary)] mx-1">·</span>
               {(["all", "scrape", "map"] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => setModeFilter(m)}
-                  className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border rounded-[4px] transition-colors ${
+                  className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border rounded-full transition-colors ${
                     modeFilter === m
-                      ? "border-[var(--sr-link)] text-[var(--sr-link)] bg-[var(--sr-surface-card)]"
-                      : "border-[var(--sr-link)]/12 text-[var(--sr-text-label)] bg-[var(--sr-surface-card)] hover:text-[var(--sr-text-primary)]"
+                      ? "border-[var(--sr-dusk)] text-[var(--sr-link)] bg-[var(--sr-dusk-interactive)]"
+                      : "border-[var(--sr-border-subtle)] text-[var(--sr-text-label)] bg-transparent hover:text-[var(--sr-text-primary)] hover:border-[var(--sr-border-strong)]"
                   }`}
                 >
                   {m}
@@ -614,8 +614,8 @@ export default function FirecrawlPage() {
             </div>
           </div>
 
-          <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm overflow-hidden">
-            <div className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-3 bg-[var(--sr-surface-interactive)] border-b border-[var(--sr-link)]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium">
+          <div className="admin-table-container">
+            <div className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-3 bg-[var(--sr-surface-card)] border-b border-[var(--sr-border-subtle)] admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium">
               <span>When</span>
               <span>Mode</span>
               <span>URL</span>
@@ -640,7 +640,7 @@ export default function FirecrawlPage() {
             {recent.map((c) => (
               <div
                 key={c.id}
-                className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-2 items-center border-b border-[var(--sr-link)]/5 last:border-b-0 hover:bg-[var(--sr-surface-interactive)] transition-colors"
+                className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-2 items-center border-b border-[var(--sr-border-subtle)] last:border-b-0 hover:bg-[var(--sr-surface-interactive)] transition-colors"
               >
                 <p
                   className="admin-mono-font text-[10px] text-[var(--sr-text-label)] tabular-nums truncate"
@@ -664,7 +664,7 @@ export default function FirecrawlPage() {
                   </a>
                   {c.error_message && (
                     <p
-                      className="admin-mono-font text-[9px] text-[var(--sr-action-pressed)] truncate mt-0.5"
+                      className="admin-mono-font text-[9px] text-[var(--sr-status-danger)] truncate mt-0.5"
                       title={c.error_message}
                     >
                       {c.error_message}

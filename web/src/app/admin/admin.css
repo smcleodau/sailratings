@@ -46,17 +46,32 @@
   width: 100%;
 }
 
+/* ── AD-01-16 DS primitives ──────────────────────────────────────────────
+   Shared building blocks for every migrated admin page: display headings,
+   hairline data tables, pills, and the streaming cursor.  Everything reads
+   the semantic --sr-* tokens so the components theme identically on the
+   Dusk ground (and would re-theme if the shell ever mounts elsewhere). */
+
+.heading-display {
+  font-family: var(--sr-font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Hairline data table — JetBrains Mono cells, 1px subtle borders, no card
+   chrome.  Used by Tables, Sources, Audit, Firecrawl logs, etc. */
 .admin-table-container {
   background: var(--sr-surface-card);
-  border: 1px solid var(--sr-border-strong);
-  border-radius: 10px;
+  border: 1px solid var(--sr-border-subtle);
+  border-radius: var(--sr-radius-small, 6px);
   overflow: hidden;
 }
 
 .admin-table-header {
   background: var(--sr-surface-card);
-  border-bottom: 1px solid var(--sr-border-strong);
-  color: var(--sr-text-tertiary);
+  border-bottom: 1px solid var(--sr-border-subtle);
+  color: var(--sr-text-label);
   padding: 10px 16px;
 }
 
@@ -67,4 +82,29 @@
 }
 .admin-table-row:hover {
   background: var(--sr-surface-interactive);
+}
+
+/* Pill — the DS status chip (topbar health pills use the same recipe). */
+.admin-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--sr-font-data);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid var(--sr-border-subtle);
+  border-radius: var(--sr-radius-pill, 999px);
+  color: var(--sr-text-label);
+  white-space: nowrap;
+}
+
+/* Streaming cursor for the data-chat (SSE) surface. */
+.streaming-pulse {
+  animation: admin-streaming-pulse 1s ease-in-out infinite;
+}
+@keyframes admin-streaming-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
 }
