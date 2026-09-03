@@ -1,60 +1,70 @@
 import { dark } from "@clerk/themes";
 
 /**
- * Clerk appearance themed to the Sail Ratings brand.
+ * Clerk appearance themed to the SailRatings design system.
  *
- * Palette (from tailwind.config.ts / globals.css):
- *   navy   #0A2240 · navy-light #163156
- *   brass  #C29B61 · brass-dark #A6834D
- *   cream  #F4F1E8 · charcoal #2C2C2C · border #D1C8B7
+ * Tokens (from src/styles/sailratings.css):
+ *   abyss #07100f · surface-card #0e1817 · marine-900 #0a2a2c
+ *   marine-200 #9cc7c2 · signal-500 #ff4119 · ink-on-dark #e9f0ee
+ *   text-secondary #9db3ae · text-label #7e948f
  *
- * Used by ClerkProvider (so the UserButton / <UserProfile /> match) and by the
- * sign-in / sign-up pages. Auth surfaces render on a navy field with a brass
- * accent and cream type, set in the Soehne typeface.
+ * Auth surfaces sit on the Abyss ground with a Marine card, signal-coral
+ * primary action, and paper type — the same palette the rest of the public
+ * site uses, so the auth pages read as SailRatings pages, not a bolt-on.
+ *
+ * Used by ClerkProvider (so the modal <SignIn /> / <UserButton /> match) and
+ * by the /sign-in and /sign-up pages.
  */
 export const clerkAppearance = {
   baseTheme: dark,
   variables: {
-    colorBackground: "#163156", // navy-light panel
-    colorPrimary: "#C29B61", // brass
-    colorPrimaryText: "#0A2240", // navy on brass
-    colorText: "#F4F1E8", // cream
-    colorTextSecondary: "rgba(244, 241, 232, 0.72)",
-    colorNeutral: "rgba(244, 241, 232, 0.12)",
-    colorInputBackground: "rgba(244, 241, 232, 0.06)",
-    colorInputText: "#F4F1E8",
-    colorDanger: "#E06B5A",
-    colorSuccess: "#7FB069",
-    borderRadius: "0.75rem",
-    borderRadiusSmall: "0.5rem",
+    colorBackground: "#0e1817", // surface-card
+    colorPrimary: "#ff4119", // signal-500 — action colour
+    colorPrimaryText: "#07100f", // abyss text on signal
+    colorText: "#e9f0ee", // ink-on-dark
+    colorTextSecondary: "#9db3ae", // text-secondary
+    colorNeutral: "rgba(255, 255, 255, 0.14)", // border-strong
+    colorInputBackground: "rgba(255, 255, 255, 0.04)",
+    colorInputText: "#e9f0ee",
+    colorDanger: "#ff6b54",
+    colorSuccess: "#3d9e6e", // starboard
+    borderRadius: "0.75rem", // --sr-radius-control
+    borderRadiusSmall: "0.375rem", // --sr-radius-small
     borderRadiusMedium: "0.75rem",
-    borderRadiusLarge: "1rem",
+    borderRadiusLarge: "1rem", // --sr-radius-card
+    fontFamily: '"Libre Franklin", system-ui, sans-serif', // --sr-font-body
   },
   elements: {
     rootBox: "w-full",
     card: "bg-transparent shadow-none w-full",
     cardBox: "shadow-none",
     logoBox: "hidden",
-    headerTitle: "text-cream font-display",
-    headerSubtitle: "text-cream/60",
+    headerTitle: "text-[#e9f0ee] font-display uppercase tracking-wide",
+    headerSubtitle: "text-[#9db3ae]",
     socialButtonsBlockButton:
-      "bg-cream/10 border border-cream/15 hover:bg-cream/20 text-cream rounded-xl transition-all",
-    socialButtonsBlockButtonText: "text-cream font-medium",
-    dividerLine: "bg-cream/10",
-    dividerText: "text-cream/40",
-    formFieldLabel: "text-cream/80",
+      "bg-white/[0.06] border border-white/[0.14] hover:bg-white/[0.12] text-[#e9f0ee] rounded-xl transition-all",
+    socialButtonsBlockButtonText: "text-[#e9f0ee] font-medium",
+    dividerLine: "bg-white/[0.08]",
+    dividerText: "text-[#7e948f]",
+    formFieldLabel: "text-[#9db3ae]",
     formFieldInput:
-      "bg-cream/5 border border-cream/10 text-cream rounded-xl focus:border-brass focus:ring-brass/20 transition-all",
-    formFieldInputShowPasswordButton: "text-cream/60 hover:text-cream",
+      "bg-white/[0.04] border border-white/[0.14] text-[#e9f0ee] rounded-xl focus:border-[#3e9b95] focus:ring-[#3e9b95]/20 transition-all",
+    formFieldInputShowPasswordButton: "text-[#9db3ae] hover:text-[#e9f0ee]",
     otpCodeFieldInput:
-      "bg-cream/5 border border-cream/10 text-cream rounded-lg focus:border-brass transition-all",
+      "bg-white/[0.04] border border-white/[0.14] text-[#e9f0ee] rounded-lg focus:border-[#3e9b95] transition-all",
     formButtonPrimary:
-      "bg-brass hover:bg-brass-dark text-navy rounded-full font-semibold transition-all shadow-[0_0_18px_rgba(194,155,97,0.28)]",
-    footerActionLink: "text-brass hover:text-brass-dark",
-    identityPreviewText: "text-cream",
-    identityPreviewEditButton: "text-brass hover:text-brass-dark",
-    profileSectionTitle: "text-cream font-display",
-    navbarButton: "text-cream/80 hover:text-cream",
-    avatarBox: "border border-cream/15",
+      "bg-[#ff4119] hover:bg-[#c92b12] text-[#07100f] hover:text-[#f3f1ec] rounded-full font-semibold transition-all",
+    footerActionLink: "text-[#9cc7c2] hover:text-[#e6f0ee]",
+    identityPreviewText: "text-[#e9f0ee]",
+    identityPreviewEditButton: "text-[#9cc7c2] hover:text-[#e6f0ee]",
+    profileSectionTitle: "text-[#e9f0ee] font-display uppercase tracking-wide",
+    navbarButton: "text-[#9db3ae] hover:text-[#e9f0ee]",
+    avatarBox: "border border-white/[0.14]",
+    // Error states — surfaced inline under the offending field and as an
+    // alert above the form when credentials are rejected.
+    formFieldErrorText: "text-[#ff6b54]",
+    formFieldWarningText: "text-[#e8b23a]",
+    alert: "bg-[#ff4119]/10 border border-[#ff4119]/30 text-[#ffd9ce]",
+    alertText: "text-[#ffd9ce]",
   },
 };

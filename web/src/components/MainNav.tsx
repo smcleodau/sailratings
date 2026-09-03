@@ -56,7 +56,7 @@ export default function MainNav({ theme, cta }: MainNavProps) {
           <>
             <Show when="signed-out">
               <SignInButton mode="modal">
-                <button className={`text-xs font-semibold uppercase tracking-wider ${linkBase} transition-colors px-2 py-1`}>Sign In</button>
+                <button data-testid="nav-sign-in" className={`text-xs font-semibold uppercase tracking-wider ${linkBase} transition-colors px-2 py-1`}>Sign In</button>
               </SignInButton>
               <SignUpButton mode="modal">
                 <button className="sr-button sr-button--primary text-xs py-2 px-4">Sign Up</button>

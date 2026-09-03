@@ -156,7 +156,15 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         {clerkPublishableKey ? (
-          <ClerkProvider appearance={clerkAppearance}>{content}</ClerkProvider>
+          <ClerkProvider
+            appearance={clerkAppearance}
+            signInUrl="/sign-in"
+            signUpUrl="/sign-up"
+            signInFallbackRedirectUrl="/"
+            signUpFallbackRedirectUrl="/"
+          >
+            {content}
+          </ClerkProvider>
         ) : (
           content
         )}

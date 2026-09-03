@@ -104,3 +104,66 @@
     --sr-focus: var(--sr-marine-600);
   }
 }
+
+/* ── AUTH-01-02 — Sign-in / create-account surfaces ──────────────────────
+   Corner-bracketed card on the Abyss ground, matching the page-frame
+   brackets used across the marketing site. */
+@layer sr.components {
+  .sr-auth-card {
+    position: relative;
+    border: 1px solid var(--sr-border-subtle);
+    border-radius: var(--sr-radius-card);
+    background: var(--sr-surface-card);
+    box-shadow: var(--sr-shadow-floating);
+  }
+
+  .sr-auth-card-inner {
+    padding: var(--sr-space-6);
+  }
+
+  @media (min-width: 640px) {
+    .sr-auth-card-inner {
+      padding: var(--sr-space-8);
+    }
+  }
+
+  .sr-auth-corner {
+    position: absolute;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 0 solid var(--sr-marine-400);
+    pointer-events: none;
+  }
+
+  .sr-auth-corner--tl {
+    top: -1px;
+    left: -1px;
+    border-top-width: 2px;
+    border-left-width: 2px;
+    border-top-left-radius: var(--sr-radius-card);
+  }
+
+  .sr-auth-corner--tr {
+    top: -1px;
+    right: -1px;
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-top-right-radius: var(--sr-radius-card);
+  }
+
+  .sr-auth-corner--bl {
+    bottom: -1px;
+    left: -1px;
+    border-bottom-width: 2px;
+    border-left-width: 2px;
+    border-bottom-left-radius: var(--sr-radius-card);
+  }
+
+  .sr-auth-corner--br {
+    right: -1px;
+    bottom: -1px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-bottom-right-radius: var(--sr-radius-card);
+  }
+}
