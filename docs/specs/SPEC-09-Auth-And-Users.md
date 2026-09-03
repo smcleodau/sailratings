@@ -1,3 +1,5 @@
+> **Partly superseded 2026-09-02.** §2 (Clerk in Next.js) is done. §3 (users schema, webhook) is replaced by `docs/specs/SPEC-23-Customers-And-Subscriptions.md` — note `subscription_status` is no longer a column on `users`. "Paper" design system references are obsolete.
+
 # SPEC-09: Authentication & User Accounts
 
 ## 1. Overview

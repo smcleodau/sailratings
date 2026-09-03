@@ -1,3 +1,5 @@
+> **Superseded 2026-09-02.** The $290/yr plan, Stripe Elements and the "Paper" design system do not match the business plan or the live Stripe account. Build from `docs/specs/SPEC-23-Customers-And-Subscriptions.md`.
+
 # SPEC-10: Subscription & Payment Engine
 
 ## 1. Overview

@@ -1,3 +1,5 @@
+> **Superseded 2026-09-02.** The "Paper" design system and the 0.40–0.80 confidence-score identity queue described below do not exist. Build from `docs/specs/SPEC-22-Admin-Rebuild.md` instead. Kept for history.
+
 # SPEC-05: Human-In-The-Loop Admin UI & Telemetry
 
 ## 1. Overview
