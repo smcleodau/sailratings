@@ -398,3 +398,36 @@ export async function submitSurvey(params: {
 
   return res.json();
 }
+
+/* ── Signed-in user ───────────────────────────────────────────────────── */
+
+export interface CurrentUser {
+  id: number;
+  clerk_id: string;
+  email?: string | null;
+  role?: string | null;
+  plan?: string | null;
+  subscription_status?: string | null;
+  stripe_customer_id?: string | null;
+}
+
+/**
+ * Mirror the signed-in Clerk identity into our own `users` table.
+ *
+ * Clerk owns authentication, but a Clerk user only becomes a row on our side
+ * when something calls this. Until it was added, that happened solely inside
+ * checkout, so signed-in visitors stayed invisible until they tried to pay.
+ * Idempotent — safe to call on every load.
+ */
+export async function syncCurrentUser(
+  authToken: string,
+): Promise<CurrentUser | null> {
+  const res = await fetch(`${API_BASE}/users/me`, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as CurrentUser;
+}

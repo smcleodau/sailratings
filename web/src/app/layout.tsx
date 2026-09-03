@@ -5,6 +5,7 @@ import "./globals.css";
 import { PostHogProvider } from "@/components/PostHogProvider";
 import { isProdHost } from "@/lib/seo";
 import { clerkAppearance } from "@/lib/clerkAppearance";
+import UserSync from "@/components/UserSync";
 
 const SITE_URL = "https://sailratings.com";
 
@@ -163,6 +164,7 @@ export default function RootLayout({
             signInFallbackRedirectUrl="/"
             signUpFallbackRedirectUrl="/"
           >
+            <UserSync />
             {content}
           </ClerkProvider>
         ) : (
