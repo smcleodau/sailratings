@@ -22,6 +22,41 @@ class NotionPoller:
     MAX_CONCURRENT = int(os.environ.get("FACTORY_MAX_CONCURRENT", "5"))
     MAX_PER_POLL = int(os.environ.get("FACTORY_MAX_PER_POLL", "5"))
 
+    def _query_all(self, body: dict) -> list:
+        """Query the roadmap database, following pagination to completion.
+
+        Notion's REST API hard-caps page_size at 100 per request regardless
+        of what's asked for — every call site here previously requested up
+        to 200 (or omitted page_size, which the API also caps at 100) and
+        took only the first page, silently dropping the rest whenever the
+        database held more matching rows than that. Confirmed live: an
+        unfiltered fetch against a 130-row database returned exactly 100
+        rows with has_more=true, and the remaining 30 — including five
+        whole epics (AD-01, DP-00, DP-01, DP-02, DP-04) — were invisible to
+        every epic-selection decision this made. Silent, not an error: the
+        exact failure mode of "no eligible epics" that this method exists
+        to prevent from recurring.
+        """
+        results: list = []
+        cursor = None
+        while True:
+            payload = dict(body)
+            if cursor:
+                payload["start_cursor"] = cursor
+            req = urllib.request.Request(
+                f'https://api.notion.com/v1/databases/{self.db_id}/query',
+                data=json.dumps(payload).encode(),
+                method='POST', headers=self.headers,
+            )
+            data = json.loads(urllib.request.urlopen(req).read())
+            results.extend(data.get('results', []))
+            if not data.get('has_more'):
+                break
+            cursor = data.get('next_cursor')
+            if not cursor:
+                break
+        return results
+
     async def poll(self):
         temporal_address = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
         temporal_client = await TemporalClient.connect(temporal_address, namespace="sailratings")
@@ -37,22 +72,15 @@ class NotionPoller:
             return
 
         # Query DB — Ready tasks that haven't been dispatched yet
-        req = urllib.request.Request(
-            f'https://api.notion.com/v1/databases/{self.db_id}/query',
-            data=json.dumps({
+        try:
+            results = self._query_all({
                 "filter": {
                     "and": [
                         {"property": "Status", "select": {"equals": "Ready"}},
                         {"property": "Execution State", "select": {"equals": "Not Dispatched"}},
                     ]
                 }
-            }).encode(),
-            method='POST',
-            headers=self.headers
-        )
-        try:
-            res = urllib.request.urlopen(req)
-            results = json.loads(res.read()).get('results', [])
+            })
         except Exception as e:
             logger.error(f"Error querying Notion for Tasks: {e}")
             results = []
@@ -60,24 +88,17 @@ class NotionPoller:
         logger.info(f"Found {len(results)} tasks ready for agent.")
 
         # Query DB for Epics that need Specifications
-        req_specs = urllib.request.Request(
-            f'https://api.notion.com/v1/databases/{self.db_id}/query',
-            data=json.dumps({
+        try:
+            spec_results = self._query_all({
                 "filter": {
                     "property": "Status",
                     "select": {"equals": "Needs Specification"}
                 }
-            }).encode(),
-            method='POST',
-            headers=self.headers
-        )
-        try:
-            res_specs = urllib.request.urlopen(req_specs)
-            spec_results = json.loads(res_specs.read()).get('results', [])
+            })
         except Exception as e:
             logger.error(f"Error querying Notion for Epics needing specs: {e}")
             spec_results = []
-            
+
         logger.info(f"Found {len(spec_results)} epics needing specification.")
 
         slots_available = self.MAX_CONCURRENT - running_count
@@ -86,12 +107,7 @@ class NotionPoller:
         # --- Dependency-aware epic selection ---
         # Fetch all rows to build the epic dependency graph
         try:
-            all_req = urllib.request.Request(
-                f'https://api.notion.com/v1/databases/{self.db_id}/query',
-                data=json.dumps({"page_size": 200}).encode(),
-                method='POST', headers=self.headers
-            )
-            all_pages = json.loads(urllib.request.urlopen(all_req).read()).get('results', [])
+            all_pages = self._query_all({})
         except Exception as e:
             logger.error(f"Error fetching pages for dep graph: {e}")
             all_pages = []
