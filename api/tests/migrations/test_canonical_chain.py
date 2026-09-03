@@ -30,8 +30,10 @@ def test_single_head():
     heads = script.get_heads()
     # PAY-01-07 linearised the canonical chain; PAY-01-08 extended it with
     # ``0033`` (orders.stripe_customer_id); PAY-01-10 extended it with
-    # ``0034`` (admin customers zone). The only head is ``0034``.
-    assert set(heads) == {"0034"}, f"unexpected migration heads: {heads}"
+    # ``0034`` (admin customers zone); 0035 reconciles the OPS-01/OPS-02
+    # infra + AUTH-01-03 objects that had been applied live outside any
+    # migration that ever merged into develop. The only head is ``0035``.
+    assert set(heads) == {"0035"}, f"unexpected migration heads: {heads}"
 
 
 def test_no_duplicate_revision_ids():
@@ -74,7 +76,7 @@ def test_chain_contains_canonical_order():
     # base must be first and the chain must converge on the single canonical
     # head (PAY-01-07 payments/auth revision).
     assert order[0] == "0001"
-    assert order[-1] == "0034", f"unexpected chain tail: {order[-1]}"
+    assert order[-1] == "0035", f"unexpected chain tail: {order[-1]}"
     # the previous branch point feeds the 0023 series and converges to head
     assert "aa0f8e0c178b" in order
     assert order.index("aa0f8e0c178b") < order.index("0023")

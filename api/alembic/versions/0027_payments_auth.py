@@ -35,52 +35,11 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 revision: str = "0027"
 down_revision: Union[str, Sequence[str], None] = "0026"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
-
-
-_V_ADMIN_USERS_SQL = """
-CREATE VIEW v_admin_users AS
-SELECT
-    u.id,
-    u.email,
-    u.full_name,
-    u.role,
-    u.clerk_id,
-    u.stripe_customer_id,
-    s.plan AS subscription_plan,
-    s.status AS subscription_status,
-    s.current_period_end AS subscription_current_period_end,
-    COALESCE(bc.boats_claimed, 0) AS boats_claimed,
-    COALESCE(o.orders_count, 0) AS orders_count,
-    o.total_spend_cents,
-    u.created_at,
-    u.last_seen_at
-FROM users u
-LEFT JOIN LATERAL (
-    SELECT s1.plan, s1.status, s1.current_period_end
-    FROM subscriptions s1
-    WHERE s1.user_id = u.id
-    ORDER BY s1.updated_at DESC NULLS LAST, s1.created_at DESC
-    LIMIT 1
-) s ON true
-LEFT JOIN (
-    SELECT user_id, count(*) AS boats_claimed
-    FROM boat_claims
-    WHERE status = 'verified'
-    GROUP BY user_id
-) bc ON bc.user_id = u.id
-LEFT JOIN (
-    SELECT user_id, count(*) AS orders_count, sum(amount_cents) AS total_spend_cents
-    FROM orders
-    GROUP BY user_id
-) o ON o.user_id = u.id
-WHERE u.deleted_at IS NULL
-"""
 
 
 # ---------------------------------------------------------------------------
@@ -224,26 +183,38 @@ def _cidx(name: str, table: str, columns: list[str]) -> None:
 def upgrade() -> None:
     # This revision is idempotent: databases that already carry some of these
     # objects (e.g. from the retired DP-03-05 side branch) converge cleanly.
+    #
+    # Every table below is declared with plain integer/bigint PKs, not UUID.
+    # This revision originally declared UUID PKs, but the live database was
+    # actually built by a different, unmerged migration lineage (PAY-01-09)
+    # using integer PKs — this revision's `if X not in _tables()` guards made
+    # its own CREATE TABLE a permanent no-op the moment that happened, so the
+    # UUID declaration never took effect anywhere except a from-scratch build
+    # (which nothing had done — until this session's tests did, exposing the
+    # mismatch). Rewritten to match live reality exactly, captured via
+    # `pg_dump --schema-only`. The CHECK constraints this revision used to
+    # declare (role IN ('member','admin'), plan IN ('skipper','programme'),
+    # …) don't exist live either and don't match live data (role defaults to
+    # 'customer', plan values come from Stripe lookup_keys like
+    # 'pro_monthly_gbp') — dropped rather than carried forward as fiction.
 
     # ------------------------------------------------------------------
-    # users (AUTH-01-01 columns + SPEC-23 additions; no subscription_status)
+    # users
     # ------------------------------------------------------------------
     if "users" not in _tables():
         op.create_table(
             "users",
-            sa.Column(
-                "id",
-                sa.Uuid,
-                primary_key=True,
-                server_default=sa.text("gen_random_uuid()"),
-            ),
-            sa.Column("clerk_id", sa.Text, nullable=False),
-            sa.Column("email", sa.Text, nullable=False),
+            sa.Column("id", sa.BigInteger, primary_key=True),
+            sa.Column("clerk_id", sa.Text),
+            sa.Column("email", sa.Text),
             sa.Column("full_name", sa.Text),
+            sa.Column(
+                "subscription_status",
+                sa.Text,
+                nullable=False,
+                server_default="none",
+            ),
             sa.Column("stripe_customer_id", sa.Text),
-            sa.Column("role", sa.Text, nullable=False, server_default="member"),
-            sa.Column("last_seen_at", sa.DateTime(timezone=True)),
-            sa.Column("deleted_at", sa.DateTime(timezone=True)),
             sa.Column(
                 "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
             ),
@@ -252,13 +223,12 @@ def upgrade() -> None:
             ),
             sa.UniqueConstraint("clerk_id", name="uq_users_clerk_id"),
             sa.UniqueConstraint("email", name="uq_users_email"),
-            sa.CheckConstraint(
-                "role IN ('member', 'admin')", name="ck_users_role"
+            sa.UniqueConstraint(
+                "stripe_customer_id", name="users_stripe_customer_id_key"
             ),
         )
-    _cidx("idx_users_clerk_id", "users", ["clerk_id"])
     _cidx("idx_users_email", "users", ["email"])
-    _cidx("idx_users_stripe_customer_id", "users", ["stripe_customer_id"])
+    _cidx("idx_users_stripe_customer", "users", ["stripe_customer_id"])
 
     # ------------------------------------------------------------------
     # subscriptions — subscription truth, derived from Stripe webhooks
@@ -266,25 +236,18 @@ def upgrade() -> None:
     if "subscriptions" not in _tables():
         op.create_table(
             "subscriptions",
+            sa.Column("id", sa.Integer, primary_key=True),
             sa.Column(
-                "id",
-                sa.Uuid,
-                primary_key=True,
-                server_default=sa.text("gen_random_uuid()"),
-            ),
-            sa.Column(
-                "user_id",
-                sa.Uuid,
-                sa.ForeignKey("users.id", ondelete="CASCADE"),
-                nullable=False,
+                "user_id", sa.Integer, sa.ForeignKey("users.id", ondelete="SET NULL")
             ),
             sa.Column("stripe_subscription_id", sa.Text, nullable=False),
-            sa.Column("stripe_customer_id", sa.Text, nullable=False),
-            # Plan derived from the Stripe price lookup_key prefix
-            # (e.g. 'skipper_monthly' -> 'skipper').
-            sa.Column("plan", sa.Text, nullable=False),
+            sa.Column("stripe_customer_id", sa.Text),
             # Stripe subscription status stored verbatim.
-            sa.Column("status", sa.Text, nullable=False),
+            sa.Column("status", sa.Text),
+            # Plan derived from the Stripe price lookup_key prefix.
+            sa.Column("plan", sa.Text),
+            sa.Column("lookup_key", sa.Text),
+            sa.Column("price_id", sa.Text),
             sa.Column("current_period_start", sa.DateTime(timezone=True)),
             sa.Column("current_period_end", sa.DateTime(timezone=True)),
             sa.Column(
@@ -293,15 +256,9 @@ def upgrade() -> None:
                 nullable=False,
                 server_default=sa.text("false"),
             ),
-            sa.Column("cancel_at", sa.DateTime(timezone=True)),
             sa.Column("canceled_at", sa.DateTime(timezone=True)),
             sa.Column("ended_at", sa.DateTime(timezone=True)),
-            sa.Column(
-                "raw",
-                postgresql.JSONB,
-                nullable=False,
-                server_default=sa.text("'{}'::jsonb"),
-            ),
+            sa.Column("raw", sa.JSON),
             sa.Column(
                 "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
             ),
@@ -309,85 +266,75 @@ def upgrade() -> None:
                 "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
             ),
             sa.UniqueConstraint(
-                "stripe_subscription_id", name="uq_subscriptions_stripe_subscription_id"
-            ),
-            sa.CheckConstraint(
-                "plan IN ('skipper', 'programme')", name="ck_subscriptions_plan"
-            ),
-            sa.CheckConstraint(
-                "status IN ('incomplete', 'incomplete_expired', 'trialing', 'active',"
-                " 'past_due', 'canceled', 'unpaid', 'paused')",
-                name="ck_subscriptions_status",
+                "stripe_subscription_id",
+                name="subscriptions_stripe_subscription_id_key",
             ),
         )
     _cidx("idx_subscriptions_user", "subscriptions", ["user_id"])
-    _cidx("idx_subscriptions_stripe_customer", "subscriptions", ["stripe_customer_id"])
-    _cidx("idx_subscriptions_status", "subscriptions", ["status"])
+    _cidx("idx_subscriptions_customer", "subscriptions", ["stripe_customer_id"])
 
     # ------------------------------------------------------------------
-    # stripe_events — evt_ id as PK so webhook redelivery is idempotent
+    # stripe_events — webhook idempotency ledger, keyed on the evt_… id
     # ------------------------------------------------------------------
     if "stripe_events" not in _tables():
         op.create_table(
             "stripe_events",
-            sa.Column("id", sa.Text, primary_key=True),
-            sa.Column("type", sa.Text, nullable=False),
-            sa.Column("livemode", sa.Boolean, nullable=False),
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("event_id", sa.Text, nullable=False),
+            sa.Column("type", sa.Text),
+            sa.Column("api_version", sa.Text),
             sa.Column(
-                "payload",
-                postgresql.JSONB,
-                nullable=False,
-                server_default=sa.text("'{}'::jsonb"),
+                "livemode", sa.Boolean, nullable=False, server_default=sa.text("false")
             ),
+            sa.Column("payload", sa.JSON),
             sa.Column(
-                "processed_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+                "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
             ),
+            sa.Column("processed_at", sa.DateTime(timezone=True)),
+            sa.Column("error", sa.Text),
+            sa.UniqueConstraint("event_id", name="stripe_events_event_id_key"),
         )
     _cidx("idx_stripe_events_type", "stripe_events", ["type"])
-    _cidx("idx_stripe_events_processed_at", "stripe_events", ["processed_at"])
+    _cidx("idx_stripe_events_error", "stripe_events", ["error"])
 
     # ------------------------------------------------------------------
-    # boat_claims — a user claims ownership of a boat; one open record per
-    # (user, boat), moderated pending -> verified / rejected.
+    # boat_claims — a user claims ownership of a boat; moderated
+    # pending -> verified / rejected.
     # ------------------------------------------------------------------
     if "boat_claims" not in _tables():
         op.create_table(
             "boat_claims",
-            sa.Column(
-                "id",
-                sa.Uuid,
-                primary_key=True,
-                server_default=sa.text("gen_random_uuid()"),
-            ),
+            sa.Column("id", sa.BigInteger, primary_key=True),
             sa.Column(
                 "user_id",
-                sa.Uuid,
-                sa.ForeignKey("users.id", ondelete="CASCADE"),
+                sa.BigInteger,
+                sa.ForeignKey("users.id"),
                 nullable=False,
             ),
             sa.Column(
-                "boat_id",
-                sa.Integer,
-                sa.ForeignKey("boats.id", ondelete="CASCADE"),
-                nullable=False,
+                "boat_id", sa.Integer, sa.ForeignKey("boats.id"), nullable=False
             ),
             sa.Column("status", sa.Text, nullable=False, server_default="pending"),
             sa.Column("evidence", sa.Text),
-            sa.Column(
-                "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
-            ),
+            # Plain text (an admin identifier), not an FK — matches live.
+            sa.Column("verified_by", sa.Text),
             sa.Column("verified_at", sa.DateTime(timezone=True)),
             sa.Column(
-                "verified_by", sa.Uuid, sa.ForeignKey("users.id", ondelete="SET NULL")
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
             ),
-            sa.UniqueConstraint("user_id", "boat_id", name="uq_boat_claims_user_boat"),
-            sa.CheckConstraint(
-                "status IN ('pending', 'verified', 'rejected')",
-                name="ck_boat_claims_status",
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
             ),
         )
     _cidx("idx_boat_claims_boat", "boat_claims", ["boat_id"])
     _cidx("idx_boat_claims_status", "boat_claims", ["status"])
+    _cidx("idx_boat_claims_user", "boat_claims", ["user_id"])
 
     # ------------------------------------------------------------------
     # orders: link to users + explicit Stripe payment status
@@ -395,12 +342,7 @@ def upgrade() -> None:
     if "user_id" not in _columns("orders"):
         op.add_column(
             "orders",
-            sa.Column(
-                "user_id",
-                sa.Uuid,
-                sa.ForeignKey("users.id", ondelete="SET NULL"),
-                nullable=True,
-            ),
+            sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id")),
         )
     if "stripe_payment_status" not in _columns("orders"):
         op.add_column(
@@ -414,15 +356,15 @@ def upgrade() -> None:
     for stmt in _COMPAT_STATEMENTS:
         op.execute(stmt)
 
-    # ------------------------------------------------------------------
-    # v_admin_users — admin customer overview
-    # ------------------------------------------------------------------
-    op.execute(_V_ADMIN_USERS_SQL)
+    # v_admin_users is created by 0034 (which needs users.role/plan, added
+    # there) and is deliberately not created here — an earlier version of
+    # this revision created a transient copy referencing columns
+    # (role, deleted_at) that don't exist until later revisions, which only
+    # ever worked because live already had a v_admin_users from elsewhere by
+    # the time this ran.
 
 
 def downgrade() -> None:
-    op.execute("DROP VIEW IF EXISTS v_admin_users")
-
     for stmt in _COMPAT_DOWN_STATEMENTS:
         op.execute(stmt)
 
@@ -436,20 +378,19 @@ def downgrade() -> None:
     op.execute("ALTER TABLE orders DROP COLUMN IF EXISTS stripe_payment_status")
     op.execute("ALTER TABLE orders DROP COLUMN IF EXISTS user_id")
 
+    op.execute("DROP INDEX IF EXISTS idx_boat_claims_user")
     op.execute("DROP INDEX IF EXISTS idx_boat_claims_status")
     op.execute("DROP INDEX IF EXISTS idx_boat_claims_boat")
     op.execute("DROP TABLE IF EXISTS boat_claims")
 
-    op.execute("DROP INDEX IF EXISTS idx_stripe_events_processed_at")
+    op.execute("DROP INDEX IF EXISTS idx_stripe_events_error")
     op.execute("DROP INDEX IF EXISTS idx_stripe_events_type")
     op.execute("DROP TABLE IF EXISTS stripe_events")
 
-    op.execute("DROP INDEX IF EXISTS idx_subscriptions_status")
-    op.execute("DROP INDEX IF EXISTS idx_subscriptions_stripe_customer")
+    op.execute("DROP INDEX IF EXISTS idx_subscriptions_customer")
     op.execute("DROP INDEX IF EXISTS idx_subscriptions_user")
     op.execute("DROP TABLE IF EXISTS subscriptions")
 
-    op.execute("DROP INDEX IF EXISTS idx_users_stripe_customer_id")
+    op.execute("DROP INDEX IF EXISTS idx_users_stripe_customer")
     op.execute("DROP INDEX IF EXISTS idx_users_email")
-    op.execute("DROP INDEX IF EXISTS idx_users_clerk_id")
     op.execute("DROP TABLE IF EXISTS users")
