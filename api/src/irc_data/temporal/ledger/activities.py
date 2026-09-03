@@ -282,6 +282,16 @@ async def open_source_run(
             ),
             {"slug": source_slug, "run_key": run_key},
         ).scalar()
+        has_prior_success = bool(
+            conn.execute(
+                text(
+                    "SELECT 1 FROM source_runs "
+                    "WHERE source_slug = :slug AND status = 'success' "
+                    "LIMIT 1"
+                ),
+                {"slug": source_slug},
+            ).scalar()
+        )
         conn.execute(
             text(
                 """
@@ -321,6 +331,7 @@ async def open_source_run(
         "run_key": run_key,
         "status": "running",
         "ingestion_log_ids": ingestion_log_ids,
+        "has_prior_success": has_prior_success,
     }
 
 

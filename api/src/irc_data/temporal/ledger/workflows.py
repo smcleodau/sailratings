@@ -86,19 +86,6 @@ class SourceRunWorkflow:
             max(1.0, cadence_interval.total_seconds() * MAX_JITTER_FRACTION),
         )
 
-        # OPS-02-04: per-source timeout derived from data_sources — the
-        # register row's ``run_timeout_seconds`` (when set) else the
-        # cadence-scaled default (one cadence interval, floored at 1 h,
-        # capped at 6 h).
-        timeout_seconds = record.get("run_timeout_seconds")
-        try:
-            run_timeout = timedelta(seconds=float(timeout_seconds))
-        except (TypeError, ValueError):
-            run_timeout = min(
-                timedelta(hours=6),
-                max(timedelta(hours=1), cadence_interval),
-            )
-
         # Deterministic jitter seeded by the run identity → stable on replay.
         rng = workflow.random()
         jitter_seconds = rng.uniform(0.0, jitter_cap)
@@ -121,6 +108,32 @@ class SourceRunWorkflow:
             ),
         )
         ingestion_log_ids = (opened or {}).get("ingestion_log_ids") or {}
+        has_prior_success = bool((opened or {}).get("has_prior_success"))
+
+        # OPS-02-04: per-source timeout derived from data_sources — the
+        # register row's ``run_timeout_seconds`` (when set) else the
+        # cadence-scaled default (one cadence interval, floored at 1 h,
+        # capped at 6 h). A source's very first run — before any prior
+        # success is on record — is a full historical backfill, not a
+        # steady-state incremental sync, and routinely runs far longer
+        # than its cadence would otherwise budget (observed: sailsys
+        # exhausted a cadence-derived 1 h budget on backfill and failed
+        # terminally with the schedule about to retry the same doomed
+        # full-scrape every cadence tick). Give it the full 6 h ceiling
+        # regardless of cadence; once it succeeds once, later runs go
+        # incremental (see legacy_adapters._last_successful_run_since)
+        # and comfortably fit the cadence-scaled budget.
+        timeout_seconds = record.get("run_timeout_seconds")
+        try:
+            run_timeout = timedelta(seconds=float(timeout_seconds))
+        except (TypeError, ValueError):
+            if not has_prior_success:
+                run_timeout = timedelta(hours=6)
+            else:
+                run_timeout = min(
+                    timedelta(hours=6),
+                    max(timedelta(hours=1), cadence_interval),
+                )
 
         # --------------------------------------------------------------
         # 3. Run the registered adapter (bounded retries + backoff +
