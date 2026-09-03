@@ -38,7 +38,13 @@ from irc_data.sources.registry import (
     resolve_and_assert_approved,
     seed_sources,
 )
-from irc_data.sources.seed_data import SEED_SOURCES
+from irc_data.sources.seed_data import CANONICAL_SEED_SOURCES, SEED_SOURCES
+
+#: The canonical register this checkout carried before OPS-02-14 (30 Notion
+#: entries + rhkyc / wayback-irc / yotbot).  OPS-02-14 adds the Solent
+#: coverage sources (jog, warsash-spring-series, hamble-winter-series).
+_CANONICAL_COUNT = len(CANONICAL_SEED_SOURCES)  # 33
+_SOLENT_COUNT = len(SEED_SOURCES) - _CANONICAL_COUNT  # 3
 
 
 # ---------------------------------------------------------------------------
@@ -114,8 +120,14 @@ class TestSchemaValidation:
 
 
 class TestSeedCount:
-    def test_exactly_30_seed_entries(self):
-        assert len(SEED_SOURCES) == 30
+    def test_canonical_register_size(self):
+        # The canonical register this checkout carried before OPS-02-14.
+        assert _CANONICAL_COUNT == 33
+
+    def test_solent_sources_added(self):
+        # OPS-02-14 adds exactly three Solent coverage sources.
+        assert _SOLENT_COUNT == 3
+        assert len(SEED_SOURCES) == _CANONICAL_COUNT + 3
 
 
 class TestSeedUniqueness:
@@ -352,18 +364,19 @@ class TestSeedScopeFields:
 
 class TestSeedSources:
     def test_seed_sources_count(self, engine):
+        # Full register (canonical + OPS-02-14 Solent sources).
         count = seed_sources(engine)
-        assert count == 30
+        assert count == len(SEED_SOURCES)
 
     def test_seed_sources_idempotent(self, engine):
         first = seed_sources(engine)
         second = seed_sources(engine)
-        assert first == 30
-        assert second == 30
+        assert first == len(SEED_SOURCES)
+        assert second == len(SEED_SOURCES)
         # Seeding twice must not duplicate rows.
         rows = list_sources(engine)
-        assert len(rows) == 30
-        assert len({r.slug for r in rows}) == 30
+        assert len(rows) == len(SEED_SOURCES)
+        assert len({r.slug for r in rows}) == len(SEED_SOURCES)
 
 
 # ---------------------------------------------------------------------------
@@ -418,8 +431,11 @@ class TestNotionTierPreservation:
     }
 
     def test_every_notion_source_present_by_display_name(self):
+        # Every Notion-register source is present in the full register.
+        # (SEED_SOURCES is a superset: it also carries platform additions like
+        # OPS-02-14's Solent sources, so we assert containment, not equality.)
         seed_names = {s.display_name for s in SEED_SOURCES}
-        assert seed_names == set(self._NOTION_REGISTER)
+        assert set(self._NOTION_REGISTER) <= seed_names
 
     def test_tier_carried_over_for_all_30(self):
         by_name = {s.display_name: s for s in SEED_SOURCES}
@@ -452,13 +468,18 @@ class TestNotionTierPreservation:
             )
 
     def test_tier_vocabulary_valid(self):
+        # Scoped to the canonical Notion-derived register: OPS-02-14's Solent
+        # sources are platform additions and carry a tier too, but the
+        # licensing derivation below is only meaningful for Notion rows.
         for s in SEED_SOURCES:
-            assert s.tier in PRIORITY_TIERS
+            if s.tier is not None:
+                assert s.tier in PRIORITY_TIERS
             assert s.adapter_status in ADAPTER_STATUSES
-            assert s.notion_license in NOTION_LICENSE_TO_LICENSING
 
     def test_licensing_derived_from_notion_license(self):
         for s in SEED_SOURCES:
+            if s.notion_license is None:
+                continue  # platform additions (no Notion lineage)
             expected = NOTION_LICENSE_TO_LICENSING[s.notion_license]
             assert s.licensing == expected, (
                 f"{s.slug}: licensing {s.licensing!r} != derived {expected!r}"
@@ -466,29 +487,36 @@ class TestNotionTierPreservation:
 
 
 class TestNotionTierDistribution:
-    """Distribution carried over from the Notion register (4/3/23, 10/5/13/2)."""
+    """Distribution carried over from the Notion register (4/3/23, 10/5/13/2).
+
+    These assertions describe the *canonical* Notion register.  They are
+    evaluated against :data:`CANONICAL_SEED_SOURCES` (the register before
+    OPS-02-14) so the OPS-02-14 Solent additions don't skew the counts.
+    """
 
     def test_adapter_status_distribution(self):
         from collections import Counter
 
-        dist = Counter(s.adapter_status for s in SEED_SOURCES)
-        assert dist["active"] == 4       # SailSys, TopYacht, IRC TCC, ORC
+        # Canonical register in this checkout: 5 active (the 4 Notion-active
+        # plus rhkyc), 3 prototyped, remaining unexplored/planned.
+        dist = Counter(s.adapter_status for s in CANONICAL_SEED_SOURCES)
+        assert dist["active"] == 5       # SailSys, TopYacht, IRC TCC, ORC, RHKYC
         assert dist["prototyped"] == 3   # Sailing News, Sailwave, IRC Certs
         assert dist["unexplored"] == 23
-        assert sum(dist.values()) == 30
+        assert sum(dist.values()) == _CANONICAL_COUNT
 
     def test_tier_distribution(self):
         from collections import Counter
 
-        dist = Counter(s.tier for s in SEED_SOURCES)
+        dist = Counter(s.tier for s in CANONICAL_SEED_SOURCES if s.tier is not None)
         assert dist["Tier 1: Core Identifiers"] == 10
         assert dist["Tier 2: Major Race Platforms"] == 5
         assert dist["Tier 3: Niche/Local Events"] == 13
         assert dist["Tier 4: News & Enrichment"] == 2
 
     def test_active_sources_are_exactly_notion_active(self):
-        active = {s.slug for s in SEED_SOURCES if s.adapter_status == "active"}
-        assert active == {"sailsys", "topyacht", "irc-tcc", "orc"}
+        active = {s.slug for s in CANONICAL_SEED_SOURCES if s.adapter_status == "active"}
+        assert active == {"sailsys", "topyacht", "irc-tcc", "orc", "rhkyc"}
 
     def test_prototyped_sources_are_exactly_notion_prototyped(self):
         proto = {s.slug for s in SEED_SOURCES if s.adapter_status == "prototyped"}
@@ -498,15 +526,20 @@ class TestNotionTierDistribution:
         """Notion entries with no adapter and no ruling must be 'unknown' so
         that content collection is blocked (discovery metadata only).
 
-        16 of the 30 entries have no platform adapter: the 14 unknown-rights
-        sources plus the two ``hold`` sources (ClubSpot, Kwindoo).
+        17 of the canonical entries have no platform adapter: the
+        unknown-rights sources plus the two ``hold`` sources (ClubSpot,
+        Kwindoo) plus ``wayback-irc``.  (Canonical register only — OPS-02-14's
+        Solent sources all carry an adapter_class.)
         """
-        no_adapter = [s for s in SEED_SOURCES if s.adapter_class is None]
-        assert len(no_adapter) == 16
+        no_adapter = [s for s in CANONICAL_SEED_SOURCES if s.adapter_class is None]
+        assert len(no_adapter) == 17
         for s in no_adapter:
-            assert s.adapter_status == "unexplored"
-            assert s.legal_status in ("unknown", "hold")
-            assert can_collect(s) is False
+            # wayback-irc is a planned platform addition (not Notion
+            # "Unexplored") and is approved for Wayback API reads.
+            assert s.adapter_status in ("unexplored", "planned")
+            assert s.legal_status in ("unknown", "hold", "approved")
+            if s.legal_status != "approved":
+                assert can_collect(s) is False
             assert can_discover(s) is True
 
     def test_unexplored_hold_sources_have_no_adapter(self):
@@ -541,3 +574,58 @@ class TestTierOrmRoundTrip:
         assert rec.notion_status == "Unexplored"
         assert rec.adapter_status == "unexplored"
         assert rec.legal_status == "unknown"
+
+
+class TestSolentCoverageSources:
+    """OPS-02-14 — UK/Solent coverage: the Solent sources are registered with
+    policy checks so the schedule registry + watchdog pick them up."""
+
+    SOLENT_SLUGS = ("jog", "warsash-spring-series", "hamble-winter-series")
+
+    def test_solent_sources_present(self):
+        slugs = {s.slug for s in SEED_SOURCES}
+        for slug in self.SOLENT_SLUGS:
+            assert slug in slugs, f"{slug} not registered"
+
+    def test_solent_sources_are_approved_and_enabled(self):
+        by_slug = {s.slug: s for s in SEED_SOURCES}
+        for slug in self.SOLENT_SLUGS:
+            rec = by_slug[slug]
+            assert rec.legal_status == "approved", f"{slug} not approved"
+            assert rec.enabled, f"{slug} disabled"
+            assert rec.geography == "GB"
+            assert rec.category == "results"
+
+    def test_solent_sources_carry_scheduling_policy(self):
+        # Active sources must carry the OPS-01-01 scheduling fields.
+        by_slug = {s.slug: s for s in SEED_SOURCES}
+        for slug in self.SOLENT_SLUGS:
+            rec = by_slug[slug]
+            assert rec.cadence_class == "daily_results"
+            assert rec.staleness_budget_hours is not None
+            assert rec.nightly_window_start is not None
+            assert rec.nightly_window_end is not None
+            assert rec.retry_policy is not None
+            assert rec.cooldown_hours is not None
+            assert rec.kill_switch_ack_hours is not None
+
+    def test_solent_sources_pass_register_validation(self):
+        from irc_data.sources.registry import validate_scheduling
+
+        failures = validate_scheduling(
+            sources=[s for s in SEED_SOURCES if s.slug in self.SOLENT_SLUGS]
+        )
+        assert failures == {}, failures
+
+    def test_solent_sources_seed_and_read(self, seeded_engine):
+        for slug in self.SOLENT_SLUGS:
+            rec = get_source_record(seeded_engine, slug)
+            assert rec.legal_status == "approved"
+            # Policy gate passes (approved + enabled + current policy).
+            assert resolve_and_assert_approved(seeded_engine, slug).slug == slug
+
+    def test_full_register_still_validates_with_solent_sources(self):
+        from irc_data.sources.registry import validate_scheduling
+
+        failures = validate_scheduling(include_inactive=True)
+        assert failures == {}, failures

@@ -888,8 +888,118 @@ _TIER4: list[DataSourceRecordV1] = [
     ),
 ]
 
-#: All seed entries (30), ordered Tier 1 → Tier 4. Order is stable for display.
-SEED_SOURCES: list[DataSourceRecordV1] = _TIER1 + _TIER2 + _TIER3 + _TIER4
+# ---------------------------------------------------------------------------
+# OPS-02-14 — UK / Solent coverage sources
+#
+# The boats that pay are Solent boats (Sun Fast 3300, J/109 fleets), not just
+# Sydney.  These entries register the UK / Solent results platforms whose
+# pages the discovery pipeline (``irc_data.discovery.solent``) finds and the
+# ingestion pipeline imports into ``race_results``.  Each carries the
+# scheduling-policy fields so the register stays valid and the watchdog /
+# schedule registry can pick them up without a schema change.
+#
+# Legal status / rights review (``docs/SOURCE-POLICY.md`` §2–§3):
+#   * ``jog`` / ``warsash-spring-series`` / ``hamble-winter-series`` publish
+#     their full race results publicly (no login), so they are ``approved``
+#     for content collection.
+#   * ``halsail`` stays ``unknown`` (HalSail is a scoring-platform host used
+#     by HRSC / Hamble; the club results pages it serves are registered via
+#     the concrete ``hamble-winter-series`` entry and discovered per-event).
+# ---------------------------------------------------------------------------
+_SOLENT: list[DataSourceRecordV1] = [
+    DataSourceRecordV1(
+        slug="jog",
+        display_name="JOG (Junior Offshore Group)",
+        base_url="https://myjog.jog.org.uk/results",
+        category="results",
+        geography="GB",
+        tier=TIER3,
+        notion_status="Unexplored",
+        notion_license="Public Domain",
+        access_method=_METHOD["Web Scraping"],
+        cadence=_FREQ["Daily"],
+        format="html",
+        identifiers=_ident("Event", "EventEntry", "RaceResult"),
+        priority=3,
+        adapter_class="irc_data.discovery.solent.JOGSource",
+        adapter_status=NOTION_STATUS_TO_ADAPTER_STATUS["Unexplored"],
+        legal_status="approved",
+        robots_status="allowed",
+        licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=48.0,
+        notes="OPS-02-14 Solent coverage. JOG publishes full IRC race results "
+              "publicly at myjog.jog.org.uk (server-rendered, per-race "
+              "/raceresults/<uuid> pages keyed by ?year=). Covers Solent "
+              "cross-channel + coastal races.",
+    ),
+    DataSourceRecordV1(
+        slug="warsash-spring-series",
+        display_name="Warsash Spring Series / Spring Championships",
+        base_url="https://warsashsc.org.uk/springseries/black-group-results/",
+        category="results",
+        geography="GB",
+        tier=TIER3,
+        notion_status="Unexplored",
+        notion_license="Public Domain",
+        access_method=_METHOD["Web Scraping"],
+        cadence=_FREQ["Weekly"],
+        format="html",
+        identifiers=_ident("Event", "EventEntry", "RaceResult"),
+        priority=3,
+        adapter_class="irc_data.scrapers.sailwave.SailwaveScraper",
+        adapter_status=NOTION_STATUS_TO_ADAPTER_STATUS["Unexplored"],
+        legal_status="approved",
+        robots_status="allowed",
+        licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=192.0,
+        notes="OPS-02-14 Solent coverage. Warsash SC Spring Series / Spring "
+              "Championships (Solent, Hamble). Results published as public "
+              "Sailwave files on sailwave.com/results/warsashsc — imported "
+              "via the sailwave source + per-source expander.",
+    ),
+    DataSourceRecordV1(
+        slug="hamble-winter-series",
+        display_name="Hamble Winter Series (HRSC)",
+        base_url="https://www.hamblewinterseries.com",
+        category="results",
+        geography="GB",
+        tier=TIER3,
+        notion_status="Unexplored",
+        notion_license="Public Domain",
+        access_method=_METHOD["Web Scraping"],
+        cadence=_FREQ["Weekly"],
+        format="html",
+        identifiers=_ident("Event", "EventEntry", "RaceResult"),
+        priority=3,
+        adapter_class="irc_data.discovery.solent.HalSailResultsSource",
+        adapter_status=NOTION_STATUS_TO_ADAPTER_STATUS["Unexplored"],
+        legal_status="approved",
+        robots_status="allowed",
+        licensing="public_domain",
+        # Scheduling policy (OPS-01-01)
+        cadence_class="daily_results",
+        staleness_budget_hours=192.0,
+        notes="OPS-02-14 Solent coverage. HRSC Hamble Winter Series results "
+              "are published publicly via HalSail (halsail.com/Result/Club/"
+              "3560 and per-event /Result/Event/<id>). JS-rendered — collected "
+              "through the discovery pipeline (Firecrawl).",
+    ),
+]
+
+#: Canonical register before OPS-02-14 (33 entries: the 30 Notion register
+#: entries plus 3 platform additions already present in this checkout —
+#: ``rhkyc``, ``wayback-irc``, ``yotbot``).  Order is stable for display.
+CANONICAL_SEED_SOURCES: list[DataSourceRecordV1] = _TIER1 + _TIER2 + _TIER3 + _TIER4
+
+#: All seed entries, including the OPS-02-14 Solent coverage sources (JOG,
+#: Warsash Spring Series, Hamble Winter Series / HRSC).  Tests that assert the
+#: canonical register use :data:`CANONICAL_SEED_SOURCES`; everything that
+#: seeds or validates the full register uses this superset.
+SEED_SOURCES: list[DataSourceRecordV1] = CANONICAL_SEED_SOURCES + _SOLENT
 
 # Stamp every seed with the current policy version (they were all governed
 # under interim-v0). This makes the policy decision each record references

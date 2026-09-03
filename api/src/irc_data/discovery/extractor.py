@@ -77,7 +77,12 @@ CRITICAL:
 class EventExtraction(BaseModel):
     is_sailing_event: bool
     scoring_platform: Literal["sailsys", "topyacht", "sailwave", "yachtscoring", "pdf", "none", "unknown"]
-    platform_ids: dict[str, Any] = Field(default_factory=dict, description="Platform-specific identifiers extracted from URLs.")
+    # Free-form platform identifiers (club_id / series_id / race_id / eid …).
+    # NOTE: the Gemini response_schema endpoint rejects any object schema that
+    # carries ``additionalProperties`` (which pydantic emits for a ``dict``
+    # field), so ``platform_ids`` is declared as a plain string here and
+    # parsed back into a dict in ``extract_event`` below.
+    platform_ids: str = Field(default="", description="Platform-specific identifiers as a JSON object string, e.g. '{\"club_id\": \"3\"}'. Empty string if none.")
     title: Optional[str] = None
     event_date: Optional[str] = Field(default=None, description="YYYY-MM-DD or null")
     event_location: Optional[str] = None
@@ -125,6 +130,16 @@ def extract_event(url: str, markdown: str) -> dict[str, Any]:
         )
 
         data = EventExtraction.model_validate_json(resp.text).model_dump()
+        # platform_ids comes back as a JSON-object *string* (Gemini-compat);
+        # parse it back into a dict for the event_discovery platform_ids col.
+        raw_ids = data.get("platform_ids")
+        if isinstance(raw_ids, str):
+            try:
+                import json as _json
+
+                data["platform_ids"] = _json.loads(raw_ids) if raw_ids.strip() else {}
+            except Exception:
+                data["platform_ids"] = {}
         data["url"] = url
         return data
     except Exception as e:
