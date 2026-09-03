@@ -350,6 +350,17 @@ async def create_pull_request(worktree_path: str) -> None:
         )
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
+            # A failed merge leaves the main repo mid-conflict (MERGE_HEAD set,
+            # unmerged paths). Without cleanup here, every subsequent retry —
+            # of this activity or any other task's merge — immediately fails
+            # on "you have not concluded your merge", masking the real
+            # conflict forever (observed: 18 retries, one real conflict).
+            # Abort so the tree is clean for the next attempt or the next task.
+            abort_proc = await asyncio.create_subprocess_shell(
+                f'git -C "{repo_path}" merge --abort',
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            await abort_proc.communicate()
             raise ApplicationError(f"Merge failed: {stderr.decode()[:1000]}")
 
         activity.logger.info(f"Merged {branch}. Pushing develop to origin.")

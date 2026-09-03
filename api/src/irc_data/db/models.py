@@ -522,25 +522,50 @@ class Order(Base):
 
 
 class User(Base):
+    """Account record keyed by Clerk id.
+
+    ``id`` is a plain autoincrement bigint, not a UUID: this table (and
+    ``subscriptions``/``stripe_events``/``boat_claims``/``user_settings``
+    below) was actually built by the PAY-01-09 integer-PK migration lineage
+    on the live database. A same-named but never-applied UUID-PK migration
+    (0027_payments_auth) also exists on disk — its ``CREATE TABLE IF NOT
+    EXISTS`` was a guarded no-op against the already-existing integer table,
+    so it never took effect. These classes previously declared the UUID
+    shape (matching that file, not reality), which would break the moment
+    any ORM code path — as opposed to the raw-SQL users_service.py, which
+    is why this went unnoticed — touched these tables.
+    """
+
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("clerk_id", name="uq_users_clerk_id"),
         UniqueConstraint("email", name="uq_users_email"),
-        Index("idx_users_clerk_id", "clerk_id"),
+        UniqueConstraint(
+            "stripe_customer_id", name="users_stripe_customer_id_key"
+        ),
         Index("idx_users_email", "email"),
-        Index("idx_users_stripe_customer_id", "stripe_customer_id"),
+        Index("idx_users_stripe_customer", "stripe_customer_id"),
+        Index("idx_users_plan", "plan"),
+        Index("idx_users_role", "role"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=uuid.uuid4
-    )
-    clerk_id: Mapped[str] = mapped_column(Text, nullable=False)
-    email: Mapped[str] = mapped_column(Text, nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    clerk_id: Mapped[str | None] = mapped_column(Text)
+    email: Mapped[str | None] = mapped_column(Text)
     full_name: Mapped[str | None] = mapped_column(Text)
+    subscription_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="none"
+    )
     stripe_customer_id: Mapped[str | None] = mapped_column(Text)
-    role: Mapped[str] = mapped_column(Text, nullable=False, server_default="member")
+    role: Mapped[str] = mapped_column(Text, nullable=False, server_default="customer")
+    plan: Mapped[str] = mapped_column(Text, nullable=False, server_default="free")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    deletion_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -557,6 +582,9 @@ class User(Base):
         foreign_keys="BoatClaim.user_id",
     )
     orders: Mapped[list["Order"]] = relationship(back_populates="user")
+    settings: Mapped["UserSettings | None"] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Subscription(Base):
@@ -570,23 +598,22 @@ class Subscription(Base):
     __tablename__ = "subscriptions"
     __table_args__ = (
         UniqueConstraint(
-            "stripe_subscription_id", name="uq_subscriptions_stripe_subscription_id"
+            "stripe_subscription_id", name="subscriptions_stripe_subscription_id_key"
         ),
         Index("idx_subscriptions_user", "user_id"),
-        Index("idx_subscriptions_stripe_customer", "stripe_customer_id"),
-        Index("idx_subscriptions_status", "status"),
+        Index("idx_subscriptions_customer", "stripe_customer_id"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
     )
     stripe_subscription_id: Mapped[str] = mapped_column(Text, nullable=False)
-    stripe_customer_id: Mapped[str] = mapped_column(Text, nullable=False)
-    plan: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(Text, nullable=False)
+    stripe_customer_id: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str | None] = mapped_column(Text)
+    plan: Mapped[str | None] = mapped_column(Text)
+    lookup_key: Mapped[str | None] = mapped_column(Text)
+    price_id: Mapped[str | None] = mapped_column(Text)
     current_period_start: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
@@ -596,16 +623,13 @@ class Subscription(Base):
     cancel_at_period_end: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
-    cancel_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    raw: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
-    created_at: Mapped[datetime] = mapped_column(
+    raw: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    updated_at: Mapped[datetime] = mapped_column(
+    updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
@@ -613,24 +637,27 @@ class Subscription(Base):
 
 
 class StripeEvent(Base):
-    """Stripe webhook event ledger — ``id`` is the ``evt_…`` id so a
-    redelivered event is idempotently rejected by primary-key conflict."""
+    """Stripe webhook event ledger — ``event_id`` is the ``evt_…`` id;
+    a redelivered event is idempotently rejected by its unique constraint."""
 
     __tablename__ = "stripe_events"
     __table_args__ = (
+        UniqueConstraint("event_id", name="stripe_events_event_id_key"),
         Index("idx_stripe_events_type", "type"),
-        Index("idx_stripe_events_processed_at", "processed_at"),
+        Index("idx_stripe_events_error", "error"),
     )
 
-    id: Mapped[str] = mapped_column(Text, primary_key=True)
-    type: Mapped[str] = mapped_column(Text, nullable=False)
-    livemode: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    payload: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
-    processed_at: Mapped[datetime] = mapped_column(
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[str | None] = mapped_column(Text)
+    api_version: Mapped[str | None] = mapped_column(Text)
+    livemode: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    payload: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
 
 
 class BoatClaim(Base):
@@ -638,35 +665,65 @@ class BoatClaim(Base):
 
     __tablename__ = "boat_claims"
     __table_args__ = (
-        UniqueConstraint("user_id", "boat_id", name="uq_boat_claims_user_boat"),
         Index("idx_boat_claims_boat", "boat_id"),
         Index("idx_boat_claims_status", "status"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), nullable=False
     )
     boat_id: Mapped[int] = mapped_column(
-        ForeignKey("boats.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("boats.id"), nullable=False
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     evidence: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    verified_by: Mapped[str | None] = mapped_column(Text)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    verified_by: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     user: Mapped["User"] = relationship(
         back_populates="boat_claims", foreign_keys=[user_id]
     )
     boat: Mapped["Boat"] = relationship()
-    verifier: Mapped["User"] = relationship(foreign_keys=[verified_by])
+
+
+class UserSettings(Base):
+    """Account settings (AUTH-01-03) — one row per user, created on first edit."""
+
+    __tablename__ = "user_settings"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    display_name: Mapped[str | None] = mapped_column(Text)
+    home_club: Mapped[str | None] = mapped_column(Text)
+    country: Mapped[str | None] = mapped_column(Text)
+    notify_product_updates: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    notify_rating_changes: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    notify_event_reminders: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    notify_marketing: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="settings")
 
 
 # ---------------------------------------------------------------------------
