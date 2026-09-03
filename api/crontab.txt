@@ -57,6 +57,11 @@ OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --en
 # Daily health check at 06:00 UTC
 0 6 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scraper-health" >> $LOG_DIR/scraper_health_$(date +\%F).log 2>&1
 
+# AD-01-15 — nightly admin_metrics: completeness facts for the data-health
+# page.  Runs before the morning health-check so the page renders from the
+# precomputed stream (no heavy queries on request).  05:30 UTC nightly.
+30 5 * * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data admin-metrics" >> $LOG_DIR/admin_metrics_$(date +\%F).log 2>&1
+
 # Daily heartbeat + dead-man ping at 09:00 UTC
 0 9 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data health-check --notify" >> $LOG_DIR/health_$(date +\%F).log 2>&1
 
