@@ -5,6 +5,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 import stripe
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -13,7 +14,12 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from irc_data.api.deps import get_db
+from irc_data.api.deps import CallerIdentity, get_db, get_optional_identity
+from irc_data.api.services.users_service import (
+    ensure_stripe_customer,
+    get_or_create_user,
+    link_checkout_customer_to_user,
+)
 from irc_data.env import FRONTEND_URL
 
 logger = logging.getLogger(__name__)
@@ -62,8 +68,16 @@ class CreateSessionResponse(BaseModel):
 def create_checkout_session(
     body: CreateSessionRequest,
     engine: Engine = Depends(get_db),
+    identity: Optional[CallerIdentity] = Depends(get_optional_identity),
 ):
-    """Create a Stripe Checkout Session for a boat report purchase."""
+    """Create a Stripe Checkout Session for a boat report purchase.
+
+    Signed-in callers reuse (or create) a single Stripe customer stored on
+    ``users.stripe_customer_id`` and passed as ``customer=``; guests get
+    ``customer_creation=always`` so the payment still produces a customer
+    object that the ``checkout.session.completed`` webhook can link to a
+    user on their next sign-in.
+    """
     secret_key = os.environ.get("STRIPE_SECRET_KEY")
     if not secret_key:
         raise HTTPException(status_code=503, detail="Payment service not configured")
@@ -87,14 +101,36 @@ def create_checkout_session(
     if not boat:
         raise HTTPException(status_code=404, detail=f"Boat {body.boat_id} not found")
 
-    # Create pending order
+    # Resolve user + Stripe customer for signed-in callers. Guest-order
+    # claiming also runs here so a purchase made while signed out is
+    # attached to the user on their next checkout.
+    user = None
+    stripe_customer_id = None
+    if identity:
+        try:
+            with engine.begin() as conn:
+                user = get_or_create_user(conn, identity.clerk_user_id, identity.email)
+                stripe_customer_id = ensure_stripe_customer(conn, user, identity.email)
+        except Exception:
+            # Never block a purchase on the user/customer bookkeeping;
+            # fall through to the guest flow.
+            logger.exception(
+                "User/customer resolution failed for %s; falling back to guest checkout",
+                identity.clerk_user_id,
+            )
+            user = None
+            stripe_customer_id = None
+
+    # Create pending order (linked to the user when signed in)
     with engine.begin() as conn:
         conn.execute(
             text("""
                 INSERT INTO orders (order_token, boat_id, amount_cents, currency,
-                                    search_query, teaser_text, status)
+                                    search_query, teaser_text, status,
+                                    user_id, stripe_customer_id)
                 VALUES (:token, :boat_id, :amount, :currency,
-                        :search_query, :teaser_text, 'pending')
+                        :search_query, :teaser_text, 'pending',
+                        :user_id, :customer)
             """),
             {
                 "token": str(order_token),
@@ -103,14 +139,16 @@ def create_checkout_session(
                 "currency": currency,
                 "search_query": body.search_query,
                 "teaser_text": body.teaser_text,
+                "user_id": user["id"] if user else None,
+                "customer": stripe_customer_id,
             },
         )
 
     # Create Stripe session
     try:
-        session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[
+        session_params: dict = {
+            "payment_method_types": ["card"],
+            "line_items": [
                 {
                     "price_data": {
                         "currency": currency,
@@ -127,15 +165,32 @@ def create_checkout_session(
                     "quantity": 1,
                 }
             ],
-            mode="payment",
-            allow_promotion_codes=True,
-            success_url=f"{FRONTEND_URL}/report/{order_token}",
-            cancel_url=f"{FRONTEND_URL}/boat/{body.boat_id}",
-            metadata={
+            "mode": "payment",
+            "allow_promotion_codes": True,
+            "success_url": f"{FRONTEND_URL}/report/{order_token}",
+            "cancel_url": f"{FRONTEND_URL}/boat/{body.boat_id}",
+            "metadata": {
                 "order_token": str(order_token),
                 "boat_id": str(body.boat_id),
             },
-        )
+        }
+        if stripe_customer_id:
+            # Signed-in repeat buyer: attach the session to their one
+            # Stripe customer (Stripe forbids customer + customer_email
+            # together; the customer already carries the email).
+            session_params["customer"] = stripe_customer_id
+        else:
+            # Guests: always create a customer so the order can be linked
+            # to the user on their next sign-in.
+            session_params["customer_creation"] = "always"
+        if identity:
+            session_params["metadata"]["clerk_user_id"] = identity.clerk_user_id
+            if identity.email and not stripe_customer_id:
+                # Signed-in but no reusable customer (e.g. customer
+                # creation failed): prefill the checkout email.
+                session_params["customer_email"] = identity.email
+
+        session = stripe.checkout.Session.create(**session_params)
     except stripe.StripeError as e:
         logger.error(f"Stripe session creation failed: {e}")
         raise HTTPException(status_code=502, detail="Payment session creation failed")
@@ -158,6 +213,8 @@ def create_checkout_session(
         "currency": currency,
         "amount_cents": amount_cents,
         "search_query": body.search_query,
+        "clerk_user_id": identity.clerk_user_id if identity else None,
+        "stripe_customer_id": stripe_customer_id,
     })
 
     return CreateSessionResponse(
@@ -529,39 +586,86 @@ def _handle_checkout_completed(
     metadata = _g(session, "metadata") or {}
 
     with engine.begin() as conn:
-        # PAY-01-09: also link the order to a user (stripe_customer_id first,
-        # then email) and record Stripe's payment status verbatim.
-        user_id = _find_user_id(conn, stripe_customer_id, email)
-        result = conn.execute(
-            text("""
-                UPDATE orders
-                SET status = 'paid',
-                    paid_at = :now,
-                    email = COALESCE(:email, email),
-                    stripe_payment_intent = :pi,
-                    stripe_payment_status = :payment_status,
-                    user_id = COALESCE(:user_id, user_id)
-                WHERE stripe_session_id = :sid
-                  AND status = 'pending'
-                RETURNING id
-            """),
-            {
-                "now": datetime.now(timezone.utc),
-                "email": email,
-                "pi": payment_intent,
-                "payment_status": payment_status,
-                "user_id": user_id,
-                "sid": session_id,
-            },
-        )
-        row = result.first()
+        # Link the checkout's Stripe customer to a user: first by
+        # users.stripe_customer_id (signed-in repeat buyers), else by the
+        # email collected at checkout (claims guest purchases on the
+        # user's next sign-in / purchase).
+        user_id = None
+        try:
+            user_id = link_checkout_customer_to_user(conn, stripe_customer_id, email)
+        except Exception:
+            logger.exception(
+                "User linking failed for session %s (customer %s)",
+                session_id, stripe_customer_id,
+            )
+
+        if conn.dialect.name == "postgresql":
+            result = conn.execute(
+                text("""
+                    UPDATE orders
+                    SET status = 'paid',
+                        paid_at = :now,
+                        email = COALESCE(:email, email),
+                        stripe_payment_intent = :pi,
+                        stripe_customer_id = COALESCE(:customer, stripe_customer_id),
+                        user_id = COALESCE(:user_id, user_id)
+                    WHERE stripe_session_id = :sid
+                      AND status = 'pending'
+                    RETURNING id, user_id
+                """),
+                {
+                    "now": datetime.now(timezone.utc),
+                    "email": email,
+                    "pi": payment_intent,
+                    "customer": stripe_customer_id,
+                    "user_id": user_id,
+                    "sid": session_id,
+                },
+            )
+            row = result.mappings().first()
+        else:
+            # Dialect-neutral path (SQLite unit tests): UPDATE without
+            # RETURNING, then SELECT the updated row.
+            result = conn.execute(
+                text("""
+                    UPDATE orders
+                    SET status = 'paid',
+                        paid_at = :now,
+                        email = COALESCE(:email, email),
+                        stripe_payment_intent = :pi,
+                        stripe_customer_id = COALESCE(:customer, stripe_customer_id),
+                        user_id = COALESCE(:user_id, user_id)
+                    WHERE stripe_session_id = :sid
+                      AND status = 'pending'
+                """),
+                {
+                    "now": datetime.now(timezone.utc),
+                    "email": email,
+                    "pi": payment_intent,
+                    "customer": stripe_customer_id,
+                    "user_id": user_id,
+                    "sid": session_id,
+                },
+            )
+            row = None
+            if result.rowcount:
+                row = conn.execute(
+                    text(
+                        "SELECT id, user_id FROM orders "
+                        "WHERE stripe_session_id = :sid"
+                    ),
+                    {"sid": session_id},
+                ).mappings().first()
 
     if not row:
         logger.warning(f"No pending order found for session {session_id}")
         return
 
-    order_id = row.id
-    logger.info(f"Order {order_id} marked as paid (session {session_id})")
+    order_id = row["id"]
+    logger.info(
+        "Order %s marked as paid (session %s, customer %s, user %s)",
+        order_id, session_id, stripe_customer_id, row["user_id"],
+    )
 
     from irc_data.api.services.analytics_service import track
     track("order_paid", _g(metadata, "order_token") or str(order_id), {
@@ -571,6 +675,8 @@ def _handle_checkout_completed(
         "currency": _g(session, "currency"),
         "email": email,
         "boat_id": _g(metadata, "boat_id"),
+        "stripe_customer_id": stripe_customer_id,
+        "user_id": row["user_id"],
     })
 
     # Kick off report generation in background

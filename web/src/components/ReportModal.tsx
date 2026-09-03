@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { X } from "lucide-react";
 import {
   streamInsights,
@@ -35,6 +36,7 @@ export default function ReportModal({
   const [briefDone, setBriefDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sealedRevealedCount, setSealedRevealedCount] = useState(0);
+  const { getToken } = useAuth();
 
   const thinkingRef = useRef("");
   const briefRef = useRef("");
@@ -174,12 +176,16 @@ export default function ReportModal({
       search_query: searchQuery,
       placement: "modal-rail",
     });
+    // PAY-01-08: signed-in buyers attach the session to their one Stripe
+    // customer; guests (no token) get customer_creation=always server-side.
+    const authToken = await getToken().catch(() => null);
     const { checkout_url, order_token } = await createCheckoutSession({
       boat_id: boat.id,
       boat_name: boat.boat_name,
       currency: currency.code,
       search_query: searchQuery,
       teaser_text: briefRef.current,
+      authToken,
     });
     track("checkout_redirect", {
       boat_id: boat.id,
