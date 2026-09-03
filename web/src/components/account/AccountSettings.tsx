@@ -62,6 +62,27 @@ function downloadJson(filename: string, data: unknown) {
   URL.revokeObjectURL(url);
 }
 
+const CLERK_ENABLED = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+/**
+ * Clerk is optional (see layout.tsx): when no publishable key is
+ * configured, ClerkProvider isn't mounted, so calling useAuth/useUser
+ * here would crash. Gate the whole Clerk-backed component behind
+ * CLERK_ENABLED at the top level, same pattern as AdminSignOutButton.
+ */
+export default function AccountSettings() {
+  if (!CLERK_ENABLED) {
+    return (
+      <div className="sr-card text-center" data-testid="account-sign-in-prompt">
+        <p className="text-sm text-[var(--sr-text-secondary)]">
+          Account settings are not available in this environment.
+        </p>
+      </div>
+    );
+  }
+  return <ClerkAccountSettings />;
+}
+
 /**
  * AUTH-01-03 — the interactive account settings surface.
  *
@@ -70,7 +91,7 @@ function downloadJson(filename: string, data: unknown) {
  * token; every mutation re-reads the canonical settings response so the UI
  * never drifts from server state.
  */
-export default function AccountSettings() {
+function ClerkAccountSettings() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
   const router = useRouter();
