@@ -63,6 +63,31 @@ async def scrape_certs_exhaustive() -> str:
     return run_cli_command(["scrape", "certs", "--exhaustive"])
 
 @activity.defn
+async def parse_certs() -> str:
+    """Parse downloaded certificate PDFs into the database."""
+    return run_cli_command(["parse-certs"])
+
+@activity.defn
+async def scrape_isora() -> str:
+    """Scrape ISORA race results."""
+    return run_cli_command(["scrape", "results", "--source", "isora"])
+
+@activity.defn
+async def scrape_rhkyc() -> str:
+    """Scrape RHKYC race results."""
+    return run_cli_command(["scrape", "results", "--source", "rhkyc"])
+
+@activity.defn
+async def scrape_sailracehq() -> str:
+    """Scrape SailRaceHQ race results."""
+    return run_cli_command(["scrape", "results", "--source", "sailracehq"])
+
+@activity.defn
+async def scrape_wayback() -> str:
+    """Search Wayback Machine for historical IRC certificate PDFs."""
+    return run_cli_command(["scrape", "wayback"])
+
+@activity.defn
 async def scrape_wayback_tcc() -> str:
     """Harvest historical TCC files from Wayback Machine."""
     return run_cli_command(["wayback-tcc"])
