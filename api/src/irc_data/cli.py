@@ -3464,6 +3464,67 @@ def seed_crawl(ctx, aggregators, seed_url, limit):
     console.print(f"[green]done — {total} URLs total[/green]")
 
 
+@cli.command(name="solent-coverage")
+@click.option(
+    "--mode",
+    type=click.Choice(["discover", "ingest", "all"]),
+    default="all",
+    show_default=True,
+    help="discover = queue Solent result pages into event_discovery; "
+         "ingest = import JOG + Warsash results into race_results; "
+         "all = discover then ingest.",
+)
+@click.option("--year", "years", type=int, multiple=True,
+              help="JOG season year (repeatable; default current + previous).")
+@click.option("--max-races", type=int, default=None,
+              help="Cap on JOG races ingested (useful for canary runs).")
+@click.option("--skip-warsash", is_flag=True, help="Skip the Warsash Sailwave ingest.")
+@click.option("--skip-jog", is_flag=True, help="Skip the JOG ingest.")
+@click.option("--dry-run", is_flag=True,
+              help="Discovery only — no content is written to race_results.")
+@click.pass_context
+def solent_coverage(ctx, mode, years, max_races, skip_warsash, skip_jog, dry_run):
+    """OPS-02-14 — UK/Solent coverage: discover + ingest Solent results.
+
+    Goal: results for the boats that pay (Solent, not just Sydney).  This
+    command runs the registered Solent sources through the discovery
+    pipeline (HRSC / Hamble / Solent series + JOG) and imports results into
+    ``race_results`` so the Sun Fast 3300 and J/109 Solent fleets have
+    coverage.  Every source is policy-checked before any content is fetched.
+    """
+    engine = ctx.obj["engine"]
+
+    from irc_data.discovery import solent as solent_mod
+
+    if mode in ("discover", "all"):
+        console.print("[cyan]solent-coverage[/cyan] discovery — queueing Solent result pages")
+        summary = solent_mod.discover_solent_sources(engine)
+        for seed, n in summary.get("sources", {}).items():
+            console.print(f"  {n:3d} queued  {seed}")
+        for err in summary.get("errors", []):
+            console.print(f"  [yellow]{err}[/yellow]")
+        console.print(f"[green]discovery done — {summary.get('queued', 0)} URLs queued[/green]")
+
+    if dry_run:
+        console.print("[dim]dry-run: skipping ingestion[/dim]")
+        return
+
+    if mode in ("ingest", "all"):
+        if not skip_jog:
+            console.print("[cyan]solent-coverage[/cyan] ingesting JOG seasons "
+                          f"({', '.join(map(str, years)) or 'current+previous'})")
+            jog = solent_mod.ingest_jog_season(
+                engine, years=list(years) or None, max_races=max_races,
+            )
+            console.print(f"  JOG: {jog['events']} races, "
+                          f"{jog['imported']} imported, {jog['matched']} matched")
+        if not skip_warsash:
+            console.print("[cyan]solent-coverage[/cyan] ingesting Warsash Spring Series (Sailwave)")
+            w = solent_mod.ingest_warsash_sailwave(engine)
+            console.print(f"  Warsash: {w['files']} files, "
+                          f"{w['imported']} imported, {w['matched']} matched")
+
+
 @cli.command(name="scrape-watchdog")
 @click.option("--cooldown-hours", type=int, default=4,
               help="Minimum hours between repeat alerts for the same source.")

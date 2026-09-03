@@ -35,8 +35,26 @@ def cowesweek_year_expand(_seed: str, year: int | None) -> list[str]:
     ]
 
 
+def warsash_spring_series_expand(_seed: str, year: int | None) -> list[str]:
+    """Warsash Spring Series landing → the per-group results index pages.
+
+    The Black/White group results index pages link out to the static Sailwave
+    result files (``sailwave.com/results/warsashsc/…``) for the current
+    season.  The expander returns the two index pages; the actual Sailwave
+    file URLs are discovered by ``irc_data.discovery.solent`` (they are
+    fetched with plain HTTP and parsed by the existing Sailwave parser).
+    ``year`` is accepted for interface uniformity but the index pages always
+    reflect the current season.
+    """
+    return [
+        "https://warsashsc.org.uk/springseries/black-group-results/",
+        "https://warsashsc.org.uk/springseries/white-group-results/",
+    ]
+
+
 EXPANDERS: dict[str, ExpanderFn] = {
     "cowesweek": cowesweek_year_expand,
+    "warsash-spring-series": warsash_spring_series_expand,
 }
 
 

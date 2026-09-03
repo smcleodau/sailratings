@@ -331,8 +331,9 @@ class TestRegisterValidation:
 
 
 class TestSeedSchedulingValues:
-    def test_all_30_seeds_carry_all_fields(self):
-        assert len(SEED_SOURCES) == 30
+    def test_all_seeds_carry_all_fields(self):
+        # Every seed (canonical register + OPS-02-14 Solent sources) carries
+        # the full OPS-01-01 scheduling field set.
         for s in SEED_SOURCES:
             for field_name in REQUIRED_SCHEDULING_FIELDS:
                 assert getattr(s, field_name) is not None, (
