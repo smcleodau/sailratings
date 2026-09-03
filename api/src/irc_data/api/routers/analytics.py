@@ -209,6 +209,105 @@ def compare_designs_endpoint(
 
 
 # ---------------------------------------------------------------------------
+# SM-01-06: Rivals head-to-head / Design comparator / Fleet intelligence
+# ---------------------------------------------------------------------------
+
+
+@router.get("/head-to-head")
+def get_head_to_head(
+    boat_id: int = Query(..., ge=1),
+    rival_id: int = Query(..., ge=1),
+    engine: Engine = Depends(get_db),
+):
+    """HeadToHeadV1 — corrected and uncorrected records between two boats.
+
+    Uncorrected uses official finishing places; corrected uses elapsed × TCC
+    where the source payload carries times, otherwise a place-per-TCC proxy.
+    """
+    from irc_data.analysis.comparative import compute_head_to_head_v1
+
+    result = compute_head_to_head_v1(engine, boat_id, rival_id)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Boat {boat_id} or rival {rival_id} not found",
+        )
+    return result.to_dict()
+
+
+@router.get("/boats/{boat_id}/rivals-v1")
+def get_boat_rivals_v1(
+    boat_id: int,
+    min_meetings: int = Query(2, ge=1, le=100),
+    engine: Engine = Depends(get_db),
+):
+    """HeadToHeadV1 records for every rival sharing ``min_meetings`` races."""
+    from irc_data.analysis.comparative import compute_rivals_v1
+
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        boat = conn.execute(
+            text("SELECT id, boat_name FROM boats WHERE id = :id"),
+            {"id": boat_id},
+        ).first()
+    if not boat:
+        raise HTTPException(status_code=404, detail=f"Boat {boat_id} not found")
+
+    records = compute_rivals_v1(engine, boat_id, min_meetings=min_meetings)
+    return {
+        "version": "HeadToHeadV1",
+        "boat_id": boat_id,
+        "boat_name": boat.boat_name,
+        "min_meetings": min_meetings,
+        "rivals": [r.to_dict() for r in records],
+    }
+
+
+@router.get("/design-comparator")
+def get_design_comparator(
+    designs: str = Query(..., description="Comma-separated design names"),
+    engine: Engine = Depends(get_db),
+):
+    """DesignComparatorV1 — band, mean/median RAI, results depth, headroom."""
+    from irc_data.analysis.comparative import design_comparator_batch
+
+    design_list = [d.strip() for d in designs.split(",") if d.strip()]
+    if not design_list:
+        raise HTTPException(status_code=400, detail="Provide at least one design name")
+
+    return design_comparator_batch(engine, design_list)
+
+
+@router.get("/design-comparator/{design_name}")
+def get_design_comparator_single(
+    design_name: str,
+    engine: Engine = Depends(get_db),
+):
+    """DesignComparatorV1 for a single design class."""
+    from irc_data.analysis.comparative import design_comparator
+
+    result = design_comparator(engine, design_name)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No boats found for design '{design_name}'",
+        )
+    return result.to_dict()
+
+
+@router.get("/fleet-summary")
+def get_fleet_summary(
+    design: str | None = Query(None),
+    country: str | None = Query(None),
+    engine: Engine = Depends(get_db),
+):
+    """FleetSummaryV1 — fleet-at-a-glance aggregates (optionally scoped)."""
+    from irc_data.analysis.comparative import fleet_summary_v1
+
+    return fleet_summary_v1(engine, design=design, country=country)
+
+
+# ---------------------------------------------------------------------------
 # Global System Statistics
 # ---------------------------------------------------------------------------
 
