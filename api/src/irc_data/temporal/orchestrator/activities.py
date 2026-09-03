@@ -235,12 +235,29 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
 @activity.defn
 async def run_playwright_e2e_tests(worktree_path: str) -> bool:
     import fcntl
+    import aiohttp
     activity.logger.info(f"Running Playwright tests in {worktree_path}")
     e2e_dir = os.path.join(worktree_path, "e2e_tests")
     if not os.path.isdir(e2e_dir):
         activity.logger.info("No e2e_tests directory — skipping Playwright tests")
         return True
     web_dir = os.path.join(worktree_path, "web")
+
+    # Verify the API at :4100 is healthy before acquiring the port lock.
+    # Playwright probes http://127.0.0.1:4100/ with reuseExistingServer:true;
+    # if uvicorn is in a reload cycle, that probe blocks indefinitely.
+    for attempt in range(12):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get("http://127.0.0.1:4100/", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status < 500:
+                        break
+        except Exception as exc:
+            activity.logger.warning(f"API not ready (attempt {attempt+1}/12): {exc}")
+            if attempt == 11:
+                raise ApplicationError("API at :4100 did not become healthy after 60 s; aborting E2E run")
+            await asyncio.sleep(5)
+
     # Serialise all E2E runs — only one can hold port 4201 at a time
     lock_path = "/tmp/playwright-port-4201.lock"
     lock_file = open(lock_path, "w")
@@ -249,6 +266,7 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
         None, lambda: fcntl.flock(lock_file, fcntl.LOCK_EX)
     )
     activity.logger.info("Acquired E2E port lock")
+    proc = None
     try:
         # Kill any process holding port 4201 from a prior test run
         await asyncio.create_subprocess_shell(
@@ -271,7 +289,13 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        # 40-minute hard cap — prevents blocking if playwright itself hangs
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=2400)
+    except asyncio.TimeoutError:
+        if proc:
+            proc.kill()
+            await proc.communicate()
+        raise ApplicationError("Playwright subprocess exceeded 40-minute hard cap")
     finally:
         fcntl.flock(lock_file, fcntl.LOCK_UN)
         lock_file.close()
