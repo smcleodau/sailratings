@@ -10,6 +10,24 @@ const isProtectedRoute = createRouteMatcher(['/admin(.*)']);
 // admin-token gate (Authorization: Bearer …) still applies.
 const adminE2eBypass = !!process.env.NEXT_PUBLIC_ADMIN_E2E_BYPASS;
 
+/**
+ * Admin responses must never be cached.
+ *
+ * Next.js was emitting `cache-control: public, max-age=0, s-maxage=60,
+ * stale-while-revalidate=86400` on /admin — including on the sign-in
+ * redirect. `stale-while-revalidate=86400` lets a browser keep serving the
+ * previously-rendered admin HTML for 24 hours, so signing out (or even
+ * clearing cookies, which does not clear the HTTP cache) still showed the
+ * admin UI from disk. `public` would also let a shared cache hold a
+ * signed-in render.
+ */
+function noStore(res: NextResponse): NextResponse {
+  res.headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
+  res.headers.set("Pragma", "no-cache");
+  res.headers.set("Vary", "Cookie, Authorization");
+  return res;
+}
+
 function adminHostRedirect(req: NextRequest) {
   const url = req.nextUrl;
   const hostname = req.headers.get('host');
@@ -24,11 +42,14 @@ const clerkConfiguredMiddleware = clerkMiddleware(async (auth, req) => {
   const redirect = adminHostRedirect(req);
   if (redirect) return redirect;
 
-  if (isProtectedRoute(req) && !adminE2eBypass) {
-    const authObject = await auth();
-    if (!authObject.userId) {
-      return NextResponse.redirect(new URL('/sign-in', req.url));
+  if (isProtectedRoute(req)) {
+    if (!adminE2eBypass) {
+      const authObject = await auth();
+      if (!authObject.userId) {
+        return noStore(NextResponse.redirect(new URL('/sign-in', req.url)));
+      }
     }
+    return noStore(NextResponse.next());
   }
 
   return NextResponse.next();
@@ -42,6 +63,8 @@ const clerkConfiguredMiddleware = clerkMiddleware(async (auth, req) => {
 function unconfiguredMiddleware(req: NextRequest) {
   const redirect = adminHostRedirect(req);
   if (redirect) return redirect;
+
+  if (isProtectedRoute(req)) return noStore(NextResponse.next());
 
   return NextResponse.next();
 }

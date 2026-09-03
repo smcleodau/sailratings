@@ -11,7 +11,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminHealthPill, AdminHealthStatus } from "@/lib/adminApi";
-import { SearchIcon, SignOutIcon } from "@/components/admin/AdminIcons";
+import { SearchIcon } from "@/components/admin/AdminIcons";
+import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 
 interface AdminTopbarProps {
   environment: string;
@@ -73,13 +74,6 @@ export function AdminTopbar({ environment, health, rightSlot }: AdminTopbarProps
     if (q) {
       router.push(`/admin/tables?q=${encodeURIComponent(q)}`);
     }
-  };
-
-  const handleSignOut = () => {
-    if (typeof window === "undefined") return;
-    localStorage.removeItem("admin_token");
-    router.push("/admin");
-    router.refresh();
   };
 
   const envKey = environment.toLowerCase();
@@ -152,15 +146,8 @@ export function AdminTopbar({ environment, health, rightSlot }: AdminTopbarProps
         {environment}
       </span>
 
-      {/* Sign out */}
-      <button
-        onClick={handleSignOut}
-        className="sr-label text-[10px] tracking-[0.14em] uppercase text-[var(--sr-text-secondary)] hover:text-[var(--sr-text-primary)] transition-colors flex items-center gap-1.5"
-        aria-label="Sign out"
-      >
-        <SignOutIcon size={13} />
-        Sign out
-      </button>
+      {/* Sign out — ends the Clerk session, not just the admin token. */}
+      <AdminSignOutButton />
     </header>
   );
 }
