@@ -64,8 +64,18 @@ def build_app() -> FastAPI:
     app.dependency_overrides[get_db] = lambda: engine
 
     @app.get("/v1/health")
-    def health():  # Playwright webServer readiness probe
+    def health():  # generic liveness probe
         return {"ok": True, "db": str(db_path)}
+
+    # Playwright webServer readiness probe for the *scrapers* fixture. This
+    # is deliberately distinct from /v1/health: the customers fixture also
+    # serves /v1/health on an adjacent port, so a stray customers server
+    # squatting on this port would satisfy a /v1/health probe and be
+    # "reused" while serving the wrong endpoints (/admin/scrapers -> 404).
+    # This ping proves the scrapers router is actually mounted here.
+    @app.get("/v1/admin/scrapers/ping")
+    def scrapers_ping():
+        return {"ok": True, "fixture": "admin_scrapers", "db": str(db_path)}
 
     return app
 

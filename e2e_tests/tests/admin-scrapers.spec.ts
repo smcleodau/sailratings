@@ -38,14 +38,46 @@ const SUPERVISED_SOURCES = [
   'rorc',
 ] as const;
 
+const API_BASE = process.env.PW_SCRAPERS_API_BASE || 'http://127.0.0.1:4102/v1';
+
 async function openScrapers(page: Page, query = '') {
+  // Wait for the summary fetch to actually resolve OK *while* the page
+  // loads — not just for the row to render. Waiting on the response removes
+  // the first-fetch race (a cold Next.js dev compile can hold or fail the
+  // initial request) and guarantees the assertions below run against real
+  // fixture data rather than a half-rendered error state.
+  const summary = page.waitForResponse(
+    (res) =>
+      res.url().includes('/admin/scrapers') &&
+      !res.url().includes('/runs') &&
+      res.request().method() === 'GET',
+    { timeout: 20000 },
+  );
   await page.goto(`/admin/scrapers${query}`, { waitUntil: 'domcontentloaded' });
-  // Wait for the first summary fetch to land.
+  const res = await summary;
+  if (!res.ok()) {
+    throw new Error(
+      `GET /admin/scrapers -> ${res.status()} ${res.statusText()}. ` +
+        `Body: ${(await res.text()).slice(0, 300)}`,
+    );
+  }
   await expect(page.getByTestId('source-row-sailsys')).toBeVisible();
 }
 
 test.describe('AD-01-06 scrapers health page', () => {
   test.beforeEach(async ({ page }) => {
+    // Fail fast with a clear message if the seeded *scrapers* fixture API
+    // didn't come up (or the wrong fixture is squatting on the port). The
+    // scrapers-specific ping proves the scrapers router is mounted — a stray
+    // customers/health server would pass a /v1/health probe yet 404 every
+    // /admin/scrapers call.
+    const ping = await page.request.get(`${API_BASE}/admin/scrapers/ping`);
+    expect(
+      ping.ok(),
+      `scrapers fixture API not reachable at ${API_BASE} (status ${ping.status()}). ` +
+        `Is fixtures/admin_scrapers_api.py running on this port?`,
+    ).toBeTruthy();
+
     // Seed the admin token so the page skips its password gate (AD-01-01);
     // the fixture API accepts it.
     await page.addInitScript(() => {
@@ -156,8 +188,11 @@ test.describe('AD-01-06 scrapers health page', () => {
     });
     await openScrapers(page, '?refresh_ms=600');
     const initial = hits;
-    await page.waitForTimeout(1300);
-    expect(hits).toBeGreaterThanOrEqual(initial + 2);
+    // Poll instead of a fixed wall-clock sleep: proves the interval fires
+    // repeatedly without being sensitive to CI timing jitter.
+    await expect
+      .poll(() => hits, { timeout: 8000 })
+      .toBeGreaterThanOrEqual(initial + 2);
   });
 
   test('"Cron health" banner comes from the watchdog alert stream', async ({

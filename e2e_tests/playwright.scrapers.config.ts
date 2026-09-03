@@ -69,11 +69,19 @@ export default defineConfig({
     },
   ],
 
-  /* Start the seeded scrapers API, then the frontend, before the tests. */
+  /* Start the seeded scrapers API, then the frontend, before the tests.
+   *
+   * The readiness probe hits the real scrapers endpoint (not /v1/health).
+   * Rationale: the scrapers fixture and the *customers* fixture both expose
+   * /v1/health on adjacent ports, so a leftover customers server squatting
+   * on this port would otherwise satisfy a /v1/health probe and get
+   * "reused" — every /admin/scrapers call then 404s and the page renders
+   * "Not Found" (the exact Gatekeeper failure). Probing the scrapers route
+   * itself guarantees the correct fixture is serving before tests run. */
   webServer: [
     {
       command: `${API_PY} fixtures/admin_scrapers_api.py`,
-      url: `${API_URL}/v1/health`,
+      url: `${API_URL}/v1/admin/scrapers/ping`,
       reuseExistingServer: !process.env.CI,
       timeout: 60 * 1000,
       env: { PW_SCRAPERS_API_PORT: API_PORT },
