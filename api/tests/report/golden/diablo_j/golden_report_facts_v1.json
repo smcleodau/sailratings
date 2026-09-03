@@ -1,0 +1,754 @@
+{
+  "boat": {
+    "design": "J/92",
+    "id": 792,
+    "name": "DIABLO-J",
+    "sail_number": "GBR9205R"
+  },
+  "engines": {
+    "design_model": {
+      "correlations": {
+        "beam": 0.9367,
+        "crew": 0.8497,
+        "dlr": -0.708,
+        "draft": 0.9466,
+        "headsails": -1.0,
+        "lh": 0.8976
+      },
+      "design": "J/92",
+      "model_tier": "correlation_only",
+      "n_boats": 4
+    },
+    "fleet_wide_model": {
+      "alpha": 0.4833,
+      "coefficients": [
+        {
+          "beta_per_unit": 0.011901,
+          "field": "draft",
+          "rank": 1,
+          "std_beta": 0.0711,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.017266,
+          "field": "crew",
+          "rank": 2,
+          "std_beta": 0.0663,
+          "unit": "per person"
+        },
+        {
+          "beta_per_unit": -0.000711,
+          "field": "dlr",
+          "rank": 3,
+          "std_beta": -0.0438,
+          "unit": "per unit"
+        },
+        {
+          "beta_per_unit": -0.001274,
+          "field": "lh",
+          "rank": 4,
+          "std_beta": -0.0424,
+          "unit": "per 0.1m"
+        },
+        {
+          "beta_per_unit": 0.001146,
+          "field": "beam",
+          "rank": 5,
+          "std_beta": 0.0073,
+          "unit": "per 0.1m"
+        }
+      ],
+      "collinearity_warnings": [
+        "lh \u2194 beam: r=0.92 \u2014 interpret individual coefficients with caution",
+        "lh \u2194 crew: r=0.99 \u2014 interpret individual coefficients with caution",
+        "beam \u2194 crew: r=0.91 \u2014 interpret individual coefficients with caution"
+      ],
+      "design": "All Designs (Fleet-Wide)",
+      "interpretation": "Draft is the strongest TCC lever in the All Designs (Fleet-Wide) class \u2014 more draft increases TCC. Crew ranks second (std beta=+0.066).",
+      "is_one_design": false,
+      "model_tier": "C",
+      "n_boats": 819,
+      "r_squared": 0.9281,
+      "r_squared_cv": 0.9221
+    },
+    "rai": {
+      "avg_expected_pct": 0.625,
+      "avg_finish_pct": 0.359,
+      "boat_id": 792,
+      "boat_name": "DIABLO-J",
+      "ci_lower": 22.99,
+      "ci_upper": 30.17,
+      "design": "J/92",
+      "interpretation": "Strong positive RAI (+26.6): this boat consistently finishes better than its TCC predicts. Well-sailed or measurement-optimised.",
+      "n_races": 199,
+      "podiums": 25,
+      "rai": 26.58,
+      "sail_number": "GBR9205R",
+      "wins": 4
+    },
+    "smart_boats": {
+      "design": "J/92",
+      "fleet_rai_distribution": {},
+      "n_total": 4,
+      "n_with_races": 4,
+      "smart_boats": []
+    }
+  },
+  "facts_sha256": "15acd00cf20c0f44f5ff0587c2df0acb6ca779a02e94745d9e117d29530a5deb",
+  "fixture": {
+    "boat_name": "DIABLO-J",
+    "description": "Long-history fixture (2007-2022 racing). Design class is absent in the production extract, so the fixture restores the J/92 class context the design report is generated against.",
+    "design": "J/92",
+    "sail_number": "GBR9205R",
+    "slug": "diablo_j"
+  },
+  "schema_version": "ReportFactsV1",
+  "sections": {
+    "s01_executive": {
+      "boat_name": "DIABLO-J",
+      "class_median_tcc": 1.0285,
+      "country": "GBR",
+      "design": "J/92",
+      "finishes": 199,
+      "headline_finding_1": "Rates -0.0325 TCC below the J/92 median (0.9960 vs 1.0285).",
+      "headline_finding_2": "4 wins and 25 podiums across 199 finishes (2% win rate).",
+      "headline_finding_3": "",
+      "podiums": 25,
+      "sail_number": "GBR9205R",
+      "tcc_now": 0.996,
+      "this_boat_percentile": null,
+      "top_recommendation": null,
+      "wins": 4
+    },
+    "s02_identity": {
+      "beam_max": 3.35,
+      "boat_name": "DIABLO-J",
+      "builder": null,
+      "current_skipper": null,
+      "design": "J/92",
+      "designer": null,
+      "displacement_kg": null,
+      "home_club": "RORC",
+      "identities": [
+        {
+          "boat_name": "DIABLO-J",
+          "flag": "GBR",
+          "observed_date": "2009-08-22",
+          "owner": null,
+          "sail_number": "GBR9205R",
+          "source": "irc_tcc"
+        },
+        {
+          "boat_name": "DIABLO-J",
+          "flag": "GBR",
+          "observed_date": "2026-03-14",
+          "owner": null,
+          "sail_number": "GBR9205R",
+          "source": "irc_tcc"
+        },
+        {
+          "boat_name": "DIABLO-J",
+          "flag": "GBR",
+          "observed_date": "2026-05-15",
+          "owner": null,
+          "sail_number": "GBR9205R",
+          "source": "irc_tcc"
+        },
+        {
+          "boat_name": "DIABLO-J",
+          "flag": "GBR",
+          "observed_date": "2026-05-22",
+          "owner": null,
+          "sail_number": "GBR9205R",
+          "source": "irc_tcc"
+        }
+      ],
+      "loa": null,
+      "lwl": null,
+      "sail_number": "GBR9205R",
+      "skipper_stints": [],
+      "year_built": null
+    },
+    "s03_rating_anatomy": {
+      "boat_name": "DIABLO-J",
+      "class_mean_tcc": 1.05175,
+      "class_median_tcc": 1.0285,
+      "decomposition": [],
+      "design": "J/92",
+      "explained_variance_pct": 0,
+      "model_tier": "correlation_only",
+      "n_boats_in_class": 4,
+      "tcc_now": 0.996
+    },
+    "s04_rating_evolution": {
+      "boat_name": "DIABLO-J",
+      "cert_reissue_dates": [],
+      "first_snapshot_tcc": 1.011,
+      "largest_jump_date": "2026-03-14",
+      "largest_jump_tcc": -0.015,
+      "latest_snapshot_tcc": 0.996,
+      "snapshots": [
+        {
+          "cert_year": 2009,
+          "date": "2009-05-18",
+          "source": "irc_tcc",
+          "tcc": 1.011
+        },
+        {
+          "cert_year": 2009,
+          "date": "2009-06-01",
+          "source": "irc_tcc",
+          "tcc": 1.011
+        },
+        {
+          "cert_year": 2009,
+          "date": "2009-06-21",
+          "source": "irc_tcc",
+          "tcc": 1.011
+        },
+        {
+          "cert_year": 2009,
+          "date": "2009-08-22",
+          "source": "irc_tcc",
+          "tcc": 1.011
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-03-14",
+          "source": "irc_tcc",
+          "tcc": 0.996
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-14",
+          "source": "irc_tcc",
+          "tcc": 0.996
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-15",
+          "source": "irc_tcc",
+          "tcc": 0.996
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-16",
+          "source": "irc_tcc",
+          "tcc": 0.996
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-17",
+          "source": "irc_tcc",
+          "tcc": 0.996
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-18",
+          "source": "irc_tcc",
+          "tcc": 0.996
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-19",
+          "source": "irc_tcc",
+          "tcc": 0.996
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-20",
+          "source": "irc_tcc",
+          "tcc": 0.996
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-21",
+          "source": "irc_tcc",
+          "tcc": 0.996
+        },
+        {
+          "cert_year": 2026,
+          "date": "2026-05-22",
+          "source": "irc_tcc",
+          "tcc": 0.996
+        }
+      ],
+      "total_movement": -0.015
+    },
+    "s05_class_context": {
+      "class_n": 4,
+      "class_tcc_list": [
+        0.958,
+        0.996,
+        1.061,
+        1.192
+      ],
+      "class_tcc_max": 1.192,
+      "class_tcc_mean": 1.05175,
+      "class_tcc_median": 1.0285,
+      "class_tcc_min": 0.958,
+      "design": "J/92",
+      "this_boat_percentile": 25.0,
+      "this_boat_tcc": 0.996,
+      "top_5_boats": [
+        {
+          "country": "GBR",
+          "name": "BALLISTIC",
+          "sail": "GBR7727T",
+          "tcc": 1.061,
+          "wins": 0
+        },
+        {
+          "country": "GBR",
+          "name": "DIABLO-J",
+          "sail": "GBR9205R",
+          "tcc": 0.996,
+          "wins": 4
+        },
+        {
+          "country": "SWE",
+          "name": "HAPPY",
+          "sail": "SWE1",
+          "tcc": 1.192,
+          "wins": 0
+        },
+        {
+          "country": "GBR",
+          "name": "JACKDAW",
+          "sail": "GBR2947L",
+          "tcc": 0.958,
+          "wins": 0
+        }
+      ]
+    },
+    "s06_performance": {
+      "boat_name": "DIABLO-J",
+      "by_event_type": {
+        "offshore": {
+          "n": 1,
+          "podiums": 0,
+          "wins": 0
+        },
+        "series": {
+          "n": 198,
+          "podiums": 25,
+          "wins": 4
+        }
+      },
+      "distinct_events": 51,
+      "finishes": 199,
+      "head_to_head": [
+        {
+          "boat_id": 11998,
+          "country": "GBR",
+          "head_to_head_losses": 64,
+          "head_to_head_wins": 22,
+          "name": "BELLINO",
+          "recent_finishes_count": 25,
+          "sail_number": "GBR8657L",
+          "tcc": 1.023
+        },
+        {
+          "boat_id": 3386,
+          "country": "GBR",
+          "head_to_head_losses": 18,
+          "head_to_head_wins": 32,
+          "name": "DOWNBEAT",
+          "recent_finishes_count": 24,
+          "sail_number": "GBR7735R",
+          "tcc": 1.008
+        },
+        {
+          "boat_id": 951,
+          "country": "GBR",
+          "head_to_head_losses": 40,
+          "head_to_head_wins": 13,
+          "name": "ERIVALE III",
+          "recent_finishes_count": 12,
+          "sail_number": "GBR236R",
+          "tcc": 1.117
+        },
+        {
+          "boat_id": 12153,
+          "country": "AUS",
+          "head_to_head_losses": 58,
+          "head_to_head_wins": 7,
+          "name": "FOGGY DEW",
+          "recent_finishes_count": 21,
+          "sail_number": "Sm1808",
+          "tcc": 1.006
+        },
+        {
+          "boat_id": 1550,
+          "country": "GBR",
+          "head_to_head_losses": 48,
+          "head_to_head_wins": 28,
+          "name": "JANGADA TOO",
+          "recent_finishes_count": 31,
+          "sail_number": "GBR8537R",
+          "tcc": 1.032
+        },
+        {
+          "boat_id": 1913,
+          "country": "GBR",
+          "head_to_head_losses": 27,
+          "head_to_head_wins": 70,
+          "name": "MALICE",
+          "recent_finishes_count": 34,
+          "sail_number": "GBR979R",
+          "tcc": 1.016
+        },
+        {
+          "boat_id": 2350,
+          "country": "GBR",
+          "head_to_head_losses": 50,
+          "head_to_head_wins": 15,
+          "name": "PERSEPHONE OF LONDON",
+          "recent_finishes_count": 18,
+          "sail_number": "GBR8287",
+          "tcc": 0.985
+        },
+        {
+          "boat_id": 2458,
+          "country": "GBR",
+          "head_to_head_losses": 9,
+          "head_to_head_wins": 53,
+          "name": "PYXIS",
+          "recent_finishes_count": 22,
+          "sail_number": "GBR5963T",
+          "tcc": 0.947
+        },
+        {
+          "boat_id": 459,
+          "country": "GBR",
+          "head_to_head_losses": 14,
+          "head_to_head_wins": 36,
+          "name": "WARRIOR",
+          "recent_finishes_count": 12,
+          "sail_number": "GBR1429L",
+          "tcc": 1.042
+        },
+        {
+          "boat_id": 3570,
+          "country": "GBR",
+          "head_to_head_losses": 12,
+          "head_to_head_wins": 38,
+          "name": "ZELDA",
+          "recent_finishes_count": 20,
+          "sail_number": "GBR8809R",
+          "tcc": 1.029
+        }
+      ],
+      "podiums": 25,
+      "rai_interpretation": "Strong positive RAI (+26.6): this boat consistently finishes better than its TCC predicts. Well-sailed or measurement-optimised.",
+      "rai_percentile": 26.58096,
+      "recent_results": [
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2021-07-24",
+          "event_name": "2021 IRC Two-Handed",
+          "fleet_size": 28,
+          "place": 8,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2021-08-08",
+          "event_name": "2021 IRC Two-Handed",
+          "fleet_size": 57,
+          "place": 19,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2021-09-10",
+          "event_name": "2021 IRC Two-Handed",
+          "fleet_size": 12,
+          "place": 7,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2021-09-10",
+          "event_name": "2021 RORC Mainseries IRC Overall",
+          "fleet_size": 32,
+          "place": 15,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-04-30",
+          "event_name": "2022 IRC Two-Handed",
+          "fleet_size": 24,
+          "place": 3,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-04-30",
+          "event_name": "2022 RORC Mainseries IRC Overall",
+          "fleet_size": 48,
+          "place": 12,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-05-14",
+          "event_name": "2022 IRC Two-Handed",
+          "fleet_size": 29,
+          "place": 5,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-05-14",
+          "event_name": "2022 RORC Mainseries IRC Overall",
+          "fleet_size": 53,
+          "place": 5,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-06-02",
+          "event_name": "2022 IRC Two-Handed",
+          "fleet_size": 31,
+          "place": 6,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-06-02",
+          "event_name": "2022 RORC Mainseries IRC Overall",
+          "fleet_size": 67,
+          "place": 13,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-06-17",
+          "event_name": "2022 IRC Two-Handed",
+          "fleet_size": 21,
+          "place": 8,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-06-17",
+          "event_name": "2022 RORC Mainseries IRC Overall",
+          "fleet_size": 41,
+          "place": 12,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-07-08",
+          "event_name": "2022 IRC Two-Handed",
+          "fleet_size": 47,
+          "place": 15,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-07-08",
+          "event_name": "2022 RORC Mainseries IRC Overall",
+          "fleet_size": 102,
+          "place": 29,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-07-23",
+          "event_name": "2022 IRC Two-Handed",
+          "fleet_size": 11,
+          "place": 3,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-07-23",
+          "event_name": "2022 RORC Mainseries IRC Overall",
+          "fleet_size": 31,
+          "place": 7,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-08-07",
+          "event_name": "2022 IRC Two-Handed",
+          "fleet_size": 16,
+          "place": 5,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-08-07",
+          "event_name": "2022 RORC Mainseries IRC Overall",
+          "fleet_size": 23,
+          "place": 5,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-09-02",
+          "event_name": "2022 IRC Two-Handed",
+          "fleet_size": 41,
+          "place": 10,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        },
+        {
+          "class_name": "Sun Fast 3600",
+          "club": null,
+          "event_date": "2022-09-02",
+          "event_name": "2022 RORC Mainseries IRC Overall",
+          "fleet_size": 80,
+          "place": 15,
+          "race_name": null,
+          "skipper": null,
+          "status": "finished"
+        }
+      ],
+      "wins": 4
+    },
+    "s07_sensitivity": {
+      "coefficients": [],
+      "design": "J/92",
+      "model_tier": "correlation_only",
+      "n_boats_in_class": 4,
+      "r_squared": 0.0
+    },
+    "s08_optimisation": {
+      "boat_name": "DIABLO-J",
+      "recommendations": [],
+      "top_3_summary": ""
+    },
+    "s09_formula_drift": {
+      "affected_measurements": [],
+      "design": "J/92",
+      "drift_observed": false,
+      "this_boat_likely_impact": null,
+      "window_years": 17
+    },
+    "s10_rivals": {
+      "boat_name": "DIABLO-J",
+      "rivals": []
+    },
+    "s11_appendix": {
+      "data_sources": [
+        "IRC TCC daily listings (RORC / ircrating.org)",
+        "IRC certificate PDFs (ircrating.org)",
+        "ORC certificates (data.orc.org)",
+        "SailSys race results (Australian + global SailSys clubs)",
+        "TopYacht race results (Australian regional series)",
+        "RHKYC + ISORA + SailRaceHQ + Sailwave + Cowes Week + Sydney\u2013Hobart (specialised race result feeds)"
+      ],
+      "glossary": [
+        [
+          "TCC",
+          "Time Correction Coefficient \u2014 the IRC handicap multiplier applied to elapsed time. Higher TCC = rated faster = bigger time correction owed."
+        ],
+        [
+          "IRC",
+          "International Rating Certificate \u2014 the secret-formula handicap administered by the RORC."
+        ],
+        [
+          "ORC",
+          "Offshore Racing Congress \u2014 a separate, open-formula handicap system used alongside or instead of IRC."
+        ],
+        [
+          "RAI",
+          "Rating Advantage Index \u2014 the gap between actual finish percentile and the percentile predicted by TCC. Positive = beating the rating; negative = underperforming."
+        ],
+        [
+          "Tier A / B / C",
+          "Regression model tier. A = full IRC certificate measurements (15 features). B = snapshot fields only (7 features). C = cross-design fleet-wide fallback."
+        ],
+        [
+          "R\u00b2",
+          "Coefficient of determination \u2014 fraction of TCC variance the regression model explains. 0.9 means 90% of the boat-to-boat variation in TCC is captured by the chosen measurements."
+        ],
+        [
+          "\u03b2 (beta)",
+          "Regression coefficient \u2014 the marginal change in TCC associated with a one-unit change in a given measurement, holding other measurements constant."
+        ],
+        [
+          "Standardised \u03b2",
+          "Coefficient on the standardised (z-scored) measurement scale \u2014 used to compare which levers move TCC most regardless of unit."
+        ],
+        [
+          "Class median",
+          "The median TCC across all boats of this design class with a current TCC on file."
+        ],
+        [
+          "Percentile rank",
+          "Where this boat's TCC sits within the class distribution. 50th percentile = median; 95th = top 5% by rating."
+        ],
+        [
+          "Head-to-head",
+          "Two boats finishing the same race. Counted only when both have finishing positions and shared event_date."
+        ],
+        [
+          "Drift",
+          "Change in the relationship between a measurement and TCC across the analysis window. Drift signals a shift in how the IRC formula treats that measurement, but the formula itself is not observable."
+        ]
+      ],
+      "methodology_blurb": "This report combines five quantitative engines: (1) a Ridge regression model that fits TCC against per-boat measurements within a design class; (2) a per-boat decomposition that translates the regression coefficients into the rating delta between this boat and the class median; (3) a Rating Advantage Index (RAI) that compares actual race finishes against the finish percentile a boat's TCC would predict; (4) a fleet-wide drift analysis that flags measurements whose relationship to TCC has moved over the sample window; (5) an optimisation engine that ranks measurement changes by estimated TCC impact and feasibility. All numerical claims in the body are grounded in the same data set; the truth-discipline auditor scans the generated prose for numbers outside the source payload and flags any that appear suspicious."
+    }
+  }
+}

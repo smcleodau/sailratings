@@ -55,6 +55,9 @@ where = ["src"]
 asyncio_mode = "strict"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "model_regression: SM-01-08 golden fixtures + backtests; run in CI to block model changes that regress report figures",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]

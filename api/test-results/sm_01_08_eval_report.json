@@ -1,0 +1,276 @@
+{
+  "eval_version": "ReportFactsV1",
+  "golden_fixtures": [
+    {
+      "boat_slug": "chilli_pepper",
+      "passed": true,
+      "figures_checked": 842,
+      "violations": []
+    },
+    {
+      "boat_slug": "diablo_j",
+      "passed": true,
+      "figures_checked": 533,
+      "violations": []
+    },
+    {
+      "boat_slug": "kestrel",
+      "passed": true,
+      "figures_checked": 839,
+      "violations": []
+    }
+  ],
+  "rai_backtests": {
+    "chilli_pepper": {
+      "boat_id": 12067,
+      "boat_name": "CHILLI PEPPER",
+      "n_races": 44,
+      "n_seasons_tested": 4,
+      "rai_full_history": 12.801,
+      "max_stability_gap": 3.637,
+      "mean_stability_gap": 2.801,
+      "predictive_spearman": -1.0,
+      "seasons": [
+        {
+          "season": 2021,
+          "n_races": 7,
+          "rai_full_history": 12.801,
+          "rai_held_out": 15.337,
+          "abs_stability_gap": 2.536,
+          "rai_prior_seasons": null,
+          "rai_this_season": 0.816
+        },
+        {
+          "season": 2022,
+          "n_races": 12,
+          "rai_full_history": 12.801,
+          "rai_held_out": 9.164,
+          "abs_stability_gap": 3.637,
+          "rai_prior_seasons": 8.512,
+          "rai_this_season": 20.241
+        },
+        {
+          "season": 2023,
+          "n_races": 12,
+          "rai_full_history": 12.801,
+          "rai_held_out": 10.756,
+          "abs_stability_gap": 2.045,
+          "rai_prior_seasons": 15.214,
+          "rai_this_season": 16.791
+        },
+        {
+          "season": 2024,
+          "n_races": 5,
+          "rai_full_history": 12.801,
+          "rai_held_out": 15.788,
+          "abs_stability_gap": 2.986,
+          "rai_prior_seasons": 15.788,
+          "rai_this_season": -7.966
+        }
+      ]
+    },
+    "diablo_j": {
+      "boat_id": 792,
+      "boat_name": "DIABLO-J",
+      "n_races": 199,
+      "n_seasons_tested": 13,
+      "rai_full_history": 26.581,
+      "max_stability_gap": 2.067,
+      "mean_stability_gap": 1.024,
+      "predictive_spearman": -0.063,
+      "seasons": [
+        {
+          "season": 2007,
+          "n_races": 14,
+          "rai_full_history": 26.581,
+          "rai_held_out": 25.77,
+          "abs_stability_gap": 0.811,
+          "rai_prior_seasons": null,
+          "rai_this_season": 29.477
+        },
+        {
+          "season": 2009,
+          "n_races": 16,
+          "rai_full_history": 26.581,
+          "rai_held_out": 25.263,
+          "abs_stability_gap": 1.318,
+          "rai_prior_seasons": 21.658,
+          "rai_this_season": 34.154
+        },
+        {
+          "season": 2011,
+          "n_races": 16,
+          "rai_full_history": 26.581,
+          "rai_held_out": 26.104,
+          "abs_stability_gap": 0.477,
+          "rai_prior_seasons": 27.906,
+          "rai_this_season": 25.634
+        },
+        {
+          "season": 2012,
+          "n_races": 12,
+          "rai_full_history": 26.581,
+          "rai_held_out": 25.272,
+          "abs_stability_gap": 1.309,
+          "rai_prior_seasons": 27.149,
+          "rai_this_season": 36.982
+        },
+        {
+          "season": 2013,
+          "n_races": 14,
+          "rai_full_history": 26.581,
+          "rai_held_out": 24.952,
+          "abs_stability_gap": 1.629,
+          "rai_prior_seasons": 29.115,
+          "rai_this_season": 39.063
+        },
+        {
+          "season": 2014,
+          "n_races": 14,
+          "rai_full_history": 26.581,
+          "rai_held_out": 24.827,
+          "abs_stability_gap": 1.754,
+          "rai_prior_seasons": 30.997,
+          "rai_this_season": 40.526
+        },
+        {
+          "season": 2015,
+          "n_races": 16,
+          "rai_full_history": 26.581,
+          "rai_held_out": 24.514,
+          "abs_stability_gap": 2.067,
+          "rai_prior_seasons": 32.513,
+          "rai_this_season": 41.732
+        },
+        {
+          "season": 2016,
+          "n_races": 12,
+          "rai_full_history": 26.581,
+          "rai_held_out": 26.21,
+          "abs_stability_gap": 0.371,
+          "rai_prior_seasons": 33.932,
+          "rai_this_season": 24.011
+        },
+        {
+          "season": 2017,
+          "n_races": 13,
+          "rai_full_history": 26.581,
+          "rai_held_out": 25.766,
+          "abs_stability_gap": 0.815,
+          "rai_prior_seasons": 32.905,
+          "rai_this_season": 29.815
+        },
+        {
+          "season": 2018,
+          "n_races": 7,
+          "rai_full_history": 26.581,
+          "rai_held_out": 26.516,
+          "abs_stability_gap": 0.065,
+          "rai_prior_seasons": 32.594,
+          "rai_this_season": 14.963
+        },
+        {
+          "season": 2019,
+          "n_races": 11,
+          "rai_full_history": 26.581,
+          "rai_held_out": 26.967,
+          "abs_stability_gap": 0.386,
+          "rai_prior_seasons": 31.686,
+          "rai_this_season": 12.32
+        },
+        {
+          "season": 2021,
+          "n_races": 13,
+          "rai_full_history": 26.581,
+          "rai_held_out": 27.82,
+          "abs_stability_gap": 1.239,
+          "rai_prior_seasons": 29.738,
+          "rai_this_season": 3.746
+        },
+        {
+          "season": 2022,
+          "n_races": 16,
+          "rai_full_history": 26.581,
+          "rai_held_out": 27.652,
+          "abs_stability_gap": 1.071,
+          "rai_prior_seasons": 27.652,
+          "rai_this_season": 9.959
+        }
+      ]
+    },
+    "kestrel": {
+      "boat_id": 21068,
+      "boat_name": "KESTREL",
+      "n_races": 39,
+      "n_seasons_tested": 4,
+      "rai_full_history": 36.634,
+      "max_stability_gap": 2.404,
+      "mean_stability_gap": 1.55,
+      "predictive_spearman": 1.0,
+      "seasons": [
+        {
+          "season": 2023,
+          "n_races": 6,
+          "rai_full_history": 36.634,
+          "rai_held_out": 39.028,
+          "abs_stability_gap": 2.395,
+          "rai_prior_seasons": null,
+          "rai_this_season": 23.463
+        },
+        {
+          "season": 2024,
+          "n_races": 12,
+          "rai_full_history": 36.634,
+          "rai_held_out": 36.362,
+          "abs_stability_gap": 0.272,
+          "rai_prior_seasons": 47.13,
+          "rai_this_season": 37.245
+        },
+        {
+          "season": 2025,
+          "n_races": 12,
+          "rai_full_history": 36.634,
+          "rai_held_out": 37.765,
+          "abs_stability_gap": 1.132,
+          "rai_prior_seasons": 41.738,
+          "rai_this_season": 34.088
+        },
+        {
+          "season": 2026,
+          "n_races": 5,
+          "rai_full_history": 36.634,
+          "rai_held_out": 39.038,
+          "abs_stability_gap": 2.404,
+          "rai_prior_seasons": 39.038,
+          "rai_this_season": 20.285
+        }
+      ]
+    }
+  },
+  "rating_model_holdout": {
+    "model_tier": "C",
+    "features": [
+      "lh",
+      "beam",
+      "draft",
+      "crew",
+      "dlr"
+    ],
+    "n_train": 5292,
+    "n_holdout": 1324,
+    "holdout_mae": 0.026272,
+    "holdout_r2": 0.9199,
+    "alpha": 23.3572,
+    "seed": 42,
+    "holdout_fraction": 0.2
+  },
+  "thresholds": {
+    "golden_abs_tol": 0.005,
+    "golden_rel_tol": 0.001,
+    "rai_stability_tol": 7.5,
+    "rating_model_holdout_mae_max": 0.04,
+    "rating_model_holdout_r2_min": 0.8
+  },
+  "failures": [],
+  "passed": true
+}

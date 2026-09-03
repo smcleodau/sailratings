@@ -1,0 +1,66 @@
+name: SM-01-08 Model Regression Gate
+
+# Golden fixtures (Chilli Pepper, Diablo-J, Kestrel) must reproduce every
+# figure in their ReportFactsV1 bundles within tolerance; the RAI
+# held-out-season backtest and the Tier-C holdout metrics must stay within
+# thresholds. Any PR that moves a report figure fails here — re-snapshot
+# intentionally with api/scripts/sm_01_08_build_golden.py and get the diff
+# reviewed.
+
+on:
+  pull_request:
+    paths:
+      - "api/src/irc_data/analysis/**"
+      - "api/src/irc_data/api/services/report/**"
+      - "api/tests/report/**"
+      - "api/scripts/sm_01_08_*"
+      - "api/scripts/run_model_backtest.py"
+      - ".github/workflows/model-regression.yml"
+  workflow_dispatch:
+
+jobs:
+  model-regression:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: irc
+          POSTGRES_PASSWORD: irc
+          POSTGRES_DB: irc_data
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U irc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install API package
+        working-directory: api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run golden fixtures + backtests
+        working-directory: api
+        env:
+          DATABASE_URL: postgresql+psycopg://irc:irc@localhost:5432/irc_data
+          # Golden tests seed their own scratch DBs; require the DB (no skip).
+          SM01_REQUIRE_DB: "1"
+        run: |
+          python -m pytest tests/report -m model_regression -q
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm-01-08-eval-report
+          path: api/test-results/sm_01_08_eval_report.json
+          if-no-files-found: ignore
