@@ -2,17 +2,17 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  Clock,
-  Database,
-  GitBranch,
-  RefreshCw,
-  ShieldAlert,
-  Users,
-} from "lucide-react";
+  AlertTriangleIcon,
+  CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  DatabaseIcon,
+  GitBranchIcon,
+  RefreshIcon,
+  ShieldAlertIcon,
+  UsersIcon,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -262,7 +262,7 @@ function IncidentRow({
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--sr-surface-interactive)]/40 transition-colors"
       >
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {open ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
         <SeverityPill severity={incident.severity} />
         <StatusPill status={incident.status} />
         <span className="text-[13px] text-[var(--sr-text-primary)] flex-1 truncate">
@@ -354,7 +354,7 @@ function IncidentRow({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Workflow note…"
-                className="flex-1 min-w-[200px] h-9 px-3 bg-white border border-[var(--sr-border-subtle)] text-[12px] text-[var(--sr-text-primary)] rounded-[3px] outline-none focus:border-[var(--sr-link)]"
+                className="flex-1 min-w-[200px] h-9 px-3 bg-[var(--sr-surface-card)] border border-[var(--sr-border-subtle)] text-[12px] text-[var(--sr-text-primary)] rounded-[3px] outline-none focus:border-[var(--sr-link)]"
               />
               {incident.status === "open" && (
                 <button
@@ -468,11 +468,11 @@ export default function DataHealthPage() {
             value={pwInput}
             onChange={(e) => setPwInput(e.target.value)}
             placeholder="Admin password"
-            className="w-full h-12 px-4 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
           />
           <button
             type="submit"
-            className="w-full h-12 bg-[var(--sr-link)] text-white text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
+            className="w-full h-12 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
           >
             Sign in
           </button>
@@ -509,7 +509,7 @@ export default function DataHealthPage() {
               disabled={loading}
               className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
             >
-              <RefreshCw size={12} strokeWidth={2} className={loading ? "animate-spin" : ""} />
+              <RefreshIcon size={12} strokeWidth={2} className={loading ? "animate-spin" : ""} />
               Refresh
             </button>
           </div>
@@ -560,7 +560,7 @@ export default function DataHealthPage() {
         {/* Active incidents */}
         <section>
           <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3 flex items-center gap-2">
-            <ShieldAlert size={12} /> Active incidents — owned recovery work
+            <ShieldAlertIcon size={12} /> Active incidents — owned recovery work
           </h2>
           <div className="space-y-2">
             {data?.incidents?.length ? (
@@ -583,7 +583,7 @@ export default function DataHealthPage() {
         {/* Per-source table */}
         <section>
           <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3 flex items-center gap-2">
-            <Database size={12} /> Sources
+            <DatabaseIcon size={12} /> Sources
           </h2>
           <div className="border border-[var(--sr-border-subtle)] rounded-[4px] overflow-x-auto bg-[var(--sr-surface-card)]">
             <table className="w-full text-[12px]">
@@ -616,12 +616,12 @@ export default function DataHealthPage() {
                         {s.freshness ? (
                           s.freshness.stale ? (
                             <span className="inline-flex items-center gap-1 text-[var(--sr-status-warning)]">
-                              <Clock size={11} /> stale (
+                              <ClockIcon size={11} /> stale (
                               {fmtAge(s.freshness.seconds_since_last_success)})
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-[var(--sr-status-success)]">
-                              <CheckCircle2 size={11} /> fresh (
+                              <CheckCircleIcon size={11} /> fresh (
                               {fmtAge(s.freshness.seconds_since_last_success)})
                             </span>
                           )
@@ -663,7 +663,7 @@ export default function DataHealthPage() {
                       <td className="px-3 py-2">
                         {s.active_quarantine ? (
                           <span className="inline-flex items-center gap-1 text-[var(--sr-status-warning)]">
-                            <AlertTriangle size={11} /> quarantined
+                            <AlertTriangleIcon size={11} /> quarantined
                           </span>
                         ) : (
                           <span className="text-[var(--sr-text-tertiary)]">—</span>
@@ -696,7 +696,7 @@ export default function DataHealthPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <section>
             <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3 flex items-center gap-2">
-              <Users size={12} /> Identity uncertainty
+              <UsersIcon size={12} /> Identity uncertainty
             </h2>
             <div className="border border-[var(--sr-border-subtle)] rounded-[4px] bg-[var(--sr-surface-card)] px-4 py-3 space-y-1 text-[12px]">
               <p className="text-[var(--sr-text-primary)]">
@@ -719,7 +719,7 @@ export default function DataHealthPage() {
 
           <section>
             <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3 flex items-center gap-2">
-              <GitBranch size={12} /> Lineage gaps (unreconciled runs)
+              <GitBranchIcon size={12} /> Lineage gaps (unreconciled runs)
             </h2>
             <div className="border border-[var(--sr-border-subtle)] rounded-[4px] bg-[var(--sr-surface-card)] px-4 py-3">
               {data?.lineage_gaps?.runs?.length ? (

@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import {
-  ArrowLeftRight,
-  Flag,
-  GitMerge,
-  Pause,
-  RotateCcw,
-  ShieldAlert,
-  User,
-  X,
-} from "lucide-react";
+  ArrowLeftRightIcon,
+  FlagIcon,
+  GitMergeIcon,
+  PauseIcon,
+  RotateCcwIcon,
+  ShieldAlertIcon,
+  UserIcon,
+  XIcon,
+} from "@/components/admin/AdminIcons";
 
 /**
  * MatchCard — the AD-01-04 evidence view, certified against the DP-04-05
@@ -74,16 +74,16 @@ function valuesDiffer(a: unknown, b: unknown): boolean {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 0.8) return "text-emerald-300";
-  if (score >= 0.4) return "text-amber-300";
-  return "text-rose-300";
+  if (score >= 0.8) return "text-[var(--sr-status-success)]";
+  if (score >= 0.4) return "text-[var(--sr-status-warning)]";
+  return "text-[var(--sr-status-danger)]";
 }
 
 function impactBadge(impact: string) {
   const styles: Record<string, string> = {
-    high: "bg-rose-500/15 text-rose-300 border-rose-500/40",
-    medium: "bg-amber-500/15 text-amber-300 border-amber-500/40",
-    low: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40",
+    high: "bg-[var(--sr-status-danger)]/15 text-[var(--sr-status-danger)] border-[var(--sr-status-danger)]/40",
+    medium: "bg-[var(--sr-status-warning)]/15 text-[var(--sr-status-warning)] border-[var(--sr-status-warning)]/40",
+    low: "bg-[var(--sr-status-success)]/15 text-[var(--sr-status-success)] border-[var(--sr-status-success)]/40",
   };
   return (
     <span
@@ -145,8 +145,8 @@ export function MatchCard({
             </span>
           ))}
           {item.requires_second_review && (
-            <span className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-rose-300">
-              <ShieldAlert size={12} /> double review
+            <span className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[var(--sr-status-danger)]">
+              <ShieldAlertIcon size={12} /> double review
             </span>
           )}
         </div>
@@ -164,7 +164,7 @@ export function MatchCard({
       <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-3">
         <EvidencePane title={item.pair.left_id} evidence={item.left_evidence} other={item.right_evidence} />
         <div className="flex items-center text-[var(--sr-marine-200)]">
-          <ArrowLeftRight size={16} />
+          <ArrowLeftRightIcon size={16} />
         </div>
         <EvidencePane title={item.pair.right_id} evidence={item.right_evidence} other={item.left_evidence} />
       </div>
@@ -176,7 +176,7 @@ export function MatchCard({
         </h3>
         <ul className="space-y-1">
           {item.score_explanation.map((line, i) => (
-            <li key={i} className="text-sm text-[var(--sr-paper)]/90 font-mono">
+            <li key={i} className="text-sm text-[var(--sr-text-primary)]/90 font-mono">
               {line}
             </li>
           ))}
@@ -204,17 +204,17 @@ export function MatchCard({
 
       {/* Double-review state */}
       {item.requires_second_review && (
-        <section className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-3">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-rose-300 mb-1">
+        <section className="rounded-lg border border-[var(--sr-status-danger)]/30 bg-[var(--sr-status-danger)]/5 p-3">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--sr-status-danger)] mb-1">
             Review chain ({mergeVotes}/2 merge votes)
           </div>
           <div className="flex flex-wrap gap-2">
             {item.votes.map((v, i) => (
               <span
                 key={i}
-                className="flex items-center gap-1 text-xs text-[var(--sr-paper)]/80"
+                className="flex items-center gap-1 text-xs text-[var(--sr-text-primary)]/80"
               >
-                <User size={12} /> {v.decided_by}: {v.decision}
+                <UserIcon size={12} /> {v.decided_by}: {v.decision}
               </span>
             ))}
             {item.votes.length === 0 && (
@@ -223,7 +223,7 @@ export function MatchCard({
               </span>
             )}
             {awaitingSecond && (
-              <span className="text-xs text-amber-300">
+              <span className="text-xs text-[var(--sr-status-warning)]">
                 Awaiting a second, distinct reviewer.
               </span>
             )}
@@ -239,11 +239,11 @@ export function MatchCard({
           onClick={handleMerge}
           className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-40 ${
             confirming
-              ? "bg-rose-500 text-white"
-              : "bg-emerald-600/80 hover:bg-emerald-500 text-white"
+              ? "bg-[var(--sr-status-danger)] text-[var(--sr-text-primary)]"
+              : "bg-[var(--sr-status-success)]/80 hover:bg-[var(--sr-status-success)] text-[var(--sr-text-primary)]"
           }`}
         >
-          <GitMerge size={15} />
+          <GitMergeIcon size={15} />
           {confirming
             ? "Confirm merge (starts double review)"
             : awaitingSecond
@@ -263,17 +263,17 @@ export function MatchCard({
           type="button"
           disabled={acting}
           onClick={() => onDecide(item.case_id, "separate")}
-          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-[var(--sr-marine-600)]/40 hover:bg-[var(--sr-marine-600)]/70 text-[var(--sr-paper)] transition-colors disabled:opacity-40"
+          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-[var(--sr-marine-600)]/40 hover:bg-[var(--sr-marine-600)]/70 text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
         >
-          <X size={15} /> Keep separate
+          <XIcon size={15} /> Keep separate
         </button>
         <button
           type="button"
           disabled={acting}
           onClick={() => onDecide(item.case_id, "escalate")}
-          className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors disabled:opacity-40"
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs bg-[var(--sr-status-warning)]/10 hover:bg-[var(--sr-status-warning)]/20 text-[var(--sr-status-warning)] border border-[var(--sr-status-warning)]/30 transition-colors disabled:opacity-40"
         >
-          <Flag size={13} /> Escalate
+          <FlagIcon size={13} /> Escalate
         </button>
         <button
           type="button"
@@ -281,16 +281,16 @@ export function MatchCard({
           onClick={() => onDecide(item.case_id, "defer")}
           className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs bg-[var(--sr-marine-600)]/10 hover:bg-[var(--sr-marine-600)]/30 text-[var(--sr-text-secondary)] transition-colors disabled:opacity-40"
         >
-          <Pause size={13} /> Defer
+          <PauseIcon size={13} /> Defer
         </button>
         {onReverse && lastResolutionId && (
           <button
             type="button"
             disabled={acting}
             onClick={() => onReverse(lastResolutionId)}
-            className="ml-auto flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-rose-300 border border-rose-500/30 hover:bg-rose-500/10 transition-colors disabled:opacity-40"
+            className="ml-auto flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-[var(--sr-status-danger)] border border-[var(--sr-status-danger)]/30 hover:bg-[var(--sr-status-danger)]/10 transition-colors disabled:opacity-40"
           >
-            <RotateCcw size={13} /> Undo last decision
+            <RotateCcwIcon size={13} /> Undo last decision
           </button>
         )}
       </footer>
@@ -322,7 +322,7 @@ function EvidencePane({
                 {label}
               </dt>
               <dd
-                className={`text-sm truncate ${differs ? "text-amber-300 font-medium" : "text-[var(--sr-paper)]/90"}`}
+                className={`text-sm truncate ${differs ? "text-[var(--sr-status-warning)] font-medium" : "text-[var(--sr-text-primary)]/90"}`}
                 title={fmt(value)}
               >
                 {key === "source" ? (

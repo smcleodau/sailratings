@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw, Lock } from "lucide-react";
-import { useAdminNavRightSlot } from "@/components/AdminNavShell";
+import {
+  LockIcon,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -72,16 +73,6 @@ export default function TablesIndex() {
   }, [token]);
 
   // Inject refresh button into the shared nav's right slot
-  useAdminNavRightSlot(
-    <button
-      onClick={load}
-      disabled={loading}
-      className="text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] disabled:opacity-30 transition-colors"
-      title="Refresh"
-    >
-      <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
-    </button>,
-  );
 
   if (!token) {
     return (
@@ -151,7 +142,7 @@ export default function TablesIndex() {
                       edit
                     </span>
                   ) : (
-                    <Lock size={12} className="inline text-[var(--sr-status-warning)]/60" />
+                    <LockIcon size={12} className="inline text-[var(--sr-status-warning)]/60" />
                   )}
                 </div>
               </a>

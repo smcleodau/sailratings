@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, X, RefreshCw } from "lucide-react";
-import { useAdminNavRightSlot } from "@/components/AdminNavShell";
+import {
+  CheckIcon,
+  XIcon,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -104,16 +106,6 @@ export default function CorrectionsPage() {
     return d.toLocaleDateString();
   };
 
-  useAdminNavRightSlot(
-    <button
-      onClick={() => load(tab)}
-      disabled={loading}
-      className="text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-30"
-      title="Refresh"
-    >
-      <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
-    </button>,
-  );
 
   if (!token) {
     return (
@@ -167,7 +159,7 @@ export default function CorrectionsPage() {
             {rows.map((r) => (
               <div
                 key={r.id}
-                className="border border-[var(--sr-link)]/12 bg-white px-4 py-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 rounded-[4px] shadow-sm"
+                className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] px-4 py-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 rounded-[4px] shadow-sm"
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -219,9 +211,9 @@ export default function CorrectionsPage() {
                     <button
                       onClick={() => act(r.id, "approve")}
                       disabled={acting.has(r.id)}
-                      className="flex items-center justify-center gap-1.5 px-4 py-1.5 bg-[var(--sr-link)] text-white text-[11px] font-medium hover:bg-[var(--sr-focus)] transition-colors disabled:opacity-40 rounded-[4px] shadow-sm"
+                      className="flex items-center justify-center gap-1.5 px-4 py-1.5 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[11px] font-medium hover:bg-[var(--sr-focus)] transition-colors disabled:opacity-40 rounded-[4px] shadow-sm"
                     >
-                      <Check size={14} strokeWidth={2} />
+                      <CheckIcon size={14} strokeWidth={2} />
                       Approve
                     </button>
                     <button
@@ -232,7 +224,7 @@ export default function CorrectionsPage() {
                       disabled={acting.has(r.id)}
                       className="flex items-center justify-center gap-1.5 px-4 py-1.5 border border-[var(--sr-action-pressed)]/40 text-[var(--sr-action-pressed)] hover:bg-[var(--sr-action-pressed)]/10 text-[11px] font-medium transition-colors disabled:opacity-40 rounded-[4px]"
                     >
-                      <X size={14} strokeWidth={2} />
+                      <XIcon size={14} strokeWidth={2} />
                       Reject
                     </button>
                   </div>

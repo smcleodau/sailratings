@@ -2,9 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  Check, X, ExternalLink, Loader2, Plus, AlertTriangle,
-  ChevronDown, ChevronRight,
-} from "lucide-react";
+  CheckIcon,
+  XIcon,
+  ExternalLinkIcon,
+  SpinnerIcon,
+  PlusIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -43,8 +48,8 @@ function PlatformBadge({ p }: { p: string | null }) {
     sailwave: "bg-[var(--sr-status-warning)]/15 text-[var(--sr-status-warning)] border-[var(--sr-status-warning)]/30",
     yachtscoring: "bg-[var(--sr-status-comparison)]/15 text-[var(--sr-status-comparison)] border-[var(--sr-status-comparison)]/30",
     pdf: "bg-[var(--sr-action-pressed)]/15 text-[var(--sr-action-pressed)] border-[var(--sr-action-pressed)]/30",
-    none: "bg-black/5 text-[var(--sr-text-label)] border-[var(--sr-link)]/12",
-    unknown: "bg-black/5 text-[var(--sr-text-label)] border-[var(--sr-link)]/12",
+    none: "bg-[var(--sr-surface-interactive)] text-[var(--sr-text-label)] border-[var(--sr-link)]/12",
+    unknown: "bg-[var(--sr-surface-interactive)] text-[var(--sr-text-label)] border-[var(--sr-link)]/12",
   };
   const klass = colors[p || "unknown"] ?? colors.unknown;
   return (
@@ -208,9 +213,9 @@ export default function DiscoveryPage() {
             value={pw}
             onChange={(e) => setPw(e.target.value)}
             placeholder="Admin password"
-            className="w-full h-12 px-4 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
           />
-          <button type="submit" className="w-full h-12 bg-[var(--sr-link)] text-white text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm">
+          <button type="submit" className="w-full h-12 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm">
             Sign in
           </button>
         </form>
@@ -230,9 +235,9 @@ export default function DiscoveryPage() {
         </div>
 
         {/* Seed form */}
-        <div className="border border-[var(--sr-link)]/12 bg-white rounded-[4px] shadow-sm p-4 mb-6">
+        <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm p-4 mb-6">
           <div className="flex items-baseline gap-3 mb-3">
-            <Plus size={14} className="text-[var(--sr-link)]" />
+            <PlusIcon size={14} className="text-[var(--sr-link)]" />
             <span className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
               Crawl a URL
             </span>
@@ -267,11 +272,11 @@ export default function DiscoveryPage() {
             <button
               onClick={handleSeed}
               disabled={seeding || !seedUrl.trim()}
-              className="h-10 px-4 bg-[var(--sr-link)] text-white text-[11px] font-medium uppercase tracking-[0.08em] hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm disabled:opacity-40"
+              className="h-10 px-4 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[11px] font-medium uppercase tracking-[0.08em] hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm disabled:opacity-40"
             >
               {seeding ? (
                 <span className="inline-flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin" />
+                  <SpinnerIcon size={14} className="animate-spin" />
                   Crawling
                 </span>
               ) : "Crawl"}
@@ -294,7 +299,7 @@ export default function DiscoveryPage() {
               className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-3 py-1.5 border rounded-[4px] transition-colors ${
                 statusFilter === s
                   ? "border-[var(--sr-link)] text-[var(--sr-link)] bg-[var(--sr-surface-card)]"
-                  : "border-[var(--sr-link)]/12 text-[var(--sr-text-label)] bg-white hover:text-[var(--sr-text-primary)]"
+                  : "border-[var(--sr-link)]/12 text-[var(--sr-text-label)] bg-[var(--sr-surface-card)] hover:text-[var(--sr-text-primary)]"
               }`}
             >
               {s}
@@ -306,7 +311,7 @@ export default function DiscoveryPage() {
         </div>
 
         {/* Table */}
-        <div className="border border-[var(--sr-link)]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
+        <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm overflow-hidden">
           <div className="grid grid-cols-[1fr_110px_90px_120px_180px] gap-4 px-4 py-3 bg-[var(--sr-surface-interactive)] border-b border-[var(--sr-link)]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium">
             <span>Title / URL</span>
             <span>Platform</span>
@@ -317,7 +322,7 @@ export default function DiscoveryPage() {
 
           {loading && (
             <div className="px-4 py-6 flex items-center gap-2 text-[var(--sr-text-label)] text-[13px]">
-              <Loader2 size={14} className="animate-spin" />
+              <SpinnerIcon size={14} className="animate-spin" />
               Loading
             </div>
           )}
@@ -339,8 +344,8 @@ export default function DiscoveryPage() {
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      {open ? <ChevronDown size={12} className="text-[var(--sr-text-label)]" />
-                            : <ChevronRight size={12} className="text-[var(--sr-text-label)]" />}
+                      {open ? <ChevronDownIcon size={12} className="text-[var(--sr-text-label)]" />
+                            : <ChevronRightIcon size={12} className="text-[var(--sr-text-label)]" />}
                       <p className="text-[13px] text-[var(--sr-text-primary)] truncate font-medium">
                         {d.title || d.source_url}
                       </p>
@@ -356,7 +361,7 @@ export default function DiscoveryPage() {
                         className="hover:text-[var(--sr-link)] inline-flex items-center gap-1"
                       >
                         {d.source_url.replace(/^https?:\/\//, "").slice(0, 60)}
-                        <ExternalLink size={10} />
+                        <ExternalLinkIcon size={10} />
                       </a>
                     </p>
                   </div>
@@ -375,12 +380,12 @@ export default function DiscoveryPage() {
                         <button
                           onClick={(e) => { e.stopPropagation(); handleAction(d.id, "confirm"); }}
                           disabled={busy === d.id}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-[var(--sr-link)] text-white hover:bg-[var(--sr-focus)] disabled:opacity-30 rounded-[4px] shadow-sm transition-colors"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-[var(--sr-link)] text-[var(--sr-text-primary)] hover:bg-[var(--sr-focus)] disabled:opacity-30 rounded-[4px] shadow-sm transition-colors"
                           title="Confirm + ingest"
                         >
                           {busy === d.id
-                            ? <Loader2 size={12} className="animate-spin" />
-                            : <Check size={12} strokeWidth={2.5} />}
+                            ? <SpinnerIcon size={12} className="animate-spin" />
+                            : <CheckIcon size={12} strokeWidth={2.5} />}
                           Confirm
                         </button>
                         <button
@@ -388,7 +393,7 @@ export default function DiscoveryPage() {
                           disabled={busy === d.id}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-[var(--sr-action-pressed)]/40 text-[var(--sr-action-pressed)] hover:bg-[var(--sr-action-pressed)]/10 disabled:opacity-30 rounded-[4px] transition-colors"
                         >
-                          <X size={12} strokeWidth={2.5} />
+                          <XIcon size={12} strokeWidth={2.5} />
                           Reject
                         </button>
                       </>
@@ -404,7 +409,7 @@ export default function DiscoveryPage() {
                       <dt className="text-[var(--sr-text-label)]">source_type</dt>
                       <dd>{d.source_type}{d.seed_url ? `  (seed: ${d.seed_url})` : ""}</dd>
                       <dt className="text-[var(--sr-text-label)]">platform_ids</dt>
-                      <dd className="font-mono text-[10px] text-[var(--sr-text-primary)] break-all bg-white border border-[var(--sr-link)]/12 px-2 py-1 rounded-[2px]">
+                      <dd className="font-mono text-[10px] text-[var(--sr-text-primary)] break-all bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/12 px-2 py-1 rounded-[2px]">
                         {JSON.stringify(d.platform_ids || {}, null, 0)}
                       </dd>
                       {d.error_message && (

@@ -12,7 +12,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import {
+  RefreshIcon,
+} from "@/components/admin/AdminIcons";
 import {
   MatchCard,
   type AdjudicationAction,
@@ -169,7 +171,7 @@ export default function IdentityAdjudicationPage() {
     <main className="mx-auto max-w-5xl px-6 py-8 space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--sr-paper)]">
+          <h1 className="text-2xl font-semibold text-[var(--sr-text-primary)]">
             Identity adjudication
           </h1>
           <p className="text-sm text-[var(--sr-text-secondary)] mt-1 max-w-2xl">
@@ -191,27 +193,27 @@ export default function IdentityAdjudicationPage() {
                 }
               }}
               placeholder="your name"
-              className="rounded-md border border-[var(--sr-marine-600)]/40 bg-transparent px-2 py-1 text-[var(--sr-paper)] w-36"
+              className="rounded-md border border-[var(--sr-marine-600)]/40 bg-transparent px-2 py-1 text-[var(--sr-text-primary)] w-36"
             />
           </label>
           <button
             type="button"
             onClick={() => void load()}
-            className="flex items-center gap-2 rounded-lg border border-[var(--sr-marine-600)]/40 px-3 py-2 text-xs text-[var(--sr-paper)] hover:bg-[var(--sr-marine-600)]/20"
+            className="flex items-center gap-2 rounded-lg border border-[var(--sr-marine-600)]/40 px-3 py-2 text-xs text-[var(--sr-text-primary)] hover:bg-[var(--sr-marine-600)]/20"
           >
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            <RefreshIcon size={13} className={loading ? "animate-spin" : ""} />
             Refresh
           </button>
         </div>
       </header>
 
       {error && (
-        <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+        <div className="rounded-lg border border-[var(--sr-status-danger)]/40 bg-[var(--sr-status-danger)]/10 px-4 py-3 text-sm text-[var(--sr-status-danger)]">
           {error}
         </div>
       )}
       {notice && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+        <div className="rounded-lg border border-[var(--sr-status-warning)]/40 bg-[var(--sr-status-warning)]/10 px-4 py-3 text-sm text-[var(--sr-status-warning)]">
           {notice}
         </div>
       )}
