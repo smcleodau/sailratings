@@ -1,14 +1,17 @@
-"""Stripe checkout endpoints for report purchases."""
+"""Stripe checkout endpoints for report purchases and subscriptions."""
 
+import json
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
 
 import stripe
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 
 from irc_data.api.deps import get_db
 from irc_data.env import FRONTEND_URL
@@ -16,6 +19,15 @@ from irc_data.env import FRONTEND_URL
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/checkout", tags=["Checkout"])
+
+# Subscription event types dispatched by the webhook (PAY-01-09).
+SUBSCRIPTION_EVENT_TYPES = {
+    "customer.subscription.created",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+    "customer.subscription.paused",
+    "customer.subscription.resumed",
+}
 
 # Price table: currency → amount in cents
 PRICES = {
@@ -160,7 +172,23 @@ async def stripe_webhook(
     background_tasks: BackgroundTasks,
     engine: Engine = Depends(get_db),
 ):
-    """Handle Stripe webhook events."""
+    """Handle Stripe webhook events.
+
+    Flow (PAY-01-09):
+      1. Verify the Stripe signature.
+      2. INSERT the event into ``stripe_events`` with ON CONFLICT DO NOTHING.
+         A conflict means Stripe is re-delivering an event we have already
+         seen — acknowledge with 200 and do NOT re-dispatch (idempotency).
+      3. Dispatch the event to its handler.
+      4. On success, stamp ``processed_at``. On failure, record the error and
+         return 500 so Stripe retries the delivery.
+
+    Events we cannot attach to a user (no ``stripe_customer_id`` match and no
+    email match) are *parked*: the row stays in ``stripe_events`` with
+    ``error = 'parked: ...'`` and is visible in the admin UI, but the webhook
+    still returns 200 so Stripe does not retry a permanently-unresolvable
+    event forever.
+    """
     webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
     if not webhook_secret:
         raise HTTPException(status_code=503, detail="Webhook not configured")
@@ -177,11 +205,308 @@ async def stripe_webhook(
     except stripe.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        _handle_checkout_completed(engine, session, background_tasks)
+    event_id = event["id"]
+    event_type = event["type"]
+
+    # ── 2. Idempotency ledger ────────────────────────────────────────────
+    try:
+        event_payload = json.loads(event.to_json())
+    except Exception:  # pragma: no cover - StripeObject is always serialisable
+        event_payload = {"id": event_id, "type": event_type}
+
+    with engine.begin() as conn:
+        inserted = conn.execute(
+            text("""
+                INSERT INTO stripe_events (event_id, type, api_version, livemode, payload)
+                VALUES (:event_id, :type, :api_version, :livemode, CAST(:payload AS JSON))
+                ON CONFLICT (event_id) DO NOTHING
+                RETURNING id
+            """),
+            {
+                "event_id": event_id,
+                "type": event_type,
+                "api_version": _event_get(event, "api_version"),
+                "livemode": bool(_event_get(event, "livemode", False)),
+                "payload": json.dumps(event_payload),
+            },
+        ).first()
+
+    if not inserted:
+        # Replay / duplicate delivery — already recorded, harmless.
+        logger.info("Stripe event %s (%s) already recorded — replay ignored",
+                    event_id, event_type)
+        return {"status": "ok", "replay": True}
+
+    # ── 3. Dispatch ──────────────────────────────────────────────────────
+    try:
+        if event_type == "checkout.session.completed":
+            _handle_checkout_completed(
+                engine, event["data"]["object"], background_tasks
+            )
+        elif event_type in SUBSCRIPTION_EVENT_TYPES:
+            _handle_subscription_event(
+                engine, event_type, event["data"]["object"]
+            )
+        else:
+            logger.info("Unhandled Stripe event type %s (%s)", event_type, event_id)
+    except _ParkedEvent as parked:
+        # Permanently unresolvable right now (e.g. no matching user). Record
+        # for admin visibility but ack so Stripe does not retry forever.
+        logger.warning("Stripe event %s parked: %s", event_id, parked)
+        with engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE stripe_events
+                    SET error = :error, processed_at = :now
+                    WHERE event_id = :event_id
+                """),
+                {
+                    "error": f"parked: {parked}",
+                    "now": datetime.now(timezone.utc),
+                    "event_id": event_id,
+                },
+            )
+        return {"status": "parked"}
+    except Exception as exc:
+        # Transient failure — record and return 500 so Stripe retries.
+        logger.error("Stripe event %s (%s) failed: %s",
+                     event_id, event_type, exc, exc_info=True)
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("""
+                        UPDATE stripe_events
+                        SET error = :error
+                        WHERE event_id = :event_id
+                    """),
+                    {"error": str(exc)[:2000], "event_id": event_id},
+                )
+        except SQLAlchemyError:
+            logger.error("Failed to record webhook error for %s", event_id)
+        raise HTTPException(status_code=500, detail="Webhook processing failed")
+
+    # ── 4. Mark processed ────────────────────────────────────────────────
+    with engine.begin() as conn:
+        conn.execute(
+            text("""
+                UPDATE stripe_events
+                SET processed_at = :now, error = NULL
+                WHERE event_id = :event_id
+            """),
+            {"now": datetime.now(timezone.utc), "event_id": event_id},
+        )
 
     return {"status": "ok"}
+
+
+class _ParkedEvent(Exception):
+    """Raised when an event cannot be resolved to local state (e.g. no user)."""
+
+
+def _event_get(obj, key, default=None):
+    """Safe accessor for StripeObject (its ``.get`` collides with HTTP GET)."""
+    try:
+        v = obj[key]
+        return v if v is not None else default
+    except (KeyError, TypeError):
+        return default
+
+
+def _ts_to_dt(value) -> datetime | None:
+    """Convert a Stripe unix timestamp to an aware datetime."""
+    if value in (None, ""):
+        return None
+    try:
+        return datetime.fromtimestamp(int(value), tz=timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _normalise_email(email: str | None) -> str | None:
+    if not email:
+        return None
+    email = email.strip().lower()
+    return email or None
+
+
+def _plan_from_lookup_key(lookup_key: str | None) -> str | None:
+    """Plan is the lookup_key prefix: ``premium_annual`` → ``premium``."""
+    if not lookup_key:
+        return None
+    return lookup_key.split("_", 1)[0]
+
+
+def _subscription_email(sub) -> str | None:
+    """Best-effort email for the subscription's customer."""
+    email = _event_get(sub, "customer_email")
+    if not email:
+        metadata = _event_get(sub, "metadata") or {}
+        try:
+            email = metadata["email"] if "email" in metadata else None
+        except (TypeError, KeyError):
+            email = None
+    return _normalise_email(email)
+
+
+def _find_user_id(conn, stripe_customer_id: str | None, email: str | None) -> int | None:
+    """Resolve a user by stripe_customer_id first, then by email."""
+    if stripe_customer_id:
+        row = conn.execute(
+            text("SELECT id FROM users WHERE stripe_customer_id = :cid"),
+            {"cid": stripe_customer_id},
+        ).first()
+        if row:
+            return row.id
+    if email:
+        row = conn.execute(
+            text("SELECT id FROM users WHERE lower(email) = :email"),
+            {"email": email},
+        ).first()
+        if row:
+            # Back-fill the stripe_customer_id link now that we know it.
+            if stripe_customer_id:
+                conn.execute(
+                    text("""
+                        UPDATE users
+                        SET stripe_customer_id = COALESCE(stripe_customer_id, :cid),
+                            updated_at = now()
+                        WHERE id = :id
+                    """),
+                    {"cid": stripe_customer_id, "id": row.id},
+                )
+            return row.id
+    return None
+
+
+def _handle_subscription_event(engine: Engine, event_type: str, sub) -> None:
+    """Upsert ``subscriptions`` from a customer.subscription.* event.
+
+    Subscription state in Postgres is always what Stripe says: the upsert is
+    keyed on ``stripe_subscription_id`` and overwrites every mutable column.
+    """
+    sub_id = sub["id"]
+    stripe_customer_id = _event_get(sub, "customer")
+    customer_obj = _event_get(sub, "customer")
+    # Stripe can expand the customer object; normalise to the id string.
+    if isinstance(customer_obj, dict) or (
+        hasattr(customer_obj, "id") and not isinstance(customer_obj, str)
+    ):
+        stripe_customer_id = _event_get(customer_obj, "id", stripe_customer_id)
+
+    status = _event_get(sub, "status")
+    canceled_at = _ts_to_dt(_event_get(sub, "canceled_at"))
+    ended_at = _ts_to_dt(_event_get(sub, "ended_at"))
+    if event_type == "customer.subscription.deleted":
+        status = "canceled"
+        ended_at = ended_at or datetime.now(timezone.utc)
+
+    # Plan/price come from items.data[0].price
+    items = _event_get(sub, "items") or {}
+    item_list = _event_get(items, "data") or []
+    first_item = item_list[0] if len(item_list) else {}
+    price = _event_get(first_item, "price") or {}
+    lookup_key = _event_get(price, "lookup_key")
+    price_id = _event_get(price, "id")
+    plan = _plan_from_lookup_key(lookup_key)
+
+    # Period bounds: on the item in newer API versions, else on the sub.
+    period_start = _ts_to_dt(
+        _event_get(first_item, "current_period_start")
+        or _event_get(sub, "current_period_start")
+    )
+    period_end = _ts_to_dt(
+        _event_get(first_item, "current_period_end")
+        or _event_get(sub, "current_period_end")
+    )
+
+    email = _subscription_email(sub)
+
+    with engine.begin() as conn:
+        user_id = _find_user_id(conn, stripe_customer_id, email)
+        if user_id is None:
+            raise _ParkedEvent(
+                f"no user for stripe_customer_id={stripe_customer_id} email={email}"
+            )
+
+        conn.execute(
+            text("""
+                INSERT INTO subscriptions (
+                    stripe_subscription_id, user_id, stripe_customer_id, status,
+                    plan, lookup_key, price_id,
+                    current_period_start, current_period_end,
+                    cancel_at_period_end, canceled_at, ended_at,
+                    raw, updated_at
+                )
+                VALUES (
+                    :sub_id, :user_id, :customer_id, :status,
+                    :plan, :lookup_key, :price_id,
+                    :period_start, :period_end,
+                    :cancel_at_period_end, :canceled_at, :ended_at,
+                    CAST(:raw AS JSON), now()
+                )
+                ON CONFLICT (stripe_subscription_id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    stripe_customer_id = EXCLUDED.stripe_customer_id,
+                    status = EXCLUDED.status,
+                    plan = COALESCE(EXCLUDED.plan, subscriptions.plan),
+                    lookup_key = COALESCE(EXCLUDED.lookup_key, subscriptions.lookup_key),
+                    price_id = COALESCE(EXCLUDED.price_id, subscriptions.price_id),
+                    current_period_start = COALESCE(EXCLUDED.current_period_start,
+                                                    subscriptions.current_period_start),
+                    current_period_end = COALESCE(EXCLUDED.current_period_end,
+                                                  subscriptions.current_period_end),
+                    cancel_at_period_end = EXCLUDED.cancel_at_period_end,
+                    canceled_at = EXCLUDED.canceled_at,
+                    ended_at = EXCLUDED.ended_at,
+                    raw = EXCLUDED.raw,
+                    updated_at = now()
+            """),
+            {
+                "sub_id": sub_id,
+                "user_id": user_id,
+                "customer_id": stripe_customer_id,
+                "status": status,
+                "plan": plan,
+                "lookup_key": lookup_key,
+                "price_id": price_id,
+                "period_start": period_start,
+                "period_end": period_end,
+                "cancel_at_period_end": bool(
+                    _event_get(sub, "cancel_at_period_end", False)
+                ),
+                "canceled_at": canceled_at,
+                "ended_at": ended_at,
+                "raw": json.dumps(
+                    json.loads(sub.to_json()) if hasattr(sub, "to_json") else {}
+                ),
+            },
+        )
+
+        # Mirror the effective entitlement onto users.subscription_status.
+        if status in ("active", "trialing"):
+            conn.execute(
+                text("""
+                    UPDATE users
+                    SET subscription_status = COALESCE(:plan, 'premium'),
+                        updated_at = now()
+                    WHERE id = :id
+                """),
+                {"plan": plan, "id": user_id},
+            )
+        elif status in ("canceled", "unpaid", "incomplete_expired"):
+            conn.execute(
+                text("""
+                    UPDATE users
+                    SET subscription_status = 'none', updated_at = now()
+                    WHERE id = :id
+                """),
+                {"id": user_id},
+            )
+
+    logger.info(
+        "Subscription %s upserted from %s (status=%s, cancel_at_period_end=%s)",
+        sub_id, event_type, status, _event_get(sub, "cancel_at_period_end"),
+    )
 
 
 def _handle_checkout_completed(
@@ -190,33 +515,32 @@ def _handle_checkout_completed(
     background_tasks: BackgroundTasks,
 ) -> None:
     """Process a successful checkout."""
-    from datetime import datetime, timezone
-
     # The Stripe SDK's StripeObject supports dict indexing (session["id"])
     # but does NOT expose .get() the way a plain dict does — .get collides
-    # with the SDK's internal HTTP GET. Use indexing with explicit None
-    # defaults instead.
-    def _g(obj, key, default=None):
-        try:
-            v = obj[key]
-            return v if v is not None else default
-        except (KeyError, TypeError):
-            return default
+    # with the SDK's internal HTTP GET. Use the module-level safe accessor.
+    _g = _event_get
 
     session_id = session["id"]
     customer_details = _g(session, "customer_details") or {}
-    email = _g(customer_details, "email")
+    email = _normalise_email(_g(customer_details, "email"))
     payment_intent = _g(session, "payment_intent")
+    payment_status = _g(session, "payment_status")
+    stripe_customer_id = _g(session, "customer")
     metadata = _g(session, "metadata") or {}
 
     with engine.begin() as conn:
+        # PAY-01-09: also link the order to a user (stripe_customer_id first,
+        # then email) and record Stripe's payment status verbatim.
+        user_id = _find_user_id(conn, stripe_customer_id, email)
         result = conn.execute(
             text("""
                 UPDATE orders
                 SET status = 'paid',
                     paid_at = :now,
                     email = COALESCE(:email, email),
-                    stripe_payment_intent = :pi
+                    stripe_payment_intent = :pi,
+                    stripe_payment_status = :payment_status,
+                    user_id = COALESCE(:user_id, user_id)
                 WHERE stripe_session_id = :sid
                   AND status = 'pending'
                 RETURNING id
@@ -225,6 +549,8 @@ def _handle_checkout_completed(
                 "now": datetime.now(timezone.utc),
                 "email": email,
                 "pi": payment_intent,
+                "payment_status": payment_status,
+                "user_id": user_id,
                 "sid": session_id,
             },
         )
