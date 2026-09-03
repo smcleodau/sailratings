@@ -743,7 +743,7 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
 
     if source == "sailsys":
         from irc_data.scrapers.sailsys import CLUBS as _CLUB_MAP
-        from irc_data.scrapers.sailsys import scrape_club_irc_results
+        from irc_data.scrapers.sailsys import _exc_text, scrape_club_irc_results
         from irc_data.db.operations import log_ingestion_start, log_ingestion_end
 
         # Determine which clubs to scrape
@@ -776,13 +776,17 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
 
         all_results = []
         total_imported = 0
-        run_error: str | None = None
+        club_errors: list[str] = []
+        fatal_error: str | None = None
         try:
             for club_name, club_id in clubs_to_scrape:
                 console.print(f"\nScraping SailSys results for [bold]{club_name}[/bold] (club {club_id})...")
                 try:
+                    # OPS-02-02: collect the per-series/per-race error text the
+                    # scraper used to only print, so it lands in error_message.
                     club_results = asyncio.run(scrape_club_irc_results(
                         club_id, max_series=max_series, since=since,
+                        on_errors=club_errors.append,
                     ))
                     all_results.extend(club_results)
                     console.print(f"  [green]{len(club_results)} results[/green]")
@@ -796,19 +800,41 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
                             organizing_club=club_name,
                         )
                         total_imported += stats.get("imported", 0)
+                        if stats.get("errors"):
+                            club_errors.append(
+                                f"{club_name}: {stats['errors']} import errors "
+                                f"[{'; '.join(stats.get('error_details', [])) or 'no detail'}]"
+                            )
                         console.print(f"  Imported: {stats['imported']}, Matched: {stats['matched']}")
                 except Exception as e:
-                    console.print(f"  [red]Error scraping {club_name}: {e}[/red]")
-                    run_error = (run_error + " | " if run_error else "") + f"{club_name}: {e}"
+                    # _exc_text: never blank, even when str(e) == '' (the
+                    # 'SSORC: '/''RPEYC: ' NULL-detail rows from OPS-02-02).
+                    detail = f"{club_name}: {_exc_text(e)}"
+                    console.print(f"  [red]Error scraping {detail}[/red]")
+                    club_errors.append(detail)
 
             console.print(f"\n[green]Total: {len(all_results)} results across {len(clubs_to_scrape)} clubs[/green]")
+        except Exception as e:
+            # Truly run-aborting failure (DB cursor query, etc.).
+            fatal_error = _exc_text(e)
+            console.print(f"\n[red]Run aborted: {fatal_error}[/red]")
         finally:
+            run_error = " | ".join(club_errors)[:1000] or None
+            if fatal_error:
+                status = "failed"
+                run_error = (f"run aborted: {fatal_error}" + (f" | {run_error}" if run_error else ""))[:1000]
+            elif club_errors:
+                # Per-club failures with the rest of the run healthy — the run
+                # still finished, so it's completed_with_errors, not failed.
+                status = "completed_with_errors"
+            else:
+                status = "completed"
             log_ingestion_end(
                 engine, run_log_id,
-                status="failed" if run_error else "completed",
+                status=status,
                 records_found=len(all_results),
                 records_new=total_imported,
-                error_message=(run_error[:1000] if run_error else None),
+                error_message=run_error,
             )
         return
 

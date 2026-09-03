@@ -120,6 +120,76 @@ def upsert_certificate(engine: Engine, boat_id: int | None, cert_data: dict) -> 
 # ---------------------------------------------------------------------------
 
 
+def _ensure_event_id(conn, *, name: str, start_date, organiser: str | None) -> int:
+    """Return ``events.id`` for (name, start_date), creating it if needed.
+
+    Mirrors the backfill in alembic 0022: one event per (name, start_date),
+    organiser taken from the first row that mentions it.
+    """
+    row = conn.execute(
+        text(
+            "SELECT id FROM events WHERE name = :n AND "
+            "start_date IS NOT DISTINCT FROM :d LIMIT 1"
+        ),
+        {"n": name, "d": start_date},
+    ).first()
+    if row:
+        return int(row[0])
+    return int(
+        conn.execute(
+            text(
+                "INSERT INTO events (name, start_date, end_date, organiser, "
+                "created_at, updated_at) VALUES (:n, :d, :d, :o, now(), now()) "
+                "RETURNING id"
+            ),
+            {"n": name, "d": start_date, "o": organiser},
+        ).scalar_one()
+    )
+
+
+def _ensure_event_entry_id(
+    conn,
+    *,
+    event_id: int,
+    boat_id: int | None,
+    boat_name: str | None,
+    sail_number: str | None,
+    tcc,
+) -> int:
+    """Return ``event_entries.id`` for this boat within an event.
+
+    NULL-safe matching on (event_id, boat_id, boat_name) so unmatched legacy
+    rows (boat_id NULL) still resolve to a stable entry, exactly like the
+    tolerant backfill pass in alembic 0022.
+    """
+    row = conn.execute(
+        text(
+            "SELECT id FROM event_entries WHERE event_id = :e AND "
+            "boat_id IS NOT DISTINCT FROM :b AND "
+            "boat_name IS NOT DISTINCT FROM :bn LIMIT 1"
+        ),
+        {"e": event_id, "b": boat_id, "bn": boat_name},
+    ).first()
+    if row:
+        return int(row[0])
+    return int(
+        conn.execute(
+            text(
+                "INSERT INTO event_entries (event_id, boat_id, sail_number, "
+                "boat_name, tcc, created_at) VALUES (:e, :b, :sn, :bn, :tcc, now()) "
+                "RETURNING id"
+            ),
+            {
+                "e": event_id,
+                "b": boat_id,
+                "sn": sail_number,
+                "bn": boat_name,
+                "tcc": float(tcc) if isinstance(tcc, Decimal) else tcc,
+            },
+        ).scalar_one()
+    )
+
+
 def upsert_race_result(
     engine: Engine,
     boat_id: int | None,
@@ -128,45 +198,62 @@ def upsert_race_result(
     race_name: str | None = None,
     **kwargs,
 ) -> int:
-    """Insert or update a race result. Returns the row id."""
+    """Insert a race result, resolving its NOT NULL ``event_entry_id``.
+
+    ``race_results.event_entry_id`` has been NOT NULL since alembic 0022
+    (strict 3NF), so every row must link to an event_entry. The previous
+    implementation assumed the legacy denormalised shape and, after the ORM
+    model drifted to drop ``event_name``/``boat_id``/``organizing_club``,
+    raised ``KeyError('organizing_club')`` on every row — which is why the
+    SailSys runs logged found>0 / new=0 (OPS-02-02).
+    """
     # Default ingestion-path tag. Firecrawl callers set transport='firecrawl'
     # explicitly via import_scraper_results; bespoke scrapers and JSON imports
     # call this directly and inherit 'legacy' so the parity diagnostic has
     # both sides to compare.
     kwargs.setdefault("transport", "legacy")
-    values = dict(
-        boat_id=boat_id,
-        event_name=event_name,
-        event_date=event_date,
-        race_name=race_name,
-        **kwargs,
-    )
-    stmt = pg_insert(RaceResultModel.__table__).values(**values)
 
-    # On conflict, update mutable fields
-    update_keys = {
-        k for k in kwargs
-        if k not in ("created_at",)
-    }
-    update_cols = {k: stmt.excluded[k] for k in update_keys}
+    raw = kwargs.get("raw_data") or {}
+    boat_name = raw.get("boat_name")
+    sail_number = raw.get("sail_number") or raw.get("sail_no")
+    tcc = kwargs.get("tcc_at_race") or kwargs.get("rating_value")
+    organiser = kwargs.get("organizing_club")
 
-    # The old UNIQUE constraint `race_results_boat_event_race_key` was
-    # replaced 2026-05-20 with two partial UNIQUE indexes:
-    #   - race_results_matched_unique_key   for boat_id IS NOT NULL
-    #   - race_results_unmatched_unique_key for unmatched rows keyed on
-    #     raw_data->>'boat_name'
-    # `on_conflict_do_update` with `index_elements=` matches by the
-    # column tuple (so the right partial index is picked automatically
-    # based on which rows can collide).
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["boat_id", "event_name", "race_name", "event_date"],
-        index_where=text("boat_id IS NOT NULL"),
-        set_=update_cols,
-    )
-    stmt = stmt.returning(RaceResultModel.__table__.c.id)
     with engine.begin() as conn:
-        result = conn.execute(stmt)
-        return result.scalar_one()
+        event_id = _ensure_event_id(
+            conn, name=event_name, start_date=event_date, organiser=organiser,
+        )
+        event_entry_id = _ensure_event_entry_id(
+            conn, event_id=event_id, boat_id=boat_id,
+            boat_name=boat_name, sail_number=sail_number, tcc=tcc,
+        )
+
+        values = dict(
+            boat_id=boat_id,
+            event_name=event_name,
+            event_date=event_date,
+            race_name=race_name,
+            event_entry_id=event_entry_id,
+            **kwargs,
+        )
+        table = RaceResultModel.__table__
+        # Drift guard: only pass columns the mapped table actually has.
+        values = {k: v for k, v in values.items() if k in table.c}
+
+        # Dedup: results are stable once published; if an identical row for
+        # this entry+race already exists, return it instead of duplicating.
+        existing = conn.execute(
+            text(
+                "SELECT id FROM race_results WHERE event_entry_id = :e AND "
+                "race_name IS NOT DISTINCT FROM :rn LIMIT 1"
+            ),
+            {"e": event_entry_id, "rn": race_name},
+        ).first()
+        if existing:
+            return int(existing[0])
+
+        stmt = pg_insert(table).values(**values).returning(table.c.id)
+        return int(conn.execute(stmt).scalar_one())
 
 
 # ---------------------------------------------------------------------------
@@ -504,7 +591,14 @@ def log_ingestion_end(
     records_updated: int | None = None,
     error_message: str | None = None,
 ) -> None:
-    """Update an ingestion log entry with completion info."""
+    """Update an ingestion log entry with completion info.
+
+    OPS-02-02: ``completed_with_errors``/``failed`` rows must never persist a
+    blank ``error_message`` — see ``scrape_supervision.require_error_message``.
+    """
+    from irc_data.scrape_supervision import require_error_message
+
+    error_message = require_error_message(status, error_message)
     with engine.begin() as conn:
         conn.execute(
             text("""

@@ -208,12 +208,22 @@ class Certificate(Base):
 
 class RaceResultModel(Base):
     __tablename__ = "race_results"
-    __table_args__ = (
-        UniqueConstraint("event_entry_id", "race_name"),
-    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    event_entry_id: Mapped[int] = mapped_column(ForeignKey("event_entries.id"), nullable=False)
+    # Legacy identity columns (match the live DB and every scraper caller).
+    # OPS-02-02: HEAD had dropped these in favour of an event_entry-only shape,
+    # which silently broke every race-result upsert (KeyError 'organizing_club')
+    # because the live table still carries these columns and callers pass them.
+    boat_id: Mapped[int | None] = mapped_column(ForeignKey("boats.id"))
+    event_name: Mapped[str] = mapped_column(Text, nullable=False)
+    event_date: Mapped[date | None] = mapped_column(Date)
+    event_series: Mapped[str | None] = mapped_column(Text)
+    organizing_club: Mapped[str | None] = mapped_column(Text)
+    event_type: Mapped[str | None] = mapped_column(Text)
+    # Optional link into the normalised event model. The live column is
+    # nullable in practice (legacy rows); keep the ORM optional so scraper
+    # upserts that don't mint an EventEntry still persist.
+    event_entry_id: Mapped[int | None] = mapped_column(ForeignKey("event_entries.id"))
     # Race info
     race_name: Mapped[str | None] = mapped_column(Text)
     race_date_specific: Mapped[date | None] = mapped_column(Date)
