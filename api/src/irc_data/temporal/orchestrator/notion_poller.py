@@ -61,10 +61,15 @@ class NotionPoller:
         temporal_address = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
         temporal_client = await TemporalClient.connect(temporal_address, namespace="sailratings")
 
-        # Count currently running workflows; skip this poll if at cap
+        # Count currently running EpicExecutionWorkflows; skip this poll if at
+        # cap. Must scope by WorkflowType — an unscoped "ExecutionStatus=
+        # 'Running'" query also counts unrelated long-lived workflows on this
+        # namespace (the perpetual ScheduleSyncLoopWorkflow, in-flight
+        # SourceRunWorkflow scraper runs), which silently starved epic
+        # dispatch down to well under MAX_CONCURRENT actual factory slots.
         running_count = 0
         async for wf in temporal_client.list_workflows(
-            query="ExecutionStatus='Running'",
+            query="WorkflowType='EpicExecutionWorkflow' AND ExecutionStatus='Running'",
         ):
             running_count += 1
         if running_count >= self.MAX_CONCURRENT:
