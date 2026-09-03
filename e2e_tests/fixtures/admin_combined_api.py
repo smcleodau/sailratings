@@ -58,6 +58,7 @@ from admin_scrapers_seed import seed_admin_scrapers  # noqa: E402
 from irc_data.api.deps import get_db  # noqa: E402
 from irc_data.api.routers import admin as admin_module  # noqa: E402
 from irc_data.api.routers import admin_customers  # noqa: E402
+from irc_data.api.routers import adjudication  # noqa: E402
 
 # Both seeds use the same password; the combined app mirrors it into both
 # routers' module-level ADMIN_PASSWORD (read at request time).
@@ -99,6 +100,7 @@ def build_app() -> FastAPI:
     # firecrawl/chat/…), so there are no route collisions.
     app.include_router(admin_customers.router, prefix="/v1")
     app.include_router(admin_module.router, prefix="/v1")
+    app.include_router(adjudication.router, prefix="/v1")
 
     # Per-router database overrides: each seeded engine backs only the
     # routes of its own fixture. include_router copies the router's route
