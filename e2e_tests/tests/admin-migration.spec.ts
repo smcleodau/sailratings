@@ -19,6 +19,109 @@ import { test, expect, type Page } from '@playwright/test';
 
 const ADMIN_TOKEN = 'sailfast2026';
 
+const API = '**/v1/admin';
+
+/**
+ * One register row mirrored into the schedule state (Sources toggle test) —
+ * the exact shape of GET /admin/scrapers/schedule-state's scrapers[].
+ */
+const SOURCE_ROW = {
+  slug: 'cbh',
+  display_name: 'CBH — Cork Harbour',
+  base_url: 'https://cbh.example.com',
+  category: 'club',
+  legal_status: 'interim-v0',
+  enabled: true,
+  cadence: 'daily',
+  adapter_status: 'ready',
+  adapter_class: 'ClubAdapter',
+  robots_checked_at: '2026-09-01T12:00:00Z',
+  robots_disallow: [],
+  contact_email: null,
+  schedule_id: 'source-cbh',
+  schedule_synced_at: '2026-09-01T12:05:00Z',
+  last_run_status: 'ok',
+  last_run_at: '2026-09-02T06:00:00Z',
+};
+
+/**
+ * Data-dependent stubs.
+ *
+ * The AD-01-16 config (playwright.ad0116.config.ts) runs this spec against
+ * the real dev API on :4199, where corrections/schedule-state/chat/execute
+ * exist — those hits pass straight through (`route.fallback()`).
+ *
+ * The default config (playwright.config.ts) reuses this spec against the
+ * PAY-01-10 fixture API, which only serves the customers zone — so the
+ * four data-dependent endpoints are stubbed AT THE PAGE LEVEL with the
+ * same shapes the real API returns. /admin/execute is answered with 200
+ * locally; its response is never awaited when the real dev API is up, so
+ * the authoritative run still exercises the true SQL path + admin_edits
+ * write. Pure shell smoke (MIGRATED_ROUTES) needs no data and stays
+ * un-stubbed everywhere.
+ */
+async function stubDataEndpoints(page: Page) {
+  const state = { paused: false };
+
+  await page.route(`${API}/corrections**`, async (route) => {
+    if (route.request().resourceType() !== 'fetch') {
+      await route.fallback();
+      return;
+    }
+    // Real shape: a bare array (corrections.py list_corrections).
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '[]',
+    });
+  });
+
+  await page.route(`${API}/scrapers/schedule-state**`, async (route) => {
+    if (route.request().resourceType() !== 'fetch') {
+      await route.fallback();
+      return;
+    }
+    // Real shape: {count, scrapers} (scrapers.py scraper_schedule_state).
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        count: 1,
+        scrapers: [{ ...SOURCE_ROW, schedule_paused: state.paused }],
+      }),
+    });
+  });
+
+  await page.route(/\/v1\/admin\/scrapers\/[^/]+\/(pause|resume)$/, async (route) => {
+    if (route.request().resourceType() !== 'fetch') {
+      await route.fallback();
+      return;
+    }
+    state.paused = route.request().url().endsWith('/pause');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        slug: SOURCE_ROW.slug,
+        paused: state.paused,
+        temporal: 'unreachable — mirrored desired state',
+      }),
+    });
+  });
+
+  await page.route(/\/v1\/admin\/execute$/, async (route) => {
+    if (route.request().resourceType() !== 'fetch') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: 'executed', rows_affected: 0 }),
+    });
+  });
+}
+
 /** Routes migrated onto the shell by AD-01-16, with their page landmark. */
 const MIGRATED_ROUTES: { path: string; testId: string }[] = [
   { path: '/admin/tables', testId: 'tables-page' },
@@ -109,6 +212,7 @@ test.describe('AD-01-16 — admin pages in the shell, DS restyle', () => {
   });
 
   test('/admin/corrections shows an honest empty state', async ({ page }) => {
+    await stubDataEndpoints(page);
     await page.goto('/admin/corrections', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('corrections-page')).toBeVisible();
     // boat_corrections has no pending rows on the dev fixture — the page
@@ -122,6 +226,7 @@ test.describe('AD-01-16 — admin pages in the shell, DS restyle', () => {
   test('/admin/sources pauses and resumes a schedule for real', async ({
     page,
   }) => {
+    await stubDataEndpoints(page);
     await page.goto('/admin/sources', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('sources-page')).toBeVisible();
 
@@ -207,6 +312,7 @@ test.describe('AD-01-16 — data chat propose/confirm flow', () => {
       });
     });
 
+    await stubDataEndpoints(page);
     await seedAdminToken(page);
     await page.goto('/admin/chat', { waitUntil: 'domcontentloaded' });
 
