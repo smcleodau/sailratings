@@ -308,6 +308,36 @@ def get_fleet_summary(
 
 
 # ---------------------------------------------------------------------------
+# SM-01-07: Race-prep brief inputs
+# ---------------------------------------------------------------------------
+
+
+@router.get("/race-prep/{event_id}")
+def get_race_prep_facts(
+    event_id: int,
+    boat_id: int = Query(..., ge=1, description="Focal boat for the brief"),
+    min_meetings: int = Query(2, ge=1, le=100),
+    engine: Engine = Depends(get_db),
+):
+    """RacePrepFactsV1 — structured race-prep facts for one upcoming event.
+
+    Fleet size, rivals entered (with TCC deltas and HeadToHeadV1 records),
+    course summary, forecast summary (provider decision pending) and the
+    condition-fit signal from RAI splits.  Structured facts only — the AI
+    layer turns this pack into the tactical read.
+    """
+    from irc_data.analysis.race_prep import race_prep_facts
+
+    facts = race_prep_facts(engine, event_id, boat_id, min_meetings=min_meetings)
+    if facts is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Event {event_id} or boat {boat_id} not found",
+        )
+    return facts
+
+
+# ---------------------------------------------------------------------------
 # Global System Statistics
 # ---------------------------------------------------------------------------
 
