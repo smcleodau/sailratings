@@ -72,6 +72,53 @@ def _search_value(text: str, pattern: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+# ---------------------------------------------------------------------------
+# Spinnaker classification (OPS-02-13)
+# ---------------------------------------------------------------------------
+#
+# IRC certificates print a single spinnaker block labelled with the generic
+# codes SLU / SLE / SHW / SFL regardless of whether the sail is symmetric or
+# asymmetric.  The two types are distinguished by geometry, which gives a
+# deterministic discriminant:
+#
+#   * symmetric spinnaker  — both luffs are the same length:  SLU == SLE
+#   * asymmetric spinnaker — the luff is longer than the leech:  SLU > SLE
+#
+# The legacy parser stored every spinnaker block into the ``sym_*`` columns;
+# the extend.ai audit (OPS-02-01) showed 1,631 of 3,503 spinnaker certs were
+# actually asymmetric (see the ``cert_sym_asym_reclassify`` audit table).
+# Re-applying this rule to the DB agrees with the extend.ai ground truth on
+# all 20 stratified sample certs of audit bucket A.
+_ASYM_TIE_MARGIN = Decimal("0.005")  # half the 0.01 m print resolution
+
+
+def classify_spinnaker(
+    slu: Decimal | None,
+    sle: Decimal | None,
+    shw: Decimal | None,
+    sfl: Decimal | None,
+) -> tuple[str | None, dict[str, Decimal | None]]:
+    """Classify a spinnaker measurement block as symmetric or asymmetric.
+
+    Returns ``(kind, values)`` where ``kind`` is ``"sym"``, ``"asym"`` or
+    ``None`` (no spinnaker data at all) and ``values`` has the keys
+    ``slu``/``sle``/``sf``/``shw`` ready to be splatted onto the matching
+    ``sym_*`` / ``asym_*`` certificate fields.  The certificate's printed
+    foot length (``SFL``) is exposed as the generic ``sf`` measurement,
+    mirroring the legacy mapping ``sym_sf = SFL``.
+    """
+    if slu is None and sle is None and shw is None and sfl is None:
+        return None, {"slu": None, "sle": None, "sf": None, "shw": None}
+
+    if slu is not None and sle is not None:
+        kind = "asym" if (slu - sle) > _ASYM_TIE_MARGIN else "sym"
+    else:
+        # Only part of the block parsed — keep the historic default so we
+        # never drop data, and so pre-2026 behaviour is preserved.
+        kind = "sym"
+    return kind, {"slu": slu, "sle": sle, "sf": sfl, "shw": shw}
+
+
 def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
     """Parse an IRC certificate PDF into structured data."""
     with pdfplumber.open(pdf_path) as pdf:
@@ -171,7 +218,9 @@ def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
     # --- Hull measurements (from measurement section only) ---
     # Require decimal point in values to avoid matching dates like "6/25"
     lh = _dec(_search_value(measurement_text, r"LH\s+(\d+\.\d+)"))
-    lwp = _dec(_search_value(measurement_text, r"LWP\s+(\d+\.\d+)"))
+    # LWP is normally printed with decimals ("LWP 9.41") but some certs print
+    # an integer ("LWP 10"); allow both (OPS-02-13, cert_reparse_lwp_dlr).
+    lwp = _dec(_search_value(measurement_text, r"LWP\s+(\d+(?:\.\d+)?)"))
     # Displacement label varies by language:
     #   EN "Boat Weight: 1234"; FR "Poids: 1234"; ES/IT "Peso: 1234"; DE "Gewicht: 1234".
     # Allow optional comma thousands separator and optional kg/kgs unit suffix so we
@@ -183,7 +232,8 @@ def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
             r"(?:Boat\s*Weight|Poids|Peso|Gewicht)\s*:\s*([\d,]+)(?:\s*kgs?)?",
         )
     )
-    dlr = _dec(_search_value(measurement_text, r"DLR\s+(\d+)"))
+    # DLR is usually an integer but some certs print decimals ("DLR 150.5").
+    dlr = _dec(_search_value(measurement_text, r"DLR\s+(\d+(?:\.\d+)?)"))
     # Draft label varies by language:
     #   EN "Draft: 1.23"; FR "Tirant d'eau : 1.23"; ES "Calado : 1.23"; IT "Pescaggio : 1.23";
     #   DE "Tiefgang : 1.23"; British "Draught : 1.23". Colon may be preceded by a space.
@@ -227,6 +277,10 @@ def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
     sle = _dec(_search_value(measurement_text, r"SLE\s+(\d+\.\d+)"))
     shw = _dec(_search_value(measurement_text, r"SHW\s+(\d+\.\d+)"))
     sfl = _dec(_search_value(measurement_text, r"SFL\s+(\d+\.\d+)"))
+    # OPS-02-13: certs print one spinnaker block for both sym and asym sails;
+    # classify by geometry (SLU vs SLE) so asymmetric kites land in the
+    # ``asym_*`` fields instead of being misclassified as symmetric.
+    spinnaker_kind, spin = classify_spinnaker(slu, sle, shw, sfl)
 
     # --- Overhangs ---
     bo = _dec(_search_value(measurement_text, r"BO\s+(\d+\.\d+)"))
@@ -274,6 +328,14 @@ def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
     aft_match = re.search(r"Aft\b[^\n]*\n(\d+)(?:\s|$)", measurement_text)
     aft_rigging = int(aft_match.group(1)) if aft_match else None
 
+    # --- FL (headsail luff perpendicular) ---
+    # IRC certificates never print a literal "FL" label — the headsail luff
+    # perpendicular is printed as "HLP" (extend.ai audit bucket C: 0/10
+    # sampled certs print FL, all print HLP).  Populate ``fl`` from HLP so
+    # downstream consumers (regression/optimizer "simulator") read a filled
+    # field instead of NULL (OPS-02-13).
+    fl = hlp
+
     # --- DLR as integer ---
     dlr_int = int(dlr) if dlr else None
 
@@ -297,6 +359,7 @@ def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
         "hsa": str(hsa) if hsa else None,
         "spa": str(spa) if spa else None,
         "sfl": str(sfl) if sfl else None,
+        "spinnaker_kind": spinnaker_kind,
         "spl": str(spl) if spl else None,
         "x": str(x_val) if x_val is not None else None,
         "y": str(y_val) if y_val is not None else None,
@@ -331,7 +394,7 @@ def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
         p=p,
         e=e,
         j=j,
-        fl=None,  # Not labeled as FL on certs
+        fl=fl,  # Headsail luff perpendicular (printed as "HLP" on certs)
         stl=stl,
         spl=spl,
         rig_type=rig_type,
@@ -345,10 +408,14 @@ def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
         hhw=hhw,
         htw=htw,
         huw=huw,
-        sym_slu=slu,
-        sym_sle=sle,
-        sym_sf=sfl,
-        sym_shw=shw,
+        sym_slu=spin["slu"] if spinnaker_kind == "sym" else None,
+        sym_sle=spin["sle"] if spinnaker_kind == "sym" else None,
+        sym_sf=spin["sf"] if spinnaker_kind == "sym" else None,
+        sym_shw=spin["shw"] if spinnaker_kind == "sym" else None,
+        asym_slu=spin["slu"] if spinnaker_kind == "asym" else None,
+        asym_sle=spin["sle"] if spinnaker_kind == "asym" else None,
+        asym_sf=spin["sf"] if spinnaker_kind == "asym" else None,
+        asym_shw=spin["shw"] if spinnaker_kind == "asym" else None,
         water_ballast=water_ballast,
         design_category=None,
         # Extended measurements
