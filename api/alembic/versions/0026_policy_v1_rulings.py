@@ -23,8 +23,15 @@ This migration therefore:
 
 Also merges the repo's multiple 0025 alembic heads into a single head.
 
+Note (PAY-01-07): the abandoned twin ``0026_canonical_merge_and_compat``
+(down_revision ``20260526a``) and the other retired side branches live in
+``alembic/legacy_versions/``; this file is the canonical ``0026`` revision,
+parented on the canonical ``0025`` (fact_assertions).  Its DP-03-05
+compatibility surface (``v1_*`` views + evidence tables) is carried forward
+as idempotent ensures in ``0027_payments_auth``.
+
 Revision ID: 0026
-Revises: 0025, 0025_crawl_budget, 0025_fact_assertions, 0025_schedule_registry, 0025_watchdog_alerts
+Revises: 0025
 Create Date: 2026-09-02
 """
 

@@ -63,7 +63,8 @@ class TestUpgradeFromPrevious:
 
 
 def test_scratch_build_reaches_head(admin_url):
-    """A from-scratch ``upgrade head`` must succeed and land on 0026."""
+    """A from-scratch ``upgrade head`` must succeed and land on the
+    canonical head (PAY-01-07 payments/auth revision)."""
     url = mv.create_temp_database(admin_url, prefix="dp03_scratch")
     try:
         mv.upgrade(url, "head")
@@ -77,7 +78,7 @@ def test_scratch_build_reaches_head(admin_url):
                 )
             }
         engine.dispose()
-        assert rev == "0026"
+        assert rev == mv.CANONICAL_HEAD
         assert {"v1_boat_ratings", "v1_race_results", "v1_fact_assertions_current"} <= views
     finally:
         mv.drop_temp_database(url)

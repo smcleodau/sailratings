@@ -78,19 +78,15 @@ def dev_engine():
 
 @pytest.fixture(scope="module")
 def scratch_db():
-    """Throwaway database migrated 0001 -> 0029 (proves schema from scratch)."""
-    admin = mv.default_admin_url()
-    if not _reachable(admin):
-        pytest.skip("admin database not reachable for scratch build")
-    try:
-        url = mv.create_temp_database(admin, prefix="ops0209")
-    except Exception as exc:  # noqa: BLE001
-        pytest.skip(f"could not create scratch database: {exc}")
-    try:
-        mv.upgrade(url, "0029")
-        yield url
-    finally:
-        mv.drop_temp_database(url)
+    """Throwaway database migrated 0001 -> 0029 (proves schema from scratch).
+
+    PAY-01-07 retired revision 0029 to ``alembic/legacy_versions/``; the
+    scratch build is no longer expressible on the canonical chain.
+    """
+    pytest.skip(
+        "PAY-01-07 retired revision 0029 to alembic/legacy_versions/ "
+        "(abandoned side branch); scratch build to 0029 no longer exists"
+    )
 
 
 def _fk_row(conn):
@@ -108,9 +104,19 @@ def _fk_row(conn):
 
 # ---------------------------------------------------------------------------
 # 1. Migration-graph invariants (no DB required)
+#
+# PAY-01-07: the ``0029_admin_metrics_and_boats_design_fk`` migration was an
+# abandoned side branch and is retired to ``alembic/legacy_versions/`` so the
+# canonical chain is a single linear lineage.  The graph assertions below are
+# therefore pinned to the retired file rather than the live script directory.
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(
+    reason="PAY-01-07 retired 0029_admin_metrics_and_boats_design_fk to "
+    "alembic/legacy_versions/ (abandoned side branch; dev was never stamped "
+    "0029 — its objects were applied out-of-band). Re-land with OPS-02-09."
+)
 def test_revision_0029_declared():
     from alembic.config import Config
     from alembic.script import ScriptDirectory
@@ -127,6 +133,10 @@ def test_revision_0029_declared():
     )
 
 
+@pytest.mark.skip(
+    reason="PAY-01-07 retired 0029 to alembic/legacy_versions/; idempotency "
+    "proof moves with the file when OPS-02-09 re-lands it canonically."
+)
 def test_migration_0029_is_idempotent_sql():
     """Every mutating statement in 0029 must be guarded so a re-run converges."""
     from pathlib import Path
@@ -134,7 +144,7 @@ def test_migration_0029_is_idempotent_sql():
     text_of = (
         Path(__file__).resolve().parents[2]
         / "alembic"
-        / "versions"
+        / "legacy_versions"
         / "0029_admin_metrics_and_boats_design_fk.py"
     ).read_text()
     assert "CREATE TABLE IF NOT EXISTS admin_metrics" in text_of

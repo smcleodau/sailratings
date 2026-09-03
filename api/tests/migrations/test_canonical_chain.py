@@ -28,18 +28,12 @@ def _script() -> ScriptDirectory:
 def test_single_head():
     script = _script()
     heads = script.get_heads()
-    # The OPS-01-01 scheduling-policy migration must be a head …
-    assert "20260903a" in heads, f"OPS-01-01 head missing; got {heads}"
-    # … and the only heads are the pre-existing duplicate ``0026`` pair
-    # (a documented DP-03-05 defect) plus the OPS-01-01 migration and the
-    # OPS-02-09 admin_metrics/FK revision which extends the canonical 0026
-    # chain (its parent is the duplicated ``0026`` id, so alembic tolerates
-    # the pre-existing duplicate head rather than re-tangling the graph),
-    # the OPS-02-10 ORC materialised-views revision (0030) extending 0029,
-    # and the OPS-02-06 daily-credit-cap revision (0031) extending 20260905a.
-    assert set(heads) == {"0026", "0029", "0030", "0031", "20260903a"}, (
-        f"unexpected migration heads: {heads}"
-    )
+    # PAY-01-07 linearised the canonical chain: the abandoned side branches
+    # (including the duplicate-id ``0026`` pair and the OPS-01/02 ``20260903a``
+    # / ``0029``–``0031`` series) were retired to ``alembic/legacy_versions/``,
+    # so the graph now has exactly one head — the payments/auth revision
+    # ``0027_payments_auth``.
+    assert set(heads) == {"0027"}, f"unexpected migration heads: {heads}"
 
 
 def test_no_duplicate_revision_ids():
@@ -79,16 +73,15 @@ def test_chain_is_linear_from_base():
 def test_chain_contains_canonical_order():
     script = _script()
     order = [rev.revision for rev in reversed(list(script.walk_revisions()))]
-    # base must be first, and the chain must converge on the OPS-01-01
-    # scheduling-policy migration (the pre-existing duplicate-0026 head
-    # makes the very last walked revision ambiguous between the two 0026
-    # files, so we assert membership rather than a single terminal id).
+    # base must be first and the chain must converge on the single canonical
+    # head (PAY-01-07 payments/auth revision).
     assert order[0] == "0001"
-    assert order[-1] in ("0026", "20260903a"), f"unexpected chain tail: {order[-1]}"
-    assert "20260903a" in order, "OPS-01-01 scheduling migration not in chain"
+    assert order[-1] == "0027", f"unexpected chain tail: {order[-1]}"
     # the previous branch point feeds the 0023 series and converges to head
     assert "aa0f8e0c178b" in order
     assert order.index("aa0f8e0c178b") < order.index("0023")
+    # canonical PAY/DP tail: fact_assertions -> policy stamp -> payments/auth
+    assert order.index("0025") < order.index("0026") < order.index("0027")
 
 
 def test_head_matches_models_metadata_scratch_build():
@@ -97,8 +90,10 @@ def test_head_matches_models_metadata_scratch_build():
     pytest.importorskip("sqlalchemy")
     if os.environ.get("DP03_SKIP_IF_NO_DB", "1") == "1":
         # Defer to the DB-backed test module for the actual build; here we
-        # only assert the migration file declares the objects.
-        text = (PROJECT_ROOT / "alembic" / "versions" / "0026_canonical_merge_and_compat.py").read_text()
+        # only assert the migration file declares the objects.  The DP-03-05
+        # compat surface moved to 0027_payments_auth when the abandoned
+        # 0026_canonical_merge_and_compat branch was retired (PAY-01-07).
+        text = (PROJECT_ROOT / "alembic" / "versions" / "0027_payments_auth.py").read_text()
         for obj in ("schema_migrations", "backup_checks", "v1_boat_ratings",
                     "v1_race_results", "v1_fact_assertions_current"):
-            assert obj in text, f"0026 migration missing {obj}"
+            assert obj in text, f"0027 migration missing {obj}"

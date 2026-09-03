@@ -1,0 +1,74 @@
+name: Migration Round-Trip (PAY-01-07)
+
+# Acceptance criterion for PAY-01-07: "alembic upgrade head and downgrade -1
+# both succeed on a copy of dev; SELECT * FROM v_admin_users returns without
+# error; SQLAlchemy models added."
+#
+# The alembic graph intentionally contains abandoned side branches, so this
+# workflow runs the canonical chain (base -> head) explicitly instead of
+# bare `alembic upgrade head`, then exercises downgrade -1 and probes
+# v_admin_users. The same checks run in pytest under
+# api/tests/migrations/test_pay_01_07_payments_auth.py.
+
+on:
+  pull_request:
+    paths:
+      - "api/alembic/**"
+      - "api/src/irc_data/db/**"
+      - "api/tests/migrations/**"
+      - ".github/workflows/migration-roundtrip.yml"
+  workflow_dispatch:
+
+jobs:
+  migration-roundtrip:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: irc
+          POSTGRES_PASSWORD: irc
+          POSTGRES_DB: irc_data
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U irc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://irc:irc@localhost:5432/irc_data
+      IRC_DATABASE_URL: postgresql+psycopg://irc:irc@localhost:5432/irc_data
+      # Fail (not skip) when the database is unavailable — this is CI.
+      DP03_SKIP_IF_NO_DB: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install API package
+        working-directory: api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Canonical chain upgrade head / downgrade -1 / v_admin_users
+        working-directory: api
+        # The canonical chain (alembic/versions/) is a single linear lineage
+        # base -> 0027 (0027_payments_auth); the abandoned side branches were
+        # retired to api/alembic/legacy_versions/, so bare `head` is
+        # unambiguous and resolves to the PAY-01-07 revision.
+        run: |
+          alembic upgrade head
+          alembic current
+          psql "$DATABASE_URL" -c "SELECT * FROM v_admin_users LIMIT 5;"
+          alembic downgrade -1
+          alembic current
+          alembic upgrade head
+
+      - name: Pytest migration round-trip suite
+        working-directory: api
+        run: |
+          python -m pytest tests/migrations/test_pay_01_07_payments_auth.py -v
