@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import logging
 import urllib.request
@@ -82,50 +83,90 @@ class NotionPoller:
         slots_available = self.MAX_CONCURRENT - running_count
         dispatched = 0
 
-        # Configurable epic allow-list (comma-separated, e.g. "DP-01,AF-00")
-        # Empty string = all epics allowed
-        allowed_epics_env = os.environ.get("FACTORY_ALLOWED_EPICS", "DP-01")
-        allowed_epics = [e.strip() for e in allowed_epics_env.split(",") if e.strip()] if allowed_epics_env else []
+        # --- Dependency-aware epic selection ---
+        # Fetch all rows to build the epic dependency graph
+        try:
+            all_req = urllib.request.Request(
+                f'https://api.notion.com/v1/databases/{self.db_id}/query',
+                data=json.dumps({"page_size": 200}).encode(),
+                method='POST', headers=self.headers
+            )
+            all_pages = json.loads(urllib.request.urlopen(all_req).read()).get('results', [])
+        except Exception as e:
+            logger.error(f"Error fetching pages for dep graph: {e}")
+            all_pages = []
 
-        def epic_allowed(page):
-            # Parent Epic is a rich_text property on the Roadmap
-            rt = page.get('properties', {}).get('Parent Epic', {}).get('rich_text', [])
-            parent = rt[0]['text']['content'] if rt else ''
-            if not allowed_epics:
+        def _rt(page, key):
+            rt = page.get('properties', {}).get(key, {}).get('rich_text', [])
+            return rt[0]['text']['content'] if rt else ''
+
+        def _sel(page, key):
+            s = page.get('properties', {}).get(key, {}).get('select') or {}
+            return s.get('name', '')
+
+        # Epics: rows with no Parent Epic text
+        epic_rows = [p for p in all_pages if not p.get('properties', {}).get('Parent Epic', {}).get('rich_text', [])]
+        done_epics = {_rt(e, 'ID') for e in epic_rows if _sel(e, 'Status') == 'Done'}
+        logger.info(f"Done epics: {done_epics or '(none)'}")
+
+        def _sprint_key(epic):
+            s = _rt(epic, 'Sprint')
+            if not s or s.lower() == 'interim':
+                return 0
+            m = re.search(r'\d+', s)
+            return int(m.group()) if m else 999
+
+        def _blockers_met(epic):
+            blocked = _rt(epic, 'Blocked By').strip()
+            if not blocked:
                 return True
-            return parent in allowed_epics
+            return all(b.strip() in done_epics for b in re.split(r'[;,]', blocked) if b.strip())
+
+        eligible_epics = sorted(
+            [e for e in epic_rows
+             if _sel(e, 'Status') == 'Ready'
+             and _blockers_met(e)
+             and not e.get('properties', {}).get('Human Gate', {}).get('checkbox', False)],
+            key=_sprint_key
+        )
+
+        if not eligible_epics:
+            logger.info("No eligible epics (all blocked or gated). Nothing to dispatch.")
+            return
+
+        active_epic = eligible_epics[0]
+        active_epic_id = _rt(active_epic, 'ID')
+        logger.info(
+            f"Active epic: {active_epic_id}  sprint={_rt(active_epic, 'Sprint') or 'Interim'}"
+            f"  blocked_by='{_rt(active_epic, 'Blocked By') or 'none'}'"
+        )
+
+        def _in_active_epic(page):
+            rt = page.get('properties', {}).get('Parent Epic', {}).get('rich_text', [])
+            return (rt[0]['text']['content'] if rt else '') == active_epic_id
 
         def human_gate(page):
-            """Return True if the Human Gate checkbox is checked — never auto-dispatch.
-
-            The Notion DB query index can lag behind page-level updates, so when
-            the index says the gate is set we do a live page GET to confirm.
-            """
+            """Live-check Human Gate to avoid stale index."""
             cb = page.get('properties', {}).get('Human Gate', {})
             if not cb.get('checkbox', False):
                 return False
-            # Index says gated — confirm with a live page fetch to catch stale index.
             try:
                 req = urllib.request.Request(
-                    f"https://api.notion.com/v1/pages/{page['id']}",
-                    headers=self.headers,
-                )
-                res = urllib.request.urlopen(req)
-                live = json.loads(res.read())
-                live_cb = live.get('properties', {}).get('Human Gate', {})
-                return live_cb.get('checkbox', True)
+                    f"https://api.notion.com/v1/pages/{page['id']}", headers=self.headers)
+                live = json.loads(urllib.request.urlopen(req).read())
+                return live.get('properties', {}).get('Human Gate', {}).get('checkbox', True)
             except Exception:
-                return True  # default to gated if live check fails
+                return True
 
-        eligible = [p for p in results if epic_allowed(p) and not human_gate(p)]
-        gated = [p for p in results if epic_allowed(p) and human_gate(p)]
+        eligible = [p for p in results if _in_active_epic(p) and not human_gate(p)]
+        gated = [p for p in results if _in_active_epic(p) and human_gate(p)]
+        off_epic = len(results) - len([p for p in results if _in_active_epic(p)])
         if gated:
-            ids = [
-                (p.get('properties', {}).get('ID', {}).get('rich_text', [{}]) or [{}])[0].get('text', {}).get('content', p['id'])
-                for p in gated
-            ]
-            logger.info(f"Skipping {len(gated)} human-gate tasks: {ids}")
-        logger.info(f"{len(eligible)} of {len(results)} ready tasks are in allowed epics {allowed_epics}")
+            ids = [(_rt(p, 'ID') or p['id']) for p in gated]
+            logger.info(f"Skipping {len(gated)} human-gate tasks in {active_epic_id}: {ids}")
+        if off_epic:
+            logger.info(f"Skipping {off_epic} tasks from other epics (active: {active_epic_id})")
+        logger.info(f"{len(eligible)} tasks eligible from active epic {active_epic_id}")
 
         for page in eligible[:min(len(eligible), self.MAX_PER_POLL, slots_available)]:
             try:
