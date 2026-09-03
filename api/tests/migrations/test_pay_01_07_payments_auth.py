@@ -34,7 +34,7 @@ EXPECTED_TABLES = {"users", "subscriptions", "stripe_events", "boat_claims"}
 
 @pytest.fixture()
 def pay_db(admin_url):
-    """Throwaway database migrated to the canonical head (0034)."""
+    """Throwaway database migrated to the canonical head (0035)."""
     url = mv.create_temp_database(admin_url, prefix="pay07_test")
     try:
         mv.upgrade(url, "head")
@@ -312,6 +312,11 @@ def test_downgrade_minus_one_round_trip(admin_url):
                     )
                 )
             }
+            # `downgrade -1` unwinds 0035 -> 0034: it drops user_settings and
+            # every OPS-01/OPS-02 reconciliation object. The v_admin_users
+            # view, boat_claims, users, subscriptions, stripe_events and the
+            # orders linkage columns all belong to earlier revisions and
+            # must survive.
             assert "user_id" in orders_cols
             assert "stripe_payment_status" in orders_cols
         remaining = _table_names(engine)
@@ -319,6 +324,9 @@ def test_downgrade_minus_one_round_trip(admin_url):
         assert "user_settings" not in remaining
         assert "source_runs" not in remaining
         assert {"users", "subscriptions", "stripe_events"} <= remaining
+        # v_admin_users (owned by 0027/0034) still answers after the unwind.
+        with engine.connect() as conn:
+            conn.execute(text("SELECT * FROM v_admin_users")).fetchall()
         engine.dispose()
 
         # and re-upgrading restores the schema (downgrade is non-destructive)

@@ -431,3 +431,132 @@ export async function syncCurrentUser(
   if (!res.ok) return null;
   return (await res.json()) as CurrentUser;
 }
+
+/* ── AUTH-01-03: account settings, export, deletion ───────────────────── */
+
+export interface AccountSettings {
+  full_name: string | null;
+  email: string | null;
+  display_name: string | null;
+  home_club: string | null;
+  country: string | null;
+  notify_product_updates: boolean;
+  notify_rating_changes: boolean;
+  notify_event_reminders: boolean;
+  notify_marketing: boolean;
+}
+
+export interface ProfileUpdate {
+  full_name?: string;
+  display_name?: string;
+  home_club?: string;
+  country?: string;
+}
+
+export interface NotificationPrefs {
+  notify_product_updates?: boolean;
+  notify_rating_changes?: boolean;
+  notify_event_reminders?: boolean;
+  notify_marketing?: boolean;
+}
+
+export interface DeleteAccountResult {
+  deleted: boolean;
+  already_deleted: boolean;
+  user_id: string;
+  cascade?: {
+    user_settings_deleted: number;
+    boat_claims_deleted: number;
+    subscriptions_deleted: number;
+    orders_detached: number;
+    identity_anonymised: boolean;
+  };
+  completed_at?: string;
+}
+
+function authHeaders(authToken: string): HeadersInit {
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${authToken}`,
+  };
+}
+
+/** Fetch the member's settings (profile + notification preferences). */
+export async function getAccountSettings(
+  authToken: string,
+): Promise<AccountSettings> {
+  const res = await fetch(`${API_BASE}/users/me/settings`, {
+    headers: authHeaders(authToken),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Settings load failed (${res.status})`);
+  return (await res.json()) as AccountSettings;
+}
+
+/** Update editable profile fields (PATCH semantics). */
+export async function updateAccountProfile(
+  authToken: string,
+  update: ProfileUpdate,
+): Promise<AccountSettings> {
+  const res = await fetch(`${API_BASE}/users/me`, {
+    method: "PATCH",
+    headers: authHeaders(authToken),
+    body: JSON.stringify(update),
+  });
+  if (!res.ok) throw new Error(`Profile update failed (${res.status})`);
+  return (await res.json()) as AccountSettings;
+}
+
+/** Update notification preferences (omitted keys are left unchanged). */
+export async function updateNotificationPrefs(
+  authToken: string,
+  prefs: NotificationPrefs,
+): Promise<AccountSettings> {
+  const res = await fetch(`${API_BASE}/users/me/notifications`, {
+    method: "PATCH",
+    headers: authHeaders(authToken),
+    body: JSON.stringify(prefs),
+  });
+  if (!res.ok) throw new Error(`Notification update failed (${res.status})`);
+  return (await res.json()) as AccountSettings;
+}
+
+/**
+ * Download the member's full data export. Returns the document already
+ * parsed (the endpoint serves it as an ``attachment`` JSON download).
+ */
+export async function exportAccountData(
+  authToken: string,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/users/me/export`, {
+    headers: authHeaders(authToken),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Export failed (${res.status})`);
+  return (await res.json()) as Record<string, unknown>;
+}
+
+/**
+ * Permanently delete the member's personal data. The confirmation text is
+ * required by the API (must be exactly ``DELETE``). The caller is
+ * responsible for removing the Clerk-side account afterwards.
+ */
+export async function deleteAccount(
+  authToken: string,
+  reason?: string,
+): Promise<DeleteAccountResult> {
+  const res = await fetch(`${API_BASE}/users/me`, {
+    method: "DELETE",
+    headers: authHeaders(authToken),
+    body: JSON.stringify({ confirm: "DELETE", reason: reason ?? null }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new Error(
+      (detail && (detail as { detail?: string }).detail) ||
+        `Deletion failed (${res.status})`,
+    );
+  }
+  return (await res.json()) as DeleteAccountResult;
+}

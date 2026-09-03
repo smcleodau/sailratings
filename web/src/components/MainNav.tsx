@@ -63,6 +63,13 @@ export default function MainNav({ theme, cta }: MainNavProps) {
               </SignUpButton>
             </Show>
             <Show when="signed-in">
+              <Link
+                href="/account"
+                data-testid="nav-account"
+                className={`text-xs font-semibold uppercase tracking-wider ${linkBase} transition-colors px-2 py-1`}
+              >
+                Account
+              </Link>
               <UserButton />
             </Show>
           </>

@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const isProtectedRoute = createRouteMatcher(['/admin(.*)']);
+// AUTH-01-03: account settings requires a signed-in session.
+const isAccountRoute = createRouteMatcher(['/account(.*)']);
 
 // E2E / local harness escape hatch: when NEXT_PUBLIC_ADMIN_E2E_BYPASS is set
 // (never in deployed environments — only the Playwright webServer and local
@@ -52,6 +54,15 @@ const clerkConfiguredMiddleware = clerkMiddleware(async (auth, req) => {
     return noStore(NextResponse.next());
   }
 
+  if (isAccountRoute(req)) {
+    const authObject = await auth();
+    if (!authObject.userId) {
+      // Member data must never be cached at the edge either.
+      return noStore(NextResponse.redirect(new URL('/sign-in', req.url)));
+    }
+    return noStore(NextResponse.next());
+  }
+
   return NextResponse.next();
 });
 
@@ -65,6 +76,8 @@ function unconfiguredMiddleware(req: NextRequest) {
   if (redirect) return redirect;
 
   if (isProtectedRoute(req)) return noStore(NextResponse.next());
+  // /account renders its own sign-in prompt when Clerk is unconfigured.
+  if (isAccountRoute(req)) return noStore(NextResponse.next());
 
   return NextResponse.next();
 }
