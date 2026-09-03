@@ -151,10 +151,12 @@ def _run_cli_subprocess(argv: Sequence[str]) -> dict[str, Any]:
     """Execute a legacy ``irc-data`` CLI invocation as a subprocess."""
     import subprocess
 
+    from irc_data.temporal.activities.scrape_activities import _irc_data_bin
+
     env = os.environ.copy()
     env["PYTHONPATH"] = "src"
     proc = subprocess.run(
-        ["irc-data", *argv],
+        [_irc_data_bin(), *argv],
         env=env,
         capture_output=True,
         text=True,

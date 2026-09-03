@@ -21,6 +21,7 @@ Every activity here is idempotent:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import threading
 from datetime import datetime, timezone
@@ -205,7 +206,27 @@ async def run_registered_adapter(record: dict, run_key: str) -> dict:
     )
 
     async with sem:
-        result = await legacy_adapters.run_legacy_source(record)
+        # The activity has a 5-minute heartbeat_timeout, but the legacy
+        # adapters are synchronous scrapers with no heartbeating of their
+        # own — run_legacy_source only awaits a thread-executor future
+        # around them (see the asyncio.run()-in-a-running-loop fix). A
+        # first full historical backfill easily runs well past 5 minutes
+        # (observed: sailsys/topyacht timed out at exactly 5:00 despite a
+        # 6-hour start_to_close budget), so heartbeat periodically while
+        # the executor future is pending, independent of what the sync
+        # code itself does.
+        async def _heartbeat_forever() -> None:
+            while True:
+                await asyncio.sleep(60)
+                activity.heartbeat()
+
+        heartbeat_task = asyncio.ensure_future(_heartbeat_forever())
+        try:
+            result = await legacy_adapters.run_legacy_source(record)
+        finally:
+            heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat_task
         if result is None:
             activity.logger.warning(
                 "no adapter registered for slug=%s; recording run only", slug

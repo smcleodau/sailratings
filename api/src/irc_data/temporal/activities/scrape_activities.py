@@ -1,14 +1,31 @@
 from temporalio import activity
 import subprocess
 import os
+import sys
+
+
+def _irc_data_bin() -> str:
+    """Resolve the irc-data console script without depending on $PATH.
+
+    Under systemd (sailing-source-worker.service) the process environment
+    has no PATH entry for the venv's bin/ directory, so the bare "irc-data"
+    lookup used here previously raised FileNotFoundError — it only ever
+    worked when this ran under an interactive shell (or a manually
+    launched `nohup` process) that happened to inherit one. irc-data is
+    always installed alongside the interpreter currently running this
+    code, so derive it from sys.executable instead.
+    """
+    candidate = os.path.join(os.path.dirname(sys.executable), "irc-data")
+    return candidate if os.path.exists(candidate) else "irc-data"
+
 
 def run_cli_command(command: list[str]) -> str:
     """Helper to run irc-data CLI commands."""
     env = os.environ.copy()
     env["PYTHONPATH"] = "src"
-    
+
     result = subprocess.run(
-        ["irc-data"] + command,
+        [_irc_data_bin()] + command,
         env=env,
         capture_output=True,
         text=True,
