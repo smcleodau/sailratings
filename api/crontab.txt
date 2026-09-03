@@ -10,91 +10,45 @@ IRC_DATA_DIR=/home/irc-data/code/sailratings/api
 LOG_DIR=/home/irc-data/logs
 OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --environment vzhxzxt7mgb4tolyepo5wqzcz4 --"
 
-# === ORC (URGENT: never miss a day) ===
-# Daily full ORC snapshot at 03:00 UTC
-0 3 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape orc" >> $LOG_DIR/orc_$(date +\%F).log 2>&1
+# ---------------------------------------------------------------------------
+# OPS-02-05 — crontab migrated to Temporal schedules.
+#
+# No production ingestion runs on cron any more.  Every collection source
+# (ORC, TCC, SailSys, TopYacht, ISORA, RHKYC, SailRaceHQ, cert discovery /
+# parse, wayback, plus the raw-capture feeds and maintenance jobs) is driven
+# by a Temporal schedule — one ``source-<slug>`` schedule per ``data_sources``
+# register row, reconciled by the OPS-01-02 ScheduleRegistry /
+# ScheduleSyncLoopWorkflow and executed by the SourceRunWorkflow.
+#
+# Each source migrated one at a time: its Temporal schedule was enabled, the
+# cron line kept until two consecutive green Temporal runs landed in the
+# ``source_runs`` ledger, then the cron line was deleted.  Watchdog,
+# health-check, refresh-views and log cleanup moved last.
+#
+# Every source run writes a ``source_runs`` row (the run ledger); the admin
+# Scrapers page reads per-source health from there.
+#
+# The entries remaining below are host maintenance only — they are not
+# ``irc-data`` ingestion (db sync, reboot bring-up, e2e smoke).  The
+# commented RORC line is retained as historical documentation.
+# ---------------------------------------------------------------------------
 
-# Refresh materialized views after ORC ingestion
-0 4 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data refresh-views" >> $LOG_DIR/views_$(date +\%F).log 2>&1
-
-# === IRC ===
-# Daily TCC listing CSV download at 06:00 UTC
-0 6 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape tcc" >> $LOG_DIR/tcc_$(date +\%F).log 2>&1
-
-# Nightly IRC certificate PDF raw capture at 01:00 UTC (inside 01:00–06:00 UK window)
-0 1 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape pdf-certs" >> $LOG_DIR/irc_pdf_$(date +\%F).log 2>&1
-
-# === DP-00-04: Nightly raw capture — Sailwave result files + sailing news feeds ===
-# Sailwave result files at 01:30 UTC (inside 01:00–06:00 window)
-30 1 * * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape raw-capture --source sailwave" >> $LOG_DIR/raw_sailwave_$(date +\%F).log 2>&1
-
-# Approved sailing news feeds (RSS/Atom) at 02:00 UTC
-0 2 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape raw-capture --source sailing-news" >> $LOG_DIR/raw_news_$(date +\%F).log 2>&1
-
-# === DP-00-03: Nightly raw capture — Yacht Scoring + Manage2Sail (raw archives) ===
-# Both DP-00-03 sources at 02:30 UTC (inside 01:00–06:00 window)
-30 2 * * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape raw-capture --source dp-00-03" >> $LOG_DIR/raw_ys_m2s_$(date +\%F).log 2>&1
-
-# === OPS-02-14: UK / Solent coverage ===
-# YachtScoring results scraper — scheduled explicitly (the source is
-# enabled+approved and also carries an active Temporal schedule
-# `source-yachtscoring`; the cron is the operational belt-and-braces).
-# Nightly 03:15 UTC, inside the 01:00–06:00 collection window.
-15 3 * * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape raw-capture --source yachtscoring" >> $LOG_DIR/yachtscoring_$(date +\%F).log 2>&1
-
-# Solent coverage: weekly discovery + ingest (Sunday 04:00 UTC, in-window).
-# Discovers HRSC / Hamble / Solent-series + JOG result pages (queued into
-# event_discovery) and ingests JOG + Warsash results into race_results so the
-# Sun Fast 3300 and J/109 Solent fleets keep a current season of results.
-0 4 * * 0    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data solent-coverage --mode all" >> $LOG_DIR/solent_coverage_$(date +\%F).log 2>&1
-
-# Weekly cert discovery (Sunday 07:00 UTC)
-0 7 * * 0    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape certs --exhaustive" >> $LOG_DIR/certs_$(date +\%F).log 2>&1
-
-# Weekly PDF parsing (Sunday 08:00 UTC)
-0 8 * * 0    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data parse-certs" >> $LOG_DIR/parse_$(date +\%F).log 2>&1
-
-# === Race Results — All 13 SailSys clubs, every 30 min (incremental) ===
-*/30 * * * *  cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape results --source sailsys --all-clubs" >> $LOG_DIR/sailsys_$(date +\%F_\%H\%M).log 2>&1
-
-# Re-match unmatched results after each scrape cycle (offset by 20 min)
-20,50 * * * *  cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data rematch-results" >> $LOG_DIR/rematch_$(date +\%F_\%H\%M).log 2>&1
-
+# === Historical note ===
 # Tuesday 10:00 — UK results (RORC)
 # Note: RORC static HTML only covers 2007-2022; post-2023 needs SailRaceHQ
+# (superseded by the SailRaceHQ Temporal schedule; retained for reference)
 # 0 10 * * 2   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape results --source rorc" >> $LOG_DIR/rorc_$(date +\%F).log 2>&1
 
-# === Identity & Design Maintenance ===
-# Weekly: match new ORC certs to IRC boats (Sunday 05:00 UTC)
-0 5 * * 0    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data match-boats" >> $LOG_DIR/match_$(date +\%F).log 2>&1
-
-# Monthly: re-seed designs and backfill (1st of month 04:30 UTC)
-30 4 1 * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data seed-designs" >> $LOG_DIR/designs_$(date +\%F).log 2>&1
-
-# === Historical backfill ===
-# Monthly: Wayback Machine archive search (1st of month)
-0 4 1 * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape wayback" >> $LOG_DIR/wayback_$(date +\%F).log 2>&1
-
-# === Monitoring ===
-# Staleness watchdog (OPS-01-04): every 15 min, alert (email + admin banner)
-# when any source exceeds its freshness budget; 4 h cooldown per source;
-# recovery clears the alert; history retained in watchdog_alerts.
-*/15 * * * * cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape-watchdog" >> $LOG_DIR/watchdog_$(date +\%F).log 2>&1
-
-# Daily health check for the four active scrapers (DP-00-02): probes
-# TopYacht, SailSys, IRC TCC Listings and ORC for fetch success, reports
-# record counts + last-success timestamp per source, writes one run-log row
-# per source, and alerts within the same cycle on any failure.
-0 6 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scraper-health" >> $LOG_DIR/scraper_health_$(date +\%F).log 2>&1
-
-# Daily health check at 09:00 UTC with webhook notification
-0 9 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data health-check --notify" >> $LOG_DIR/health_$(date +\%F).log 2>&1
-
-# === Cleanup ===
+# === Host maintenance (not irc-data ingestion) ===
 # Delete logs older than 30 days (midnight)
 0 0 * * *    find /home/irc-data/logs -name "*.log" -mtime +30 -delete
+
+# Nightly production DB sync
 0 1 * * * /home/irc-data/scripts/sync-prod-db.sh >> /home/irc-data/logs/sync-prod-db.log 2>&1
+
+# Reboot bring-up helpers
 @reboot nohup /home/irc-data/scripts/scrape-everything.sh >> /home/irc-data/logs/scrape-master.log 2>&1 &
 @reboot nohup /home/irc-data/scripts/data-maintenance.sh >> /home/irc-data/logs/data-maintenance.log 2>&1 &
+
+# Weekly e2e checkout-flow smoke test (not ingestion)
 0 10 * * 1 cd $IRC_DATA_DIR && bash -c "export PYTHONPATH=src && $OP_ENV python3 -m pytest tests/e2e_checkout_flow.py -v --timeout=120" >> /home/irc-data/logs/e2e_$(date +\%Y\%m\%d).log 2>&1
-30 4 * * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data seed-design-designers" >> $LOG_DIR/identity_$(date +\%F).log 2>&1 && bash -c "$OP_ENV irc-data backfill-boat-identity" >> $LOG_DIR/identity_$(date +\%F).log 2>&1
