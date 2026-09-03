@@ -117,7 +117,17 @@ async def run_lane_worker_agent(worktree_path: str, task: dict, feedback: str = 
     import asyncio
     
     llm = LLM(
-        model=f"openai/{get_model_hint(MODEL_CODING_FAST)}",
+        # Trialling coding-deep (DeepSeek) for the main coding-worker role at
+        # Stuart's request, in place of coding-fast (GLM 5.2), 2026-09-03.
+        # A deliberate per-role default in code, not an env var — the prior
+        # blanket LITELLM_MODEL_HINT env var on the worker process overrode
+        # every role's own default identically, including the reviewer
+        # (line ~187, meant to default to review-independent) and the sprint
+        # manager (meant to default to coding-deep already) — both were
+        # silently running on coding-fast too, defeating the point of an
+        # independent reviewer. Revert to get_model_hint(MODEL_CODING_FAST)
+        # if this doesn't show better results.
+        model=f"openai/{get_model_hint(MODEL_CODING_DEEP)}",
         api_key=os.environ.get("LITELLM_API_KEY"),
         base_url=os.environ.get("LITELLM_BASE_URL"),
     )
