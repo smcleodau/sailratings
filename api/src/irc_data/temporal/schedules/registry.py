@@ -250,16 +250,24 @@ class ScheduleRegistry:
             actual_interval = None
         desired_interval = desired.spec.intervals[0].every
         actual_paused = bool(existing.schedule.state.paused)
+        actual_task_queue = getattr(existing.schedule.action, "task_queue", None)
+        desired_task_queue = desired.action.task_queue
 
         spec_changed = actual_interval != desired_interval
+        # A schedule created against a stale/scratch task queue (e.g. a
+        # per-test-run queue like "ops0102-test-<hex>" from a dev worktree)
+        # silently never runs — nothing listens on it — and this comparison
+        # was previously missing entirely, so no sync pass ever repaired it.
+        queue_changed = actual_task_queue is not None and actual_task_queue != desired_task_queue
         state_changed = actual_paused != desired_paused
 
-        if spec_changed:
+        if spec_changed or queue_changed:
             from temporalio.client import ScheduleUpdate
 
             async def _apply(input: Any) -> None:
                 new_schedule = input.description.schedule
                 new_schedule.spec = desired.spec
+                new_schedule.action.task_queue = desired_task_queue
                 input.schedule = ScheduleUpdate(schedule=new_schedule)
 
             await handle.update(_apply)
@@ -274,7 +282,7 @@ class ScheduleRegistry:
 
         if desired_paused:
             return "paused"
-        return "unpaused" if actual_paused else ("updated" if spec_changed else "unchanged")
+        return "unpaused" if actual_paused else ("updated" if (spec_changed or queue_changed) else "unchanged")
 
     async def pause_schedule(self, slug: str, note: str = "disabled in register") -> bool:
         """Pause the schedule for *slug*.  Returns True if it existed."""

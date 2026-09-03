@@ -34,7 +34,7 @@ from irc_data.temporal.activities import scrape_activities
 
 async def _ensure_sync_loop(client: Client) -> None:
     """Start the schedule sync loop workflow if it isn't already running."""
-    from temporalio.client import WorkflowIDReusePolicy
+    from temporalio.common import WorkflowIDReusePolicy
     from temporalio.service import RPCError, RPCStatusCode
 
     try:
@@ -43,7 +43,7 @@ async def _ensure_sync_loop(client: Client) -> None:
             args=[300, 0],
             id="schedule-sync-loop",
             task_queue=SOURCE_RUN_TASK_QUEUE,
-            id_reuse_policy=WorkflowIDReusePolicy.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+            id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
         )
         print("started ScheduleSyncLoopWorkflow")
     except RPCError as exc:  # already running

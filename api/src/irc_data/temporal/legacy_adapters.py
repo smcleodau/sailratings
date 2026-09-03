@@ -209,7 +209,7 @@ def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
     total = 0
     per_club: dict[str, int] = {}
     for club_name, club_id in CLUBS.items():
-        results = asyncio.run(scrape_club_irc_results(club_id=club_id, incremental=True))
+        results = asyncio.run(scrape_club_irc_results(club_id=club_id))
         per_club[club_name] = len(results or [])
         total += per_club[club_name]
     return {
@@ -478,6 +478,7 @@ async def run_legacy_source(record: Mapping[str, Any]) -> dict[str, Any] | None:
     ``None`` when no adapter is mapped for the slug (the caller records a
     ledger-only run).
     """
+    import asyncio
     import inspect
 
     slug = str(record.get("slug") or "")
@@ -485,7 +486,20 @@ async def run_legacy_source(record: Mapping[str, Any]) -> dict[str, Any] | None:
 
     adapter = adapter_for_slug(slug, mode=mode if isinstance(mode, str) else None)
     if adapter is not None:
-        return adapter.run(record)
+        # adapter.run() is sync, but most legacy runners (_run_sailsys,
+        # _run_topyacht, _run_isora, _run_rhkyc, _run_sailracehq, …) call
+        # asyncio.run() internally to drive an async scraper. Called
+        # directly here, that always raised "asyncio.run() cannot be
+        # called from a running event loop" — this coroutine already runs
+        # inside Temporal's activity event loop. Every source using this
+        # pattern failed every run, invisibly, until this was noticed
+        # (nothing had actually executed a scheduled run to surface it —
+        # see the schedule task-queue fix in registry.py). A thread has no
+        # event loop of its own, so the nested asyncio.run() inside the
+        # runner works there.
+        return await asyncio.get_event_loop().run_in_executor(
+            None, adapter.run, record
+        )
 
     adapter_class = record.get("adapter_class")
     if adapter_class:
