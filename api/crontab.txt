@@ -76,9 +76,11 @@ OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --en
 0 4 1 * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape wayback" >> $LOG_DIR/wayback_$(date +\%F).log 2>&1
 
 # === Monitoring ===
-# Staleness watchdog (OPS-01-04): every 15 min, alert (email + admin banner)
-# when any source exceeds its freshness budget; 4 h cooldown per source;
-# recovery clears the alert; history retained in watchdog_alerts.
+# Staleness watchdog (OPS-01-04 / OPS-02-03): every 15 min, fan an alert out
+# to Slack + email (secrets from the 1Password vault via $OP_ENV) when any
+# source exceeds its freshness budget (ORC/TCC/TopYacht 26h, SailSys 2h
+# run / 26h data, weekly 8d); 4 h cooldown per source; a recovery message is
+# sent on return; history retained in watchdog_alerts.
 */15 * * * * cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scrape-watchdog" >> $LOG_DIR/watchdog_$(date +\%F).log 2>&1
 
 # Daily health check for the four active scrapers (DP-00-02): probes
@@ -87,7 +89,12 @@ OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --en
 # per source, and alerts within the same cycle on any failure.
 0 6 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data scraper-health" >> $LOG_DIR/scraper_health_$(date +\%F).log 2>&1
 
-# Daily health check at 09:00 UTC with webhook notification
+# Daily heartbeat (OPS-02-03) at 09:00 UTC: post the report to Slack
+# (--notify) AND ping the dead-man URL ($DEADMAN_PING_URL). The external
+# dead-man monitor (healthchecks.io-style) is configured to alert if no ping
+# has arrived by 09:30 UTC — so if this cron job itself is dead (the silent-
+# failure mode), someone is paged next morning. Schedule must run before
+# 09:30 UTC.
 0 9 * * *    cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data health-check --notify" >> $LOG_DIR/health_$(date +\%F).log 2>&1
 
 # === Cleanup ===

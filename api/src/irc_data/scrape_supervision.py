@@ -4,8 +4,18 @@ Both the /justin/scrapers dashboard endpoint and the scrape-watchdog CLI
 read these — single source of truth for what's expected to run, how often,
 and the budget after which the data is considered stale.
 
-Budgets are intentionally generous compared to the cron cadence so a single
-missed run doesn't page anyone. Tune them as cron evolves.
+Freshness budgets (OPS-02-03) are the contract the watchdog enforces and
+the acceptance drill exercises:
+
+* ORC ``orc_api``   — 26 h   (daily 03:00 UTC cron + 2 h slack)
+* TCC ``irc_tcc``   — 26 h   (daily 06:00 UTC cron + 2 h slack)
+* SailSys           — 2 h run (every-30-min cron) / 26 h data
+* TopYacht          — 26 h   (daily 02:30 UTC cron + 2 h slack)
+* weekly sources    — 8 d    (weekly cron + 1 d slack)
+
+Budgets are intentionally ~1 cadence + a small slack so a single missed run
+doesn't page anyone, but a *day-long* silent outage (the 37-day outage this
+issue exists to prevent) always crosses the budget within one watchdog pass.
 """
 
 from __future__ import annotations
@@ -34,17 +44,21 @@ SOURCES: list[SourceConfig] = [
         source="sailsys",
         label="SailSys (AU clubs)",
         cadence_human="every 30 min",
+        # Run budget 2 h: a 30-min cron that hasn't succeeded in 2 h has
+        # missed ~4 runs — worth a page.
         run_within=timedelta(hours=2),
-        # AU autumn shoulder ~3 weeks between summer series end and winter
-        # series start, so a 21-day budget covers the natural lull. Beyond
-        # that, something is genuinely off — flag it.
-        data_within=timedelta(days=21),
+        # Data budget 26 h: results flow in daily during the season, so a
+        # full day with no new race rows is the "silent tap" signal. This is
+        # deliberately tighter than a multi-week seasonal lull so a genuine
+        # outage pages within a day; seasonal lulls are handled by the
+        # optional/manual sources below, not by loosening this budget.
+        data_within=timedelta(hours=26),
     ),
     SourceConfig(
         source="orc_api",
         label="ORC certificates",
         cadence_human="daily 03:00 UTC",
-        run_within=timedelta(hours=30),
+        run_within=timedelta(hours=26),
         # No data_within: orc_api writes to orc_certificates, not race_results,
         # so the current per-source data-tap query doesn't apply. Run-health
         # alone is sufficient signal here.
@@ -53,7 +67,7 @@ SOURCES: list[SourceConfig] = [
         source="irc_tcc",
         label="IRC TCC Listings",
         cadence_human="daily 06:00 UTC",
-        run_within=timedelta(hours=30),
+        run_within=timedelta(hours=26),
         # No data_within: irc_tcc writes to tcc_snapshots, not race_results.
         # Run-health (via ingestion_log) is the correct signal here.
     ),
@@ -61,8 +75,8 @@ SOURCES: list[SourceConfig] = [
         source="topyacht",
         label="TopYacht (AU/regattas)",
         cadence_human="daily 02:30 UTC",
-        run_within=timedelta(hours=30),
-        data_within=timedelta(days=21),
+        run_within=timedelta(hours=26),
+        data_within=timedelta(hours=26),
     ),
     SourceConfig(
         source="sailracehq",
