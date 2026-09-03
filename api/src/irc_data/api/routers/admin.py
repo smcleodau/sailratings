@@ -528,12 +528,36 @@ User message: {message}"""
 # ── Endpoints ────────────────────────────────────────────────────────────
 
 
+def _parse_dt(value: Any) -> _dt.datetime | None:
+    """Coerce a ledger timestamp to an aware UTC datetime.
+
+    Postgres returns aware ``datetime`` objects; SQLite (tests, the E2E
+    fixture) returns ISO strings. The freshness arithmetic below needs one
+    consistent shape.
+    """
+    if value is None:
+        return None
+    if isinstance(value, _dt.datetime):
+        dt = value
+    elif isinstance(value, str):
+        try:
+            dt = _dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_dt.timezone.utc)
+    return dt
+
+
 @router.get("/scrapers")
 async def list_scrapers(
     engine: Engine = Depends(get_db),
     authorization: str = Header(None),
 ):
-    """Summary of every scraper source. Reports TWO freshness signals:
+    """Summary of every scraper source (AD-01-06). Reports TWO freshness
+    signals:
 
     - `run_state` — has the scraper completed a run within its run_within
       budget? This is cron health. Stale = "the scraper isn't running."
@@ -542,34 +566,39 @@ async def list_scrapers(
       we'd expect from a seasonal lull."
 
     The overall `state` is the worst of the two.
+
+    Ledger reads go through the OPS-01-03 run ledger (dialect-portable
+    CASE WHEN aggregation, cutoffs bound as parameters) so the endpoint
+    behaves identically on Postgres (production) and SQLite (tests / the
+    E2E fixture rig). The data-tap signal keeps reading ``race_results``
+    directly; when that table is absent (minimal fixture schemas) the
+    signal degrades to "no rows on file" instead of taking the dashboard
+    down.
     """
     _verify_admin(authorization)
 
+    from irc_data.db.run_ledger import get_source_health_summary
     from irc_data.scrape_supervision import SOURCES
 
-    with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT source,
-                   MAX(started_at) AS last_started,
-                   MAX(completed_at) FILTER (WHERE status='completed') AS last_success,
-                   COUNT(*) FILTER (WHERE started_at > now() - interval '7 days') AS runs_7d,
-                   COUNT(*) FILTER (WHERE status='failed'
-                                    AND started_at > now() - interval '7 days') AS failed_7d,
-                   SUM(records_new) FILTER (WHERE started_at > now() - interval '7 days') AS new_records_7d
-            FROM ingestion_log
-            GROUP BY source
-        """)).fetchall()
-
-        # Last actually-imported race row per source. The "data tap" signal.
-        data_rows = conn.execute(text("""
-            SELECT source, MAX(created_at) AS last_new_data, MAX(event_date) AS latest_event_date
-            FROM race_results
-            GROUP BY source
-        """)).fetchall()
-
-    by_src = {r.source: r for r in rows}
-    by_src_data = {r.source: r for r in data_rows}
     now = _dt.datetime.now(_dt.timezone.utc)
+
+    summary_rows = get_source_health_summary(engine, now=now)
+    by_src = {r["source"]: r for r in summary_rows}
+
+    # Last actually-imported race row per source. The "data tap" signal.
+    by_src_data: dict[str, Any] = {}
+    try:
+        with engine.connect() as conn:
+            data_rows = conn.execute(text("""
+                SELECT source, MAX(created_at) AS last_new_data, MAX(event_date) AS latest_event_date
+                FROM race_results
+                GROUP BY source
+            """)).fetchall()
+        by_src_data = {r.source: r for r in data_rows}
+    except Exception:
+        # race_results absent (tests / minimal fixtures) — the data-tap
+        # signal degrades to "no rows on file" rather than 500ing the page.
+        by_src_data = {}
 
     def _state(age: _dt.timedelta | None, budget: _dt.timedelta | None) -> str:
         if budget is None:
@@ -589,9 +618,9 @@ async def list_scrapers(
     for cfg in SOURCES:
         r = by_src.get(cfg.source)
         dr = by_src_data.get(cfg.source)
-        last_started = r.last_started if r else None
-        last_success = r.last_success if r else None
-        last_new_data = dr.last_new_data if dr else None
+        last_started = _parse_dt(r["last_started_at"]) if r else None
+        last_success = _parse_dt(r["last_completed_at"]) if r else None
+        last_new_data = _parse_dt(dr.last_new_data) if dr else None
         latest_event_date = dr.latest_event_date if dr else None
         run_age = (now - last_success) if last_success else None
         data_age = (now - last_new_data) if last_new_data else None
@@ -609,15 +638,19 @@ async def list_scrapers(
             "last_started": last_started.isoformat() if last_started else None,
             "last_success": last_success.isoformat() if last_success else None,
             "last_new_data": last_new_data.isoformat() if last_new_data else None,
-            "latest_event_date": latest_event_date.isoformat() if latest_event_date else None,
+            "latest_event_date": (
+                latest_event_date.isoformat()
+                if isinstance(latest_event_date, (_dt.datetime, _dt.date))
+                else (str(latest_event_date) if latest_event_date else None)
+            ),
             "run_age_seconds": int(run_age.total_seconds()) if run_age else None,
             "data_age_seconds": int(data_age.total_seconds()) if data_age else None,
             "run_state": run_state,
             "data_state": data_state,
             "state": state,
-            "runs_7d": int(r.runs_7d) if r else 0,
-            "failed_7d": int(r.failed_7d) if r else 0,
-            "new_records_7d": int(r.new_records_7d) if r and r.new_records_7d else 0,
+            "runs_7d": int(r["runs_7d"]) if r else 0,
+            "failed_7d": int(r["failed_7d"]) if r else 0,
+            "new_records_7d": int(r["rows_new_7d"] or 0) if r else 0,
             "optional": cfg.optional,
         })
 
@@ -626,15 +659,17 @@ async def list_scrapers(
     known = {s.source for s in SOURCES}
     for src, r in by_src.items():
         if src not in known:
-            run_age = (now - r.last_success) if r.last_success else None
+            last_started = _parse_dt(r["last_started_at"])
+            last_success = _parse_dt(r["last_completed_at"])
+            run_age = (now - last_success) if last_success else None
             out.append({
                 "source": src,
                 "label": src + " (uncatalogued)",
                 "cadence": "unknown",
                 "run_within_hours": None,
                 "data_within_hours": None,
-                "last_started": r.last_started.isoformat() if r.last_started else None,
-                "last_success": r.last_success.isoformat() if r.last_success else None,
+                "last_started": last_started.isoformat() if last_started else None,
+                "last_success": last_success.isoformat() if last_success else None,
                 "last_new_data": None,
                 "latest_event_date": None,
                 "run_age_seconds": int(run_age.total_seconds()) if run_age else None,
@@ -642,9 +677,9 @@ async def list_scrapers(
                 "run_state": "n/a",
                 "data_state": "n/a",
                 "state": "uncatalogued",
-                "runs_7d": int(r.runs_7d),
-                "failed_7d": int(r.failed_7d),
-                "new_records_7d": int(r.new_records_7d) if r.new_records_7d else 0,
+                "runs_7d": int(r["runs_7d"]),
+                "failed_7d": int(r["failed_7d"]),
+                "new_records_7d": int(r["rows_new_7d"] or 0),
                 "optional": False,
             })
 
@@ -706,27 +741,27 @@ async def scraper_runs(
             {"source": source, "limit": limit},
         ).fetchall()
 
-    return {
-        "source": source,
-        "runs": [
-            {
-                "id": r.id,
-                "started_at": r.started_at.isoformat() if r.started_at else None,
-                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
-                "duration_seconds": (
-                    (r.completed_at - r.started_at).total_seconds()
-                    if r.completed_at and r.started_at else None
-                ),
-                "status": r.status,
-                "records_found": r.records_found,
-                "records_new": r.records_new,
-                "records_updated": r.records_updated,
-                "error_message": r.error_message,
-                "metadata": r.metadata,
-            }
-            for r in rows
-        ],
-    }
+    runs = []
+    for r in rows:
+        started_at = _parse_dt(r.started_at)
+        completed_at = _parse_dt(r.completed_at)
+        runs.append({
+            "id": r.id,
+            "started_at": started_at.isoformat() if started_at else None,
+            "completed_at": completed_at.isoformat() if completed_at else None,
+            "duration_seconds": (
+                (completed_at - started_at).total_seconds()
+                if completed_at and started_at else None
+            ),
+            "status": r.status,
+            "records_found": r.records_found,
+            "records_new": r.records_new,
+            "records_updated": r.records_updated,
+            "error_message": r.error_message,
+            "metadata": r.metadata,
+        })
+
+    return {"source": source, "runs": runs}
 
 
 @router.get("/discovery")
