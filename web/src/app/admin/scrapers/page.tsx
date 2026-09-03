@@ -1,7 +1,14 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { CheckCircle2, AlertTriangle, Clock, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import {
+  CheckCircleIcon,
+  AlertTriangleIcon,
+  ClockIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  RefreshIcon,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -92,14 +99,14 @@ function SignalPill({ label, state }: { label: string; state: SignalState }) {
   if (state === "fresh") {
     return (
       <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-status-success)]">
-        <CheckCircle2 size={11} strokeWidth={2} /> {label}: fresh
+        <CheckCircleIcon size={11} strokeWidth={2} /> {label}: fresh
       </span>
     );
   }
   if (state === "stale" || state === "never") {
     return (
       <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-status-warning)]">
-        <AlertTriangle size={11} strokeWidth={2} /> {label}: {state}
+        <AlertTriangleIcon size={11} strokeWidth={2} /> {label}: {state}
       </span>
     );
   }
@@ -217,9 +224,9 @@ export default function ScrapersPage() {
             value={pwInput}
             onChange={(e) => setPwInput(e.target.value)}
             placeholder="Admin password"
-            className="w-full h-12 px-4 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
           />
-          <button type="submit" className="w-full h-12 bg-[var(--sr-link)] text-white text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm">
+          <button type="submit" className="w-full h-12 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm">
             Sign in
           </button>
         </form>
@@ -249,7 +256,7 @@ export default function ScrapersPage() {
               disabled={loading}
               className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
             >
-              <RefreshCw size={12} strokeWidth={2} className={loading ? "animate-spin" : ""} />
+              <RefreshIcon size={12} strokeWidth={2} className={loading ? "animate-spin" : ""} />
               Refresh
             </button>
           </div>
@@ -357,7 +364,7 @@ export default function ScrapersPage() {
                 </div>
 
                 <div className="text-right admin-mono-font text-[11px] text-[var(--sr-text-secondary)] flex justify-end">
-                  {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {open ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
                 </div>
               </div>
 
@@ -410,7 +417,7 @@ export default function ScrapersPage() {
           <div className="p-6 text-[13px] text-[var(--sr-text-tertiary)] italic flex items-center gap-2">
             {loading ? (
               <>
-                <Clock size={14} className="animate-spin" />
+                <ClockIcon size={14} className="animate-spin" />
                 Loading sources…
               </>
             ) : (
@@ -457,11 +464,11 @@ export default function ScrapersPage() {
                 <div>
                   {a.status === "active" ? (
                     <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-status-warning)]">
-                      <AlertTriangle size={11} strokeWidth={2} /> active
+                      <AlertTriangleIcon size={11} strokeWidth={2} /> active
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-status-success)]">
-                      <CheckCircle2 size={11} strokeWidth={2} /> recovered
+                      <CheckCircleIcon size={11} strokeWidth={2} /> recovered
                     </span>
                   )}
                 </div>

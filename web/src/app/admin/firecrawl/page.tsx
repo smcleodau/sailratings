@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  ExternalLink,
-  Loader2,
-  RefreshCw,
-} from "lucide-react";
+  AlertTriangleIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ExternalLinkIcon,
+  SpinnerIcon,
+  RefreshIcon,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -128,7 +128,7 @@ function StatCard({
       ? "text-[var(--sr-status-success)]"
       : "text-[var(--sr-text-primary)]";
   return (
-    <div className="border border-[var(--sr-link)]/12 bg-white rounded-[4px] px-4 py-3 shadow-sm">
+    <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] px-4 py-3 shadow-sm">
       <p className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
         {label}
       </p>
@@ -160,7 +160,7 @@ function StatusPill({ status }: { status: CallStatus }) {
   if (status === "ok") {
     return (
       <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-status-success)]">
-        <CheckCircle2 size={11} strokeWidth={2} /> ok
+        <CheckCircleIcon size={11} strokeWidth={2} /> ok
       </span>
     );
   }
@@ -173,7 +173,7 @@ function StatusPill({ status }: { status: CallStatus }) {
   }
   return (
     <span className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-action-pressed)]">
-      <AlertTriangle size={11} strokeWidth={2} /> error
+      <AlertTriangleIcon size={11} strokeWidth={2} /> error
     </span>
   );
 }
@@ -275,11 +275,11 @@ export default function FirecrawlPage() {
             value={pwInput}
             onChange={(e) => setPwInput(e.target.value)}
             placeholder="Admin password"
-            className="w-full h-12 px-4 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
           />
           <button
             type="submit"
-            className="w-full h-12 bg-[var(--sr-link)] text-white text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
+            className="w-full h-12 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
           >
             Sign in
           </button>
@@ -338,7 +338,7 @@ export default function FirecrawlPage() {
               disabled={loading}
               className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
             >
-              <RefreshCw
+              <RefreshIcon
                 size={12}
                 strokeWidth={2}
                 className={loading ? "animate-spin" : ""}
@@ -356,7 +356,7 @@ export default function FirecrawlPage() {
 
         {/* Credit-balance banner — the authoritative number from Firecrawl */}
         {summary?.remaining ? (
-          <div className="border border-[var(--sr-link)]/12 bg-white rounded-[4px] shadow-sm p-4 mb-6">
+          <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm p-4 mb-6">
             <div className="flex items-baseline justify-between gap-4 flex-wrap mb-2">
               <span className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
                 Credit balance · Firecrawl
@@ -409,9 +409,9 @@ export default function FirecrawlPage() {
           </div>
         ) : (
           <div className="border border-[var(--sr-status-warning)]/30 bg-[var(--sr-status-warning)]/10 px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px]">
-            <AlertTriangle size={16} className="text-[var(--sr-status-warning)] flex-shrink-0 mt-0.5" />
+            <AlertTriangleIcon size={16} className="text-[var(--sr-status-warning)] flex-shrink-0 mt-0.5" />
             <p className="text-[13px] text-[var(--sr-status-warning)]">
-              Credit balance unavailable. Check that FIRECRAWL_API_KEY is set on
+              Credit balance unavailable. CheckIcon that FIRECRAWL_API_KEY is set on
               the API process.
             </p>
           </div>
@@ -423,16 +423,16 @@ export default function FirecrawlPage() {
             className={`border px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px] ${
               summary.daily.daily_capped
                 ? "border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5"
-                : "border-[var(--sr-link)]/12 bg-white"
+                : "border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)]"
             } shadow-sm`}
           >
             {summary.daily.daily_capped ? (
-              <AlertTriangle
+              <AlertTriangleIcon
                 size={16}
                 className="text-[var(--sr-action-pressed)] flex-shrink-0 mt-0.5"
               />
             ) : (
-              <CheckCircle2
+              <CheckCircleIcon
                 size={16}
                 className="text-[var(--sr-status-success)] flex-shrink-0 mt-0.5"
               />
@@ -521,7 +521,7 @@ export default function FirecrawlPage() {
               {domains.length} domain{domains.length === 1 ? "" : "s"}
             </span>
           </div>
-          <div className="border border-[var(--sr-link)]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
+          <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm overflow-hidden">
             <div className="grid grid-cols-[1.6fr_70px_70px_90px_90px_120px] gap-4 px-4 py-3 bg-[var(--sr-surface-interactive)] border-b border-[var(--sr-link)]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium">
               <span>Domain</span>
               <span className="text-right">Calls</span>
@@ -591,7 +591,7 @@ export default function FirecrawlPage() {
                   className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border rounded-[4px] transition-colors ${
                     statusFilter === s
                       ? "border-[var(--sr-link)] text-[var(--sr-link)] bg-[var(--sr-surface-card)]"
-                      : "border-[var(--sr-link)]/12 text-[var(--sr-text-label)] bg-white hover:text-[var(--sr-text-primary)]"
+                      : "border-[var(--sr-link)]/12 text-[var(--sr-text-label)] bg-[var(--sr-surface-card)] hover:text-[var(--sr-text-primary)]"
                   }`}
                 >
                   {s}
@@ -605,7 +605,7 @@ export default function FirecrawlPage() {
                   className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border rounded-[4px] transition-colors ${
                     modeFilter === m
                       ? "border-[var(--sr-link)] text-[var(--sr-link)] bg-[var(--sr-surface-card)]"
-                      : "border-[var(--sr-link)]/12 text-[var(--sr-text-label)] bg-white hover:text-[var(--sr-text-primary)]"
+                      : "border-[var(--sr-link)]/12 text-[var(--sr-text-label)] bg-[var(--sr-surface-card)] hover:text-[var(--sr-text-primary)]"
                   }`}
                 >
                   {m}
@@ -614,7 +614,7 @@ export default function FirecrawlPage() {
             </div>
           </div>
 
-          <div className="border border-[var(--sr-link)]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
+          <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm overflow-hidden">
             <div className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-3 bg-[var(--sr-surface-interactive)] border-b border-[var(--sr-link)]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium">
               <span>When</span>
               <span>Mode</span>
@@ -627,13 +627,13 @@ export default function FirecrawlPage() {
 
             {loading && recent.length === 0 && (
               <div className="px-4 py-6 flex items-center gap-2 text-[var(--sr-text-label)] text-[13px]">
-                <Loader2 size={14} className="animate-spin" /> Loading…
+                <SpinnerIcon size={14} className="animate-spin" /> Loading…
               </div>
             )}
 
             {!loading && recent.length === 0 && (
               <div className="px-4 py-8 text-[13px] text-[var(--sr-text-label)] italic text-center flex items-center justify-center gap-2">
-                <Clock size={14} /> No calls match the current filter.
+                <ClockIcon size={14} /> No calls match the current filter.
               </div>
             )}
 
@@ -660,7 +660,7 @@ export default function FirecrawlPage() {
                     <span className="truncate">
                       {c.url.replace(/^https?:\/\/(www\.)?/, "")}
                     </span>
-                    <ExternalLink size={10} className="flex-shrink-0 text-[var(--sr-text-label)]" />
+                    <ExternalLinkIcon size={10} className="flex-shrink-0 text-[var(--sr-text-label)]" />
                   </a>
                   {c.error_message && (
                     <p

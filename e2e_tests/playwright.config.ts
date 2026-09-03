@@ -8,6 +8,15 @@ import { join } from 'path';
    to the known project test-mode keys (pk_test / sk_test).  These are
    test-mode keys, not production secrets. */
 function readClerkKeys(): Record<string, string> {
+  // AD-01-12: when E2E=1 the shell/chrome specs run with Clerk disabled so
+  // admin routes render the internal token gate (AD-01-01) instead of
+  // redirecting to a hosted sign-in page. Auth itself is out of scope here.
+  if (process.env.E2E === '1') {
+    return {
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: '',
+      CLERK_SECRET_KEY: '',
+    };
+  }
   const keylessPath = join(__dirname, '..', 'web', '.clerk', '.tmp', 'keyless.json');
   let publishableKey = 'pk_test_cXVpY2std29sZi02MS5jbGVyay5hY2NvdW50cy5kZXYk';
   let secretKey = 'sk_test_FCH3fSjcXfiTOtx4IcE52aSNNYYNXPYYn0xDRxBBQa';
@@ -62,11 +71,13 @@ export default defineConfig({
     },
   ],
 
-  /* Run your local dev server before starting the tests */
+  /* Run your local dev server before starting the tests. When E2E=1 we
+     allow reusing an already-running dev server (handy for iterating on the
+     AD-01-12 shell spec locally); in CI it always boots its own. */
   webServer: {
     command: 'cd ../web && PORT=4201 npm run dev',
     url: 'http://localhost:4201',
-    reuseExistingServer: false,
+    reuseExistingServer: process.env.E2E === '1',
     timeout: 180 * 1000,
     env: readClerkKeys(),
   },

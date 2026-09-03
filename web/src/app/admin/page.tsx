@@ -2,20 +2,17 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Send,
-  ChevronDown,
-  ChevronRight,
-  Check,
-  X,
-  Database,
-  AlertTriangle,
-  MessageSquare,
-  Plus,
-  Trash2,
-  PanelLeftClose,
-  PanelLeftOpen,
-} from "lucide-react";
-import { useAdminNavRightSlot } from "@/components/AdminNavShell";
+  SendIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CheckIcon,
+  XIcon,
+  DatabaseIcon,
+  AlertTriangleIcon,
+  PlusIcon,
+  TrashIcon,
+  PanelLeftIcon,
+} from "@/components/admin/AdminIcons";
 
 /* ── Types ────────────────────────────────────────────────────────────── */
 
@@ -104,7 +101,7 @@ async function* streamAdminChat(
 
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
-      throw new Error("Unauthorized. Check your password.");
+      throw new Error("Unauthorized. CheckIcon your password.");
     }
     throw new Error(`Request failed: ${res.status}`);
   }
@@ -279,12 +276,12 @@ function LoginGate({ onLogin }: { onLogin: (token: string) => void }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
-            className="w-full h-12 px-4 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="w-full h-12 px-4 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
           />
           {error && <p className="text-[13px] text-[var(--sr-action-pressed)]">{error}</p>}
           <button
             type="submit"
-            className="w-full h-12 bg-[var(--sr-link)] text-white text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
+            className="w-full h-12 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[13px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
           >
             Sign In
           </button>
@@ -310,12 +307,12 @@ function QueryCard({ query }: { query: QueryData }) {
         : "";
 
   return (
-    <div className="my-3 border border-[var(--sr-link)]/12 bg-white rounded-[4px] shadow-sm overflow-hidden">
+    <div className="my-3 border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-[var(--sr-surface-interactive)] transition-colors"
       >
-        <Database
+        <DatabaseIcon
           size={14}
           strokeWidth={1.5}
           className={`flex-shrink-0 ${query.error ? "text-[var(--sr-action-pressed)]" : "text-[var(--sr-link)]"}`}
@@ -329,9 +326,9 @@ function QueryCard({ query }: { query: QueryData }) {
           </span>
         )}
         {expanded ? (
-          <ChevronDown size={14} className="text-[var(--sr-text-label)] flex-shrink-0" />
+          <ChevronDownIcon size={14} className="text-[var(--sr-text-label)] flex-shrink-0" />
         ) : (
-          <ChevronRight size={14} className="text-[var(--sr-text-label)] flex-shrink-0" />
+          <ChevronRightIcon size={14} className="text-[var(--sr-text-label)] flex-shrink-0" />
         )}
       </button>
       {expanded && (
@@ -406,7 +403,7 @@ function QueryCard({ query }: { query: QueryData }) {
               {showSql ? "Hide SQL" : "Show SQL"}
             </button>
             {showSql && (
-              <pre className="admin-mono-font text-[10px] text-[var(--sr-text-primary)] whitespace-pre-wrap break-all mt-2 leading-relaxed bg-white p-3 border border-[var(--sr-link)]/12 rounded-[4px]">
+              <pre className="admin-mono-font text-[10px] text-[var(--sr-text-primary)] whitespace-pre-wrap break-all mt-2 leading-relaxed bg-[var(--sr-surface-card)] p-3 border border-[var(--sr-link)]/12 rounded-[4px]">
                 {query.sql}
               </pre>
             )}
@@ -431,7 +428,7 @@ function ProposedChangeCard({
   return (
     <div className="my-3 border border-[var(--sr-status-warning)]/40 bg-[var(--sr-status-warning)]/12 rounded-[10px] overflow-hidden">
       <div className="px-4 py-3 border-b border-[var(--sr-status-warning)]/20 flex items-center gap-2">
-        <AlertTriangle
+        <AlertTriangleIcon
           size={14}
           strokeWidth={1.5}
           className="text-[var(--sr-status-warning)] flex-shrink-0"
@@ -450,7 +447,7 @@ function ProposedChangeCard({
         <p className="text-[13px] text-[var(--sr-text-primary)] mb-3">
           {change.data.explanation}
         </p>
-        <pre className="admin-mono-font text-[10px] text-[var(--sr-status-warning)] whitespace-pre-wrap break-all bg-white/50 px-3 py-2 rounded-[4px] leading-relaxed border border-[var(--sr-status-warning)]/20">
+        <pre className="admin-mono-font text-[10px] text-[var(--sr-status-warning)] whitespace-pre-wrap break-all bg-[var(--sr-surface-card)] px-3 py-2 rounded-[4px] leading-relaxed border border-[var(--sr-status-warning)]/20">
           {change.data.sql}
         </pre>
       </div>
@@ -460,16 +457,16 @@ function ProposedChangeCard({
           <div className="flex items-center gap-3">
             <button
               onClick={onConfirm}
-              className="flex items-center gap-1.5 px-4 py-2 bg-[var(--sr-link)] text-white text-[11px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
+              className="flex items-center gap-1.5 px-4 py-2 bg-[var(--sr-link)] text-[var(--sr-text-primary)] text-[11px] font-medium hover:bg-[var(--sr-focus)] transition-colors rounded-[4px] shadow-sm"
             >
-              <Check size={14} strokeWidth={2} />
+              <CheckIcon size={14} strokeWidth={2} />
               Confirm
             </button>
             <button
               onClick={onReject}
               className="flex items-center gap-1.5 px-4 py-2 border border-[var(--sr-link)]/30 text-[var(--sr-link)] text-[11px] hover:bg-[var(--sr-surface-card)] transition-colors rounded-[4px]"
             >
-              <X size={14} strokeWidth={2} />
+              <XIcon size={14} strokeWidth={2} />
               Reject
             </button>
           </div>
@@ -487,7 +484,7 @@ function ProposedChangeCard({
         )}
         {change.status === "executed" && change.result && (
           <div className="flex items-center gap-2">
-            <Check size={14} strokeWidth={2} className="text-[var(--sr-status-success)]" />
+            <CheckIcon size={14} strokeWidth={2} className="text-[var(--sr-status-success)]" />
             <span className="text-[11px] text-[var(--sr-status-success)] font-medium">
               Executed successfully. {change.result.rows_affected} row
               {change.result.rows_affected !== 1 ? "s" : ""} affected.
@@ -501,7 +498,7 @@ function ProposedChangeCard({
         )}
         {change.status === "error" && (
           <div className="flex items-center gap-2">
-            <X size={14} strokeWidth={2} className="text-[var(--sr-action-pressed)]" />
+            <XIcon size={14} strokeWidth={2} className="text-[var(--sr-action-pressed)]" />
             <span className="text-[11px] text-[var(--sr-action-pressed)] font-medium">
               {change.error || "Execution failed."}
             </span>
@@ -553,14 +550,14 @@ function ConversationSidebar({
           className="text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors mb-4"
           title="Show conversations"
         >
-          <PanelLeftOpen size={18} strokeWidth={1.5} />
+          <PanelLeftIcon size={18} strokeWidth={1.5} />
         </button>
         <button
           onClick={onNew}
           className="text-[var(--sr-link)] hover:text-[var(--sr-focus)] transition-colors"
           title="New conversation"
         >
-          <Plus size={18} strokeWidth={2} />
+          <PlusIcon size={18} strokeWidth={2} />
         </button>
       </div>
     );
@@ -574,7 +571,7 @@ function ConversationSidebar({
           onClick={onNew}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--sr-surface-card)] text-[var(--sr-link)] text-[13px] font-medium hover:bg-[var(--sr-surface-interactive)] transition-colors rounded-[4px]"
         >
-          <Plus size={14} strokeWidth={2} />
+          <PlusIcon size={14} strokeWidth={2} />
           New
         </button>
         <button
@@ -582,7 +579,7 @@ function ConversationSidebar({
           className="text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors"
           title="Hide sidebar"
         >
-          <PanelLeftClose size={18} strokeWidth={1.5} />
+          <PanelLeftIcon size={18} strokeWidth={1.5} />
         </button>
       </div>
 
@@ -598,8 +595,8 @@ function ConversationSidebar({
             key={conv.id}
             className={`group flex items-start gap-2 px-3 py-2.5 cursor-pointer border-b border-[var(--sr-link)]/5 transition-colors ${
               conv.id === activeId
-                ? "bg-white border-l-2 border-l-[var(--sr-link)]"
-                : "hover:bg-white border-l-2 border-l-transparent"
+                ? "bg-[var(--sr-surface-card)] border-l-2 border-l-[var(--sr-link)]"
+                : "hover:bg-[var(--sr-surface-interactive)] border-l-2 border-l-transparent"
             }`}
             onClick={() => onSelect(conv.id)}
           >
@@ -624,7 +621,7 @@ function ConversationSidebar({
               className="opacity-0 group-hover:opacity-100 text-[var(--sr-text-label)] hover:text-[var(--sr-action-pressed)] transition-all flex-shrink-0 mt-0.5"
               title="Delete conversation"
             >
-              <Trash2 size={13} strokeWidth={1.5} />
+              <TrashIcon size={13} strokeWidth={1.5} />
             </button>
           </div>
         ))}
@@ -980,13 +977,6 @@ export default function AdminChatPage() {
 
   /* ── Render ─────────────────────────────────────────────────────────── */
 
-  useAdminNavRightSlot(
-    conversationId ? (
-      <span className="data-mono text-xs text-brass/60 bg-brass/10 px-2 py-0.5 rounded-sm">
-        #{conversationId}
-      </span>
-    ) : null,
-  );
 
   if (!token) {
     return <LoginGate onLogin={handleLogin} />;
@@ -1019,7 +1009,7 @@ export default function AdminChatPage() {
               {/* Empty state with examples */}
               {messages.length === 0 && (
                 <div className="py-16 text-center">
-                  <Database
+                  <DatabaseIcon
                     size={32}
                     strokeWidth={1}
                     className="text-[var(--sr-text-label)]/40 mx-auto mb-6"
@@ -1038,7 +1028,7 @@ export default function AdminChatPage() {
                       <button
                         key={prompt}
                         onClick={() => sendMessage(prompt)}
-                        className="text-left px-4 py-3 bg-white border border-[var(--sr-link)]/12 hover:bg-[var(--sr-surface-interactive)] hover:border-[var(--sr-link)]/25 transition-colors rounded-[4px] shadow-sm"
+                        className="text-left px-4 py-3 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/12 hover:bg-[var(--sr-surface-interactive)] hover:border-[var(--sr-link)]/25 transition-colors rounded-[4px] shadow-sm"
                       >
                         <span className="text-[13px] text-[var(--sr-text-primary)]">
                           {prompt}
@@ -1136,15 +1126,15 @@ export default function AdminChatPage() {
                   placeholder="Ask about the data..."
                   disabled={isStreaming}
                   rows={1}
-                  className="flex-1 min-h-[44px] max-h-[160px] resize-none px-4 py-3 bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all disabled:opacity-50 rounded-[4px] shadow-sm"
+                  className="flex-1 min-h-[44px] max-h-[160px] resize-none px-4 py-3 bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] text-[13px] placeholder:text-[var(--sr-text-label)] focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all disabled:opacity-50 rounded-[4px] shadow-sm"
                 />
                 <button
                   onClick={() => sendMessage(input)}
                   disabled={isStreaming || !input.trim()}
-                  className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-[var(--sr-link)] text-white hover:bg-[var(--sr-focus)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed rounded-[4px] shadow-sm"
-                  aria-label="Send message"
+                  className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-[var(--sr-link)] text-[var(--sr-text-primary)] hover:bg-[var(--sr-focus)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed rounded-[4px] shadow-sm"
+                  aria-label="SendIcon message"
                 >
-                  <Send size={16} strokeWidth={2} />
+                  <SendIcon size={16} strokeWidth={2} />
                 </button>
               </div>
               <p className="admin-mono-font text-[9px] tracking-[0.16em] uppercase text-[var(--sr-text-label)] mt-3 text-center">

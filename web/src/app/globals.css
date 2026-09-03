@@ -22,6 +22,45 @@
   --font-mono: var(--sr-font-data);
 }
 
+/* ── Admin theme (SPEC-22 §1) — Dusk ground ──────────────────────────────
+   Every /admin route mounts inside .admin-theme (see AdminNavShell).
+   The admin console sits on the Dusk family — a deep indigo ground that is
+   visually distinct from the public Abyss/Paper site so operators always
+   know which surface they are on. Semantic tokens mirror the SailRatings
+   DS names so components read the same in either theme. */
+.admin-theme {
+  color-scheme: dark;
+
+  /* Dusk family */
+  --sr-dusk-ground: #0d0b16;
+  --sr-dusk-card: #14111f;
+  --sr-dusk-raised: #1b1729;
+  --sr-dusk-interactive: #221c34;
+  --sr-dusk-border-subtle: rgba(124, 107, 212, 0.14);
+  --sr-dusk-border-strong: rgba(124, 107, 212, 0.28);
+
+  /* Semantic remapping onto the SailRatings DS tokens */
+  --sr-surface-page: var(--sr-dusk-ground);
+  --sr-surface-card: var(--sr-dusk-card);
+  --sr-surface-deep: var(--sr-dusk-raised);
+  --sr-surface-raised: var(--sr-dusk-raised);
+  --sr-surface-interactive: var(--sr-dusk-interactive);
+  --sr-border-subtle: var(--sr-dusk-border-subtle);
+  --sr-border-strong: var(--sr-dusk-border-strong);
+  --sr-focus: var(--sr-dusk);
+  --sr-link: #a89cf0;
+  --sr-link-hover: #cdc4ff;
+
+  /* Status ramp on Dusk ground (danger uses the signal family) */
+  --sr-status-info: var(--sr-open-water);
+  --sr-status-success: var(--sr-starboard);
+  --sr-status-warning: var(--sr-buoy);
+  --sr-status-danger: var(--sr-signal-500);
+
+  background-color: var(--sr-dusk-ground);
+  color: var(--sr-text-primary);
+}
+
 /* ── Clerk Components Integration with SailRatings UI System ────────────── */
 .cl-card {
   background-color: var(--sr-surface-card) !important;

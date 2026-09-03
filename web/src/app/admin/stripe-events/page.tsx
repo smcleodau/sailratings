@@ -8,7 +8,13 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, CreditCard, Loader2, RefreshCw } from "lucide-react";
+import {
+  AlertTriangleIcon,
+  CheckCircleIcon,
+  CreditCardIcon,
+  SpinnerIcon,
+  RefreshIcon,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -114,7 +120,7 @@ export default function StripeEventsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="heading-display text-xl text-[var(--sr-text-primary)] flex items-center gap-2">
-            <CreditCard size={18} /> Stripe webhook events
+            <CreditCardIcon size={18} /> Stripe webhook events
           </h1>
           <p className="text-[12px] text-[var(--sr-text-tertiary)] mt-1">
             Idempotency ledger for POST /v1/checkout/webhook. Parked events
@@ -136,7 +142,7 @@ export default function StripeEventsPage() {
             disabled={loading}
             className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 border border-[var(--sr-border-subtle)] rounded-[3px] text-[var(--sr-text-primary)] hover:bg-[var(--sr-surface-interactive)]/40 disabled:opacity-50"
           >
-            {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {loading ? <SpinnerIcon size={13} className="animate-spin" /> : <RefreshIcon size={13} />}
             Refresh
           </button>
         </div>
@@ -173,7 +179,7 @@ export default function StripeEventsPage() {
 
       {error && (
         <p className="text-[12px] text-[var(--sr-action-pressed)] flex items-center gap-1">
-          <AlertTriangle size={13} /> {error}
+          <AlertTriangleIcon size={13} /> {error}
         </p>
       )}
 
@@ -222,7 +228,7 @@ export default function StripeEventsPage() {
                   <td className="px-3 py-2 text-[11px] text-[var(--sr-action-pressed)] max-w-[320px] truncate">
                     {e.error ?? (
                       <span className="inline-flex items-center gap-1 text-[var(--sr-text-tertiary)]">
-                        <CheckCircle2 size={11} /> —
+                        <CheckCircleIcon size={11} /> —
                       </span>
                     )}
                   </td>

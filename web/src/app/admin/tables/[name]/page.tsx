@@ -2,8 +2,14 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, RefreshCw, ChevronLeft, ChevronRight, Lock, Check, X } from "lucide-react";
-import { useAdminNavRightSlot } from "@/components/AdminNavShell";
+import {
+  ArrowLeftIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  LockIcon,
+  CheckIcon,
+  XIcon,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 
@@ -155,16 +161,6 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
     }
   };
 
-  useAdminNavRightSlot(
-    <button
-      onClick={() => void load()}
-      disabled={loading}
-      className="text-white/40 hover:text-white/80 disabled:opacity-30"
-      title="Refresh"
-    >
-      <RefreshCw size={16} strokeWidth={1.5} className={loading ? "animate-spin" : ""} />
-    </button>,
-  );
 
   if (!token) {
     return (
@@ -185,7 +181,7 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
             className="text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors"
             title="Back to all tables"
           >
-            <ArrowLeft size={16} strokeWidth={1.5} />
+            <ArrowLeftIcon size={16} strokeWidth={1.5} />
           </Link>
           <h1 className="heading-display text-lg text-[var(--sr-text-primary)] truncate">
             <span className="admin-mono-font text-[13px] tracking-normal">{name}</span>
@@ -197,7 +193,7 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
           )}
           {data && !data.editable && (
             <span className="inline-flex items-center gap-1.5 admin-mono-font text-[9px] uppercase tracking-wider text-[var(--sr-status-warning)] bg-[var(--sr-status-warning)]/15 px-2 py-0.5 rounded-[2px]">
-              <Lock size={10} />
+              <LockIcon size={10} />
               read-only
             </span>
           )}
@@ -217,14 +213,14 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
               }
             }}
             placeholder="search… or col=val, col~text"
-            className="bg-white border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] placeholder:text-[var(--sr-text-label)] px-3 py-1.5 text-[11px] admin-mono-font w-72 focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
+            className="bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/25 text-[var(--sr-text-primary)] placeholder:text-[var(--sr-text-label)] px-3 py-1.5 text-[11px] admin-mono-font w-72 focus:border-[var(--sr-link)] focus:ring-1 focus:ring-[var(--sr-link)]/20 outline-none transition-all rounded-[4px] shadow-sm"
           />
           <button
             onClick={() => {
               setOffset(0);
               setFilterApplied(filter);
             }}
-            className="admin-mono-font text-[10px] uppercase tracking-wider bg-[var(--sr-link)] text-white hover:bg-[var(--sr-focus)] px-3 py-1.5 rounded-[4px] shadow-sm transition-colors"
+            className="admin-mono-font text-[10px] uppercase tracking-wider bg-[var(--sr-link)] text-[var(--sr-text-primary)] hover:bg-[var(--sr-focus)] px-3 py-1.5 rounded-[4px] shadow-sm transition-colors"
           >
             Filter
           </button>
@@ -290,7 +286,7 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
                                   if (e.key === "Enter") void saveEdit();
                                   if (e.key === "Escape") cancelEdit();
                                 }}
-                                className="bg-white border border-[var(--sr-link)] text-[var(--sr-text-primary)] px-1.5 py-0.5 text-[11px] admin-mono-font w-44 focus:outline-none rounded-[2px] shadow-sm"
+                                className="bg-[var(--sr-surface-card)] border border-[var(--sr-link)] text-[var(--sr-text-primary)] px-1.5 py-0.5 text-[11px] admin-mono-font w-44 focus:outline-none rounded-[2px] shadow-sm"
                               />
                               <button
                                 onClick={() => void saveEdit()}
@@ -298,14 +294,14 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
                                 className="text-[var(--sr-link)] hover:text-[var(--sr-focus)] disabled:opacity-30"
                                 title="Save"
                               >
-                                <Check size={11} />
+                                <CheckIcon size={11} />
                               </button>
                               <button
                                 onClick={cancelEdit}
                                 className="text-[var(--sr-text-label)] hover:text-[var(--sr-action-pressed)]"
                                 title="Cancel"
                               >
-                                <X size={11} />
+                                <XIcon size={11} />
                               </button>
                             </span>
                           ) : v === null || v === undefined ? (
@@ -344,16 +340,16 @@ export default function TableEditor({ params }: { params: Promise<{ name: string
             <button
               onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
               disabled={offset === 0}
-              className="admin-mono-font text-[10px] uppercase tracking-wider bg-white border border-[var(--sr-link)]/20 text-[var(--sr-link)] hover:bg-[var(--sr-surface-card)] px-3 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1 rounded-[4px] shadow-sm"
+              className="admin-mono-font text-[10px] uppercase tracking-wider bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/20 text-[var(--sr-link)] hover:bg-[var(--sr-surface-card)] px-3 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1 rounded-[4px] shadow-sm"
             >
-              <ChevronLeft size={12} /> Prev
+              <ChevronLeftIcon size={12} /> Prev
             </button>
             <button
               onClick={() => setOffset(offset + PAGE_SIZE)}
               disabled={offset + PAGE_SIZE >= data.total}
-              className="admin-mono-font text-[10px] uppercase tracking-wider bg-white border border-[var(--sr-link)]/20 text-[var(--sr-link)] hover:bg-[var(--sr-surface-card)] px-3 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1 rounded-[4px] shadow-sm"
+              className="admin-mono-font text-[10px] uppercase tracking-wider bg-[var(--sr-surface-card)] border border-[var(--sr-link)]/20 text-[var(--sr-link)] hover:bg-[var(--sr-surface-card)] px-3 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed inline-flex items-center gap-1 rounded-[4px] shadow-sm"
             >
-              Next <ChevronRight size={12} />
+              Next <ChevronRightIcon size={12} />
             </button>
           </div>
         </div>
