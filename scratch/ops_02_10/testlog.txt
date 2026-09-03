@@ -1,0 +1,10 @@
+tests/test_ops_02_10_orc_fleet_stats.py::TestOrcDetailCoverage::test_cdl_allowances_coverage_above_95pct PASSED [ 11%]
+tests/test_ops_02_10_orc_fleet_stats.py::TestOrcDetailCoverage::test_gph_coverage_is_at_upstream_ceiling PASSED [ 22%]
+tests/test_ops_02_10_orc_fleet_stats.py::TestRefreshViewsIncludesOrc::test_orc_views_in_refresh_list PASSED [ 33%]
+tests/test_ops_02_10_orc_fleet_stats.py::TestRefreshViewsIncludesOrc::test_orc_matviews_exist_and_populated PASSED [ 44%]
+tests/test_ops_02_10_orc_fleet_stats.py::TestFleetEndpointOrcStats::test_countries_endpoint_carries_orc_block PASSED [ 55%]
+tests/test_ops_02_10_orc_fleet_stats.py::TestFleetEndpointOrcStats::test_country_endpoint_returns_orc_stats_for_dual_rated_design PASSED [ 66%]
+tests/test_ops_02_10_orc_fleet_stats.py::TestFleetEndpointOrcStats::test_country_endpoint_rows_carry_dual_rated_orc_fields PASSED [ 77%]
+tests/scrapers/test_orc_detail_backfill.py::test_backfill_drains_latest_snapshot_only PASSED [ 88%]
+tests/migrations/test_canonical_chain.py::test_single_head PASSED        [100%]
+======================== 9 passed, 3 warnings in 2.37s =========================

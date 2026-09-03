@@ -541,6 +541,9 @@ def refresh_materialized_views(engine: Engine) -> list[str]:
         "mv_within_class_stats",
         "mv_boat_performance_summary",
         "mv_tcc_drift",
+        # OPS-02-10: ORC analytics surface (created in migration 0030).
+        "mv_orc_design_stats",
+        "mv_orc_country_fleet",
     ]
     refreshed = []
     with engine.begin() as conn:

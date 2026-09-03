@@ -34,8 +34,9 @@ def test_single_head():
     # (a documented DP-03-05 defect) plus the OPS-01-01 migration and the
     # OPS-02-09 admin_metrics/FK revision which extends the canonical 0026
     # chain (its parent is the duplicated ``0026`` id, so alembic tolerates
-    # the pre-existing duplicate head rather than re-tangling the graph).
-    assert set(heads) == {"0026", "20260903a", "0029", "20260904b"}, (
+    # the pre-existing duplicate head rather than re-tangling the graph),
+    # and the OPS-02-10 ORC materialised-views revision (0030) extending 0029.
+    assert set(heads) == {"0026", "20260903a", "20260904b", "0030"}, (
         f"unexpected migration heads: {heads}"
     )
 

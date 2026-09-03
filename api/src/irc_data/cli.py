@@ -1545,8 +1545,20 @@ def scrape_orc(ctx, country, snapshot_date, no_archive):
         "default --limit to 500 for nightly runs."
     ),
 )
+@click.option(
+    "--concurrency",
+    "-c",
+    type=int,
+    default=3,
+    show_default=True,
+    help=(
+        "Max in-flight RMS fetches.  Requests still pass the shared 2s "
+        "rate limiter; concurrency only overlaps server latency.  "
+        "data.orc.org policy cap is 3 (cadence.DOMAIN_CONCURRENCY_CAPS)."
+    ),
+)
 @click.pass_context
-def scrape_orc_detail(ctx, limit, backlog):
+def scrape_orc_detail(ctx, limit, backlog, concurrency):
     """Backfill ORC certificate detail data (GPH, CDL, polars) from DownBoatRMS API."""
     import asyncio
 
@@ -1559,7 +1571,7 @@ def scrape_orc_detail(ctx, limit, backlog):
     console.print("Backfilling ORC certificate details (GPH, CDL, dimensions, polars)...")
     if backlog:
         console.print(f"  Mode: backlog (limit={limit})")
-    stats = asyncio.run(backfill_orc_details(limit=limit))
+    stats = asyncio.run(backfill_orc_details(limit=limit, concurrency=concurrency))
 
     console.print(f"\n[green]ORC detail backfill complete:[/green]")
     console.print(f"  Certs missing data: {stats['total_missing']}")
