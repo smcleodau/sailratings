@@ -202,22 +202,58 @@ def _run_tcc(record: Mapping[str, Any]) -> Mapping[str, Any]:
     return {"records_written": 0, "downloaded": str(path)}
 
 
+def _last_successful_run_since(slug: str) -> "date | None":
+    """The finished_at date of the last successful ``source_runs`` row.
+
+    Used to pass ``since=`` to scrapers that support incremental fetching.
+    Returns None (full scrape) when there's no prior success — including
+    the very first run, which is expected to be a genuine one-off backfill.
+    """
+    from sqlalchemy import text
+
+    from irc_data.db.connection import get_engine
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT finished_at FROM source_runs"
+                " WHERE source_slug = :slug AND status = 'success'"
+                " AND finished_at IS NOT NULL"
+                " ORDER BY finished_at DESC LIMIT 1"
+            ),
+            {"slug": slug},
+        ).first()
+    return row[0].date() if row and row[0] else None
+
+
 def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
     """SailSys results, all clubs (legacy ``scrape results --source sailsys --all-clubs``)."""
     import asyncio
 
     from irc_data.scrapers.sailsys import CLUBS, scrape_club_irc_results
 
+    # Every run before this fix did a full, unbounded, all-history scrape
+    # of every club — fine as a one-off backfill, not for a 30-minute
+    # cadence source (observed: over an hour and still going on the first
+    # real run under working infrastructure). Only the very first run per
+    # club now does the full pull; every run after uses `since` from the
+    # last success, matching what the underlying scraper already supports
+    # (it was just never wired up — see scrape_club_irc_results's own
+    # `since` parameter docs: "Only scrape races after this date
+    # (incremental mode)").
+    since = _last_successful_run_since("sailsys")
     total = 0
     per_club: dict[str, int] = {}
     for club_name, club_id in CLUBS.items():
-        results = asyncio.run(scrape_club_irc_results(club_id=club_id))
+        results = asyncio.run(scrape_club_irc_results(club_id=club_id, since=since))
         per_club[club_name] = len(results or [])
         total += per_club[club_name]
     return {
         "records_written": 0,  # import happens via result_import downstream
         "records_found": total,
         "clubs": per_club,
+        "since": str(since) if since else None,
     }
 
 
