@@ -130,6 +130,53 @@ interface Dashboard {
   availability: Record<string, boolean>;
 }
 
+/* ── AD-01-15: nightly admin_metrics facts (completeness + census) ──────── */
+
+interface CompletenessMeter {
+  table: string;
+  column: string;
+  pct_non_null: number | null;
+  rows_total: number | null;
+  non_null: number | null;
+  buoy: boolean;
+  computed_at: string | null;
+}
+
+interface HealthCompleteness {
+  available: boolean;
+  reason?: string;
+  computed_at: string | null;
+  buoy_threshold_pct: number;
+  meters: CompletenessMeter[];
+  events: {
+    venue_null_rate: number | null;
+    venue_pct_non_null: number | null;
+    raw_name_sample: string[];
+  };
+  last_run: { computed_at: string | null; rows_written: number; status: string } | null;
+}
+
+interface TableCensusRow {
+  name: string;
+  rows: number;
+  total_bytes: number;
+  table_bytes: number;
+  index_bytes: number;
+  empty: boolean;
+}
+
+interface HealthTables {
+  available: boolean;
+  reason?: string;
+  as_of?: string;
+  source?: string;
+  table_count?: number;
+  tables: TableCensusRow[];
+  empty_tables: string[];
+  built_never_written: { name: string; rows: number; total_bytes: number; data_cols: number }[];
+  built_never_written_available?: boolean;
+}
+
 /* ── Formatting helpers ────────────────────────────────────────────────── */
 
 function fmtDateTime(iso: string | null | undefined): string {
@@ -153,6 +200,25 @@ function fmtAge(seconds: number | null | undefined): string {
 function fmtPct(x: number | null | undefined): string {
   if (x == null) return "—";
   return `${(x * 100).toFixed(1)}%`;
+}
+
+function fmtPctValue(x: number | null | undefined): string {
+  // AD-01-15 meters are already 0..100 percentages (not 0..1 ratios).
+  if (x == null) return "—";
+  return `${x.toFixed(1)}%`;
+}
+
+function fmtBytes(n: number | null | undefined): string {
+  if (n == null) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} kB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function fmtCount(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return n.toLocaleString("en-GB");
 }
 
 /* ── Small presentational bits ─────────────────────────────────────────── */
@@ -398,12 +464,333 @@ function IncidentRow({
   );
 }
 
+/* ── AD-01-15: completeness meters + census ────────────────────────────── */
+
+function Meter({ pct, buoy }: { pct: number | null; buoy: boolean }) {
+  // A meter under the buoy threshold gets the warning treatment.
+  const w = pct == null ? 0 : Math.max(0, Math.min(100, pct));
+  const colour =
+    pct == null
+      ? "bg-[var(--sr-border-subtle)]"
+      : buoy
+        ? "bg-[var(--sr-status-warning)]"
+        : "bg-[var(--sr-status-success)]";
+  return (
+    <div className="h-[6px] w-full rounded-full bg-[var(--sr-surface-interactive)] overflow-hidden">
+      <div
+        className={`h-full rounded-full transition-all ${colour}`}
+        style={{ width: `${w}%` }}
+      />
+    </div>
+  );
+}
+
+function CompletenessSection({
+  completeness,
+}: {
+  completeness: HealthCompleteness | null;
+}) {
+  if (!completeness) return null;
+  if (!completeness.available) {
+    return (
+      <section data-testid="completeness-section">
+        <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3">
+          Completeness — from nightly admin_metrics
+        </h2>
+        <div className="border border-[var(--sr-border-subtle)] rounded-[4px] bg-[var(--sr-surface-card)] px-4 py-3 text-[12px] text-[var(--sr-text-tertiary)]">
+          {completeness.reason ?? "No nightly admin_metrics yet."}
+        </div>
+      </section>
+    );
+  }
+  const meters = completeness.meters ?? [];
+  const buoyCount = meters.filter((m) => m.buoy).length;
+  return (
+    <section data-testid="completeness-section">
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
+          Completeness — from nightly admin_metrics
+        </h2>
+        <span className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-tertiary)]">
+          {completeness.computed_at
+            ? `nightly · ${fmtDateTime(completeness.computed_at)}`
+            : "nightly · never run"}
+          {completeness.last_run
+            ? ` · ${completeness.last_run.rows_written} metrics`
+            : ""}
+        </span>
+      </div>
+      <div className="border border-[var(--sr-border-subtle)] rounded-[4px] bg-[var(--sr-surface-card)] overflow-hidden">
+        <table className="w-full text-[12px]" data-testid="completeness-meters">
+          <thead>
+            <tr className="text-left admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-label)] border-b border-[var(--sr-border-subtle)]">
+              <th className="px-3 py-2">Column</th>
+              <th className="px-3 py-2 w-[38%]">Non-null</th>
+              <th className="px-3 py-2 text-right">% non-null</th>
+              <th className="px-3 py-2 text-right">Non-null / rows</th>
+            </tr>
+          </thead>
+          <tbody>
+            {meters.length ? (
+              meters.map((m) => (
+                <tr
+                  key={`${m.table}.${m.column}`}
+                  data-testid={`meter-${m.column}`}
+                  data-buoy={m.buoy ? "true" : "false"}
+                  className="border-b border-[var(--sr-border-subtle)]/60 last:border-0"
+                >
+                  <td className="px-3 py-2 text-[var(--sr-text-primary)] font-medium">
+                    {m.table}.{m.column}
+                    {m.buoy && (
+                      <span
+                        className="ml-2 admin-mono-font text-[8px] uppercase tracking-[0.12em] text-[var(--sr-status-warning)] border border-[var(--sr-status-warning)]/40 rounded-[3px] px-1 py-[1px]"
+                        title={`Under the ${completeness.buoy_threshold_pct}% buoy threshold`}
+                      >
+                        buoy
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <Meter pct={m.pct_non_null} buoy={m.buoy} />
+                  </td>
+                  <td
+                    className={`px-3 py-2 text-right admin-mono-font text-[11px] ${
+                      m.buoy
+                        ? "text-[var(--sr-status-warning)]"
+                        : "text-[var(--sr-text-primary)]"
+                    }`}
+                  >
+                    {fmtPctValue(m.pct_non_null)}
+                  </td>
+                  <td className="px-3 py-2 text-right admin-mono-font text-[11px] text-[var(--sr-text-secondary)]">
+                    {fmtCount(m.non_null)} / {fmtCount(m.rows_total)}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-3 py-6 text-center text-[var(--sr-text-tertiary)]"
+                >
+                  No nightly completeness metrics yet — run{" "}
+                  <code className="admin-mono-font">irc-data admin-metrics</code>.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {buoyCount > 0 && (
+        <p className="mt-2 text-[11px] text-[var(--sr-status-warning)]">
+          {buoyCount} meter{buoyCount === 1 ? "" : "s"} under the{" "}
+          {completeness.buoy_threshold_pct}% buoy threshold — these are the
+          columns the data plane does not actually know yet.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function EventsFactsSection({
+  completeness,
+}: {
+  completeness: HealthCompleteness | null;
+}) {
+  if (!completeness?.available) return null;
+  const ev = completeness.events;
+  return (
+    <section data-testid="events-facts-section">
+      <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3">
+        Events — venue &amp; raw names
+      </h2>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="border border-[var(--sr-border-subtle)] rounded-[4px] bg-[var(--sr-surface-card)] px-4 py-3">
+          <div className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-label)] mb-2">
+            Venue completeness
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="heading-display text-2xl text-[var(--sr-text-primary)]">
+              {fmtPctValue(ev.venue_pct_non_null)}
+            </span>
+            <span className="text-[11px] text-[var(--sr-text-secondary)]">
+              non-null venue
+            </span>
+          </div>
+          <p className="text-[11px] text-[var(--sr-text-tertiary)] mt-1">
+            venue-null rate {fmtPctValue(ev.venue_null_rate)} — from the
+            nightly admin_metrics stream.
+          </p>
+        </div>
+        <div className="border border-[var(--sr-border-subtle)] rounded-[4px] bg-[var(--sr-surface-card)] px-4 py-3">
+          <div className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-label)] mb-2">
+            Raw event names (sample, as ingested)
+          </div>
+          {ev.raw_name_sample?.length ? (
+            <ul
+              className="space-y-1 text-[11px] admin-mono-font text-[var(--sr-text-secondary)] max-h-40 overflow-y-auto"
+              data-testid="raw-name-sample"
+            >
+              {ev.raw_name_sample.map((n, i) => (
+                <li key={i} className="truncate">
+                  {n}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[12px] text-[var(--sr-text-tertiary)]">
+              No raw-name sample in the stream yet.
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TablesCensusSection({ tables }: { tables: HealthTables | null }) {
+  if (!tables) return null;
+  if (!tables.available) {
+    return (
+      <section data-testid="tables-census-section">
+        <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] mb-3">
+          Tables — pg_stat census
+        </h2>
+        <div className="border border-[var(--sr-border-subtle)] rounded-[4px] bg-[var(--sr-surface-card)] px-4 py-3 text-[12px] text-[var(--sr-text-tertiary)]">
+          {tables.reason ?? "Table census unavailable."}
+        </div>
+      </section>
+    );
+  }
+  const census = tables.tables ?? [];
+  const empties = new Set(tables.empty_tables ?? []);
+  return (
+    <section data-testid="tables-census-section">
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
+          Tables — pg_stat census ({tables.table_count ?? census.length})
+        </h2>
+        <span className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-tertiary)]">
+          {tables.source} · {tables.as_of ? fmtDateTime(tables.as_of) : "—"}
+        </span>
+      </div>
+
+      {/* Empty + built-never-written flags */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-4">
+        <div className="border border-[var(--sr-border-subtle)] rounded-[4px] bg-[var(--sr-surface-card)] px-4 py-3">
+          <div className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-label)] mb-2">
+            Empty tables (rows = 0)
+          </div>
+          {tables.empty_tables?.length ? (
+            <ul
+              className="space-y-1 text-[11px] admin-mono-font text-[var(--sr-status-warning)] max-h-40 overflow-y-auto"
+              data-testid="empty-tables-list"
+            >
+              {tables.empty_tables.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[12px] text-[var(--sr-text-tertiary)]">
+              No empty tables — every user table holds rows.
+            </p>
+          )}
+        </div>
+        <div className="border border-[var(--sr-border-subtle)] rounded-[4px] bg-[var(--sr-surface-card)] px-4 py-3">
+          <div className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-label)] mb-2">
+            Built, never written
+          </div>
+          {tables.built_never_written_available === false ? (
+            <p className="text-[12px] text-[var(--sr-text-tertiary)]">
+              View not present (pre-0033 schema).
+            </p>
+          ) : tables.built_never_written?.length ? (
+            <ul
+              className="space-y-1 text-[11px] admin-mono-font text-[var(--sr-text-secondary)] max-h-40 overflow-y-auto"
+              data-testid="built-never-written-list"
+            >
+              {tables.built_never_written.map((t) => (
+                <li key={t.name} className="flex justify-between gap-2">
+                  <span className="text-[var(--sr-status-warning)]">{t.name}</span>
+                  <span className="text-[var(--sr-text-tertiary)]">
+                    {t.data_cols} data cols · {fmtBytes(t.total_bytes)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[12px] text-[var(--sr-text-tertiary)]">
+              No built-but-never-written tables detected.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="border border-[var(--sr-border-subtle)] rounded-[4px] overflow-x-auto bg-[var(--sr-surface-card)]">
+        <table className="w-full text-[12px]" data-testid="tables-census">
+          <thead>
+            <tr className="text-left admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-label)] border-b border-[var(--sr-border-subtle)]">
+              <th className="px-3 py-2">Table</th>
+              <th className="px-3 py-2 text-right">Rows (est)</th>
+              <th className="px-3 py-2 text-right">Total</th>
+              <th className="px-3 py-2 text-right">Table</th>
+              <th className="px-3 py-2 text-right">Indexes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {census.map((t) => (
+              <tr
+                key={t.name}
+                data-testid={`census-${t.name}`}
+                data-empty={t.empty ? "true" : "false"}
+                className="border-b border-[var(--sr-border-subtle)]/60 last:border-0"
+              >
+                <td className="px-3 py-2 text-[var(--sr-text-primary)] font-medium">
+                  {t.name}
+                  {empties.has(t.name) && (
+                    <span
+                      className="ml-2 admin-mono-font text-[8px] uppercase tracking-[0.12em] text-[var(--sr-status-warning)] border border-[var(--sr-status-warning)]/40 rounded-[3px] px-1 py-[1px]"
+                      data-testid={`empty-flag-${t.name}`}
+                    >
+                      empty
+                    </span>
+                  )}
+                </td>
+                <td
+                  className={`px-3 py-2 text-right admin-mono-font text-[11px] ${
+                    t.empty
+                      ? "text-[var(--sr-status-warning)]"
+                      : "text-[var(--sr-text-primary)]"
+                  }`}
+                >
+                  {fmtCount(t.rows)}
+                </td>
+                <td className="px-3 py-2 text-right admin-mono-font text-[11px] text-[var(--sr-text-secondary)]">
+                  {fmtBytes(t.total_bytes)}
+                </td>
+                <td className="px-3 py-2 text-right admin-mono-font text-[11px] text-[var(--sr-text-secondary)]">
+                  {fmtBytes(t.table_bytes)}
+                </td>
+                <td className="px-3 py-2 text-right admin-mono-font text-[11px] text-[var(--sr-text-secondary)]">
+                  {fmtBytes(t.index_bytes)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 /* ── Page ──────────────────────────────────────────────────────────────── */
 
 export default function DataHealthPage() {
   const [token, setToken] = useState<string | null>(null);
   const [pwInput, setPwInput] = useState("");
   const [data, setData] = useState<Dashboard | null>(null);
+  const [completeness, setCompleteness] = useState<HealthCompleteness | null>(null);
+  const [tablesHealth, setTablesHealth] = useState<HealthTables | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -440,12 +827,32 @@ export default function DataHealthPage() {
     }
   }, [token]);
 
+  // AD-01-15: nightly admin_metrics facts.  Both endpoints are cheap
+  // (stats views + the precomputed stream) — each must stay well under the
+  // page's 200 ms budget; failures degrade to an honest empty state rather
+  // than breaking the page.
+  const fetchHealthFacts = useCallback(async () => {
+    if (!token) return;
+    const authz = { Authorization: `Bearer ${token}` };
+    try {
+      const [cRes, tRes] = await Promise.all([
+        fetch(`${API_BASE}/admin/health/completeness`, { headers: authz }),
+        fetch(`${API_BASE}/admin/health/tables`, { headers: authz }),
+      ]);
+      if (cRes.ok) setCompleteness(await cRes.json());
+      if (tRes.ok) setTablesHealth(await tRes.json());
+    } catch {
+      // Non-fatal: the dashboard still renders without the health facts.
+    }
+  }, [token]);
+
   useEffect(() => {
     fetchDashboard();
+    fetchHealthFacts();
     if (!token) return;
     const id = setInterval(fetchDashboard, 60000);
     return () => clearInterval(id);
-  }, [fetchDashboard, token]);
+  }, [fetchDashboard, fetchHealthFacts, token]);
 
   if (!token) {
     return (
@@ -691,6 +1098,14 @@ export default function DataHealthPage() {
             </table>
           </div>
         </section>
+
+        {/* AD-01-15 — completeness meters from the nightly admin_metrics
+            stream, the events facts, and the pg_stat table census.  All
+            render from precomputed facts; nothing here scans a base table
+            on request. */}
+        <CompletenessSection completeness={completeness} />
+        <EventsFactsSection completeness={completeness} />
+        <TablesCensusSection tables={tablesHealth} />
 
         {/* Identity uncertainty + lineage gaps side by side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

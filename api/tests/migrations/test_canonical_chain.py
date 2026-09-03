@@ -36,8 +36,10 @@ def test_single_head():
     # chain (its parent is the duplicated ``0026`` id, so alembic tolerates
     # the pre-existing duplicate head rather than re-tangling the graph),
     # the OPS-02-10 ORC materialised-views revision (0030) extending 0029,
-    # and the OPS-02-06 daily-credit-cap revision (0031) extending 20260905a.
-    assert set(heads) == {"0026", "0029", "0030", "0031", "20260903a"}, (
+    # the OPS-02-06 daily-credit-cap revision (0031) extending 20260905a,
+    # and the AD-01-15 nightly-admin_metrics revision (0033) which merges the
+    # two previously-diverged heads 0030 and 0032 into one.
+    assert set(heads) == {"0026", "0029", "0033", "20260903a"}, (
         f"unexpected migration heads: {heads}"
     )
 

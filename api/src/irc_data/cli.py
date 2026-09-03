@@ -3771,3 +3771,45 @@ from irc_data.operations.cli import ops_soak as _ops_soak  # noqa: E402
 
 cli.add_command(_ops_soak)
 
+
+@cli.command(name="admin-metrics")
+@click.option(
+    "--sample-size",
+    default=None,
+    type=int,
+    help="How many raw event names to sample (default: module constant).",
+)
+@click.pass_context
+def admin_metrics_cmd(ctx, sample_size):
+    """AD-01-15 nightly job — compute completeness facts into admin_metrics.
+
+    One aggregate scan of ``boats`` (every column in a single pass), one of
+    ``events`` (venue null rate + a bounded raw-name sample), then an append
+    into the ``admin_metrics`` stream.  The /v1/admin/health/* endpoints and
+    the data-health page read the precomputed stream, so no page query runs
+    a heavy base-table scan on request.
+
+    Nightly entry point (crontab/Temporal):
+        irc-data admin-metrics
+    """
+    from irc_data.ops import admin_metrics as adm
+
+    engine = ctx.obj["engine"]
+    kwargs = {}
+    if sample_size is not None:
+        kwargs["sample_size"] = sample_size
+    summary = adm.compute_nightly_metrics(engine, **kwargs)
+    console.print(
+        f"[green]admin_metrics nightly[/green] — {summary['rows_written']} rows "
+        f"written at {summary['computed_at']}"
+    )
+    for col, m in summary.get("completeness", {}).items():
+        pct = m.get("pct_non_null")
+        pct_s = f"{pct:.1f}%" if pct is not None else "—"
+        console.print(f"  {col:<28} {pct_s:>7} non-null ({m.get('non_null')}/{m.get('rows_total')})")
+    ev = summary.get("events", {})
+    if ev.get("venue_null_rate") is not None:
+        console.print(f"  events.venue null rate          {ev['venue_null_rate']:.1f}%")
+    if summary.get("skipped"):
+        console.print(f"  [yellow]skipped:[/yellow] {summary['skipped']}")
+
