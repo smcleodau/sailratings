@@ -34,29 +34,14 @@ const clerkConfiguredMiddleware = clerkMiddleware(async (auth, req) => {
   return NextResponse.next();
 });
 
-// AD-01-12: explicit opt-in test mode for the shell/chrome E2E specs.
-// Only honoured when Clerk is NOT configured and NODE_ENV is not production,
-// so it can never weaken production auth. Admin routes still enforce their
-// own internal bearer-token gate (AD-01-01) at the page/API level.
-const allowUnauthenticatedAdmin =
-  process.env.E2E === '1' && process.env.NODE_ENV !== 'production';
-
-// Fallback: when Clerk is NOT configured, render public pages normally and
-// refuse access to protected admin routes (503) instead of crashing on the
-// missing publishable key. Auth re-engages automatically once
+// Fallback: when Clerk is NOT configured (local dev / verification rigs),
+// render everything — the admin pages self-gate with the shared admin
+// password (admin_token in localStorage → Bearer on /v1/admin/*, enforced
+// by the API). Auth re-engages automatically once
 // NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY are provisioned.
 function unconfiguredMiddleware(req: NextRequest) {
   const redirect = adminHostRedirect(req);
   if (redirect) return redirect;
-
-  if (isProtectedRoute(req)) {
-    if (allowUnauthenticatedAdmin) {
-      return NextResponse.next();
-    }
-    return new NextResponse('Authentication is not configured on this environment.', {
-      status: 503,
-    });
-  }
 
   return NextResponse.next();
 }

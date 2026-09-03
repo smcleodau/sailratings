@@ -38,7 +38,7 @@ app.add_middleware(
 )
 
 # Import and register routers
-from irc_data.api.routers import adjudication, admin, admin_overview, admin_tables, analytics, boats, checkout, corrections, data_health, designs, events, fleet, health, insights, pipeline, quality_gates, reconciliation, reports, run_ledger, scrapers, search, sources, stats, surveys, swarm, what_if  # noqa: E402
+from irc_data.api.routers import adjudication, admin, admin_customers, admin_overview, admin_tables, analytics, boats, checkout, corrections, data_health, designs, events, fleet, health, insights, pipeline, quality_gates, reconciliation, reports, run_ledger, scrapers, search, sources, stats, surveys, swarm, what_if  # noqa: E402
 
 app.include_router(swarm.router, prefix="/v1/swarm", tags=["Swarm"])
 app.include_router(search.router, prefix="/v1", tags=["Search"])
@@ -56,6 +56,7 @@ app.include_router(pipeline.router, prefix="/v1", tags=["Pipeline"])
 app.include_router(surveys.router, prefix="/v1", tags=["Surveys"])
 app.include_router(admin.router, prefix="/v1", tags=["Admin"])
 app.include_router(admin_overview.router, prefix="/v1", tags=["Admin"])
+app.include_router(admin_customers.router, prefix="/v1", tags=["Admin"])
 app.include_router(scrapers.router, prefix="/v1", tags=["Admin"])
 app.include_router(run_ledger.router, prefix="/v1", tags=["Admin"])
 app.include_router(reconciliation.router, prefix="/v1", tags=["Admin"])

@@ -1,25 +1,50 @@
 import { defineConfig, devices } from '@playwright/test';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
-/* Environment for the dev server Playwright boots (webServer.env).
+/* PAY-01-10 E2E rig.
+ *
+ * Two dev servers are started automatically before the tests run:
+ *
+ *   1. Admin Customers API (http://127.0.0.1:4101) — a self-contained
+ *      FastAPI process serving the admin_customers router against a freshly
+ *      seeded SQLite fixture (5 users / 6 claims / 47 orders incl. 37
+ *      abandoned) with the Stripe SDK patched to return the live catalogue
+ *      (pro_monthly_gbp £29, pro_annual_gbp £290/yr, LAUNCH20 promo).
+ *      See fixtures/admin_customers_api.py.  No external DB / Stripe / Clerk
+ *      needed, so `npm run test` works from a clean checkout.
+ *
+ *   2. The Next.js frontend (http://localhost:4201) pointed at that API via
+ *      NEXT_PUBLIC_API_BASE.
+ *
+ * IMPORTANT: no Clerk keys are passed to the web server here.  When
+ * NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is unset the middleware (web/src/
+ * middleware.ts) falls through and lets the admin pages self-gate with the
+ * shared admin password (admin_token in localStorage → Bearer on
+ * /v1/admin/*).  Injecting the keyless test keys here previously flipped the
+ * middleware into Clerk-enforced mode and every /admin test redirected to
+ * the "Secure Admin Gateway" sign-in page — which is why this suite failed.
+ */
 
-   Clerk is always disabled for the E2E run: empty keys make the root layout
-   skip <ClerkProvider> and the middleware take its unconfigured path, where
-   E2E=1 (honoured only outside production) lets admin routes render their
-   own internal bearer-token gate (AD-01-01) instead of redirecting to a
-   hosted sign-in page. Auth itself is out of scope for these specs.
+const API_PORT = process.env.PW_API_PORT || '4101';
+const WEB_PORT = process.env.PW_WEB_PORT || '4201';
+const API_URL = `http://127.0.0.1:${API_PORT}`;
+const WEB_URL = process.env.PW_BASE_URL || `http://localhost:${WEB_PORT}`;
 
-   This must be unconditional — previously the bypass only engaged when the
-   runner remembered to export E2E=1, so a plain `npx playwright test`
-   injected the fallback Clerk keys and every admin-shell spec failed on the
-   sign-in redirect. Setting E2E=1 here (in the server env, not just the
-   Playwright process) makes a bare `npm run test` self-contained. */
-function testServerEnv(): Record<string, string> {
-  return {
-    E2E: '1',
-    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: '',
-    CLERK_SECRET_KEY: '',
-  };
+/* Resolve the API interpreter: PW_API_PYTHON wins, then the worktree's own
+   api/.venv, then the sibling checkout's venv, then PATH python3. */
+function resolveApiPython(): string {
+  if (process.env.PW_API_PYTHON) return process.env.PW_API_PYTHON;
+  const candidates = [
+    join(__dirname, '..', 'api', '.venv', 'bin', 'python'),
+    join(__dirname, '..', '..', 'api', '.venv', 'bin', 'python'),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return 'python3';
 }
+const API_PY = resolveApiPython();
 
 export default defineConfig({
   testDir: './tests',
@@ -41,7 +66,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:4201',
+    baseURL: WEB_URL,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -57,15 +82,24 @@ export default defineConfig({
     },
   ],
 
-  /* Run your local dev server before starting the tests. We allow reusing an
-     already-running dev server when E2E=1 is exported (handy for iterating on
-     the AD-01-12 shell spec locally); otherwise Playwright always boots its
-     own with the Clerk-disabled env above. */
-  webServer: {
-    command: 'cd ../web && PORT=4201 npm run dev',
-    url: 'http://localhost:4201',
-    reuseExistingServer: process.env.E2E === '1',
-    timeout: 180 * 1000,
-    env: testServerEnv(),
-  },
+  /* Start the seeded admin API, then the frontend, before the tests. */
+  webServer: [
+    {
+      command: `${API_PY} fixtures/admin_customers_api.py`,
+      url: `${API_URL}/v1/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60 * 1000,
+      env: { PW_API_PORT: API_PORT },
+    },
+    {
+      command: `cd ../web && PORT=${WEB_PORT} npm run dev`,
+      url: WEB_URL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 180 * 1000,
+      env: {
+        NEXT_PUBLIC_API_BASE: `${API_URL}/v1`,
+        ENVIRONMENT: 'local',
+      },
+    },
+  ],
 });

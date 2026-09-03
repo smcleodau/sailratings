@@ -28,7 +28,25 @@ const SECTIONS = [
         !p.startsWith("/admin/discovery") &&
         !p.startsWith("/admin/firecrawl") &&
         !p.startsWith("/admin/identity") &&
-        !p.startsWith("/admin/data-health")),
+        !p.startsWith("/admin/data-health") &&
+        !p.startsWith("/admin/users") &&
+        !p.startsWith("/admin/orders") &&
+        !p.startsWith("/admin/billing")),
+  },
+  {
+    href: "/admin/users",
+    label: "Users & plans",
+    match: (p: string) => p.startsWith("/admin/users"),
+  },
+  {
+    href: "/admin/orders",
+    label: "Reports & orders",
+    match: (p: string) => p.startsWith("/admin/orders"),
+  },
+  {
+    href: "/admin/billing",
+    label: "Stripe & pricing",
+    match: (p: string) => p.startsWith("/admin/billing"),
   },
   {
     href: "/admin/identity",
