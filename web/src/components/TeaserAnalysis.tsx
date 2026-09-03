@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { Check, Loader2 } from "lucide-react";
 import {
   streamInsights,
@@ -53,6 +54,7 @@ export default function TeaserAnalysis({
   const startedRef = useRef(false);
   const textRef = useRef("");
   const startTimeRef = useRef<number>(0);
+  const { getToken } = useAuth();
   const currency = useMemo(() => detectCurrency(), []);
   const allSealedOut = sealedRevealedCount >= 7;
 
@@ -161,12 +163,16 @@ export default function TeaserAnalysis({
       search_query: searchQuery,
       placement: "rail",
     });
+    // PAY-01-08: signed-in buyers attach the session to their one Stripe
+    // customer; guests (no token) get customer_creation=always server-side.
+    const authToken = await getToken().catch(() => null);
     const { checkout_url, order_token } = await createCheckoutSession({
       boat_id: boat.id,
       boat_name: boat.boat_name,
       currency: currency.code,
       search_query: searchQuery,
       teaser_text: textRef.current,
+      authToken,
     });
     track("checkout_redirect", { boat_id: boat.id, order_token, currency: currency.code });
     window.location.href = checkout_url;

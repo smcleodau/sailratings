@@ -325,14 +325,26 @@ export async function createCheckoutSession(params: {
   currency: string;
   search_query?: string;
   teaser_text?: string;
+  /**
+   * Clerk session token for signed-in buyers (PAY-01-08). When present the
+   * API reuses the user's single Stripe customer; when absent the session
+   * is created with customer_creation=always.
+   */
+  authToken?: string | null;
 }): Promise<CheckoutSessionResponse> {
+  const { authToken, ...body } = params;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
   const res = await fetch(`${API_BASE}/checkout/create-session`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(params),
+    headers,
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
