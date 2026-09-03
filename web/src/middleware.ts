@@ -28,19 +28,14 @@ const clerkConfiguredMiddleware = clerkMiddleware(async (auth, req) => {
   return NextResponse.next();
 });
 
-// Fallback: when Clerk is NOT configured, render public pages normally and
-// refuse access to protected admin routes (503) instead of crashing on the
-// missing publishable key. Auth re-engages automatically once
+// Fallback: when Clerk is NOT configured (local dev / verification rigs),
+// render everything — the admin pages self-gate with the shared admin
+// password (admin_token in localStorage → Bearer on /v1/admin/*, enforced
+// by the API). Auth re-engages automatically once
 // NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY are provisioned.
 function unconfiguredMiddleware(req: NextRequest) {
   const redirect = adminHostRedirect(req);
   if (redirect) return redirect;
-
-  if (isProtectedRoute(req)) {
-    return new NextResponse('Authentication is not configured on this environment.', {
-      status: 503,
-    });
-  }
 
   return NextResponse.next();
 }
