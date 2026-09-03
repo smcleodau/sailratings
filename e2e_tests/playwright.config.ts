@@ -62,12 +62,38 @@ export default defineConfig({
     },
   ],
 
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'cd ../web && PORT=4201 npm run dev',
-    url: 'http://localhost:4201',
-    reuseExistingServer: false,
-    timeout: 180 * 1000,
-    env: readClerkKeys(),
-  },
+  /* Run your local dev server before starting the tests.
+     Two servers:
+       1. the worktree FastAPI on :4100 — the data-health spec exercises the
+          real /v1/admin/health/* endpoints (the page fetches them through the
+          Next rewrite at /api/v1/*).  reuseExistingServer so a developer's
+          already-running API is used instead of a second instance.
+       2. the Next dev server on :4201, with NEXT_PUBLIC_API_BASE pointed at
+          the local /api/v1 proxy so the page's client-side fetches stay
+          same-origin (and loopback) rather than resolving a public host. */
+  webServer: [
+    {
+      command:
+        'cd ../api && PYTHONPATH=src python3 -m uvicorn irc_data.api.app:app --host 127.0.0.1 --port 4100',
+      // The API has no /v1/health JSON route registered for HEAD probes on
+      // every build; the root document is the reliable readiness signal.
+      url: 'http://127.0.0.1:4100/',
+      reuseExistingServer: true,
+      timeout: 60 * 1000,
+    },
+    {
+      command: 'cd ../web && PORT=4201 npm run dev',
+      url: 'http://localhost:4201',
+      reuseExistingServer: false,
+      timeout: 180 * 1000,
+      env: {
+        ...readClerkKeys(),
+        // Same-origin proxy for the page's API fetches (see next.config
+        // rewrites → http://localhost:4100).  Overrides any inherited
+        // NEXT_PUBLIC_API_BASE pointing at a public host.
+        NEXT_PUBLIC_API_BASE: '/api/v1',
+        ENVIRONMENT: 'local',
+      },
+    },
+  ],
 });

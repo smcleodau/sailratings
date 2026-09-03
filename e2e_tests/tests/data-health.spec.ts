@@ -80,19 +80,21 @@ test.describe('AD-01-15 data health page', () => {
       .getByTestId('completeness-section')
       .waitFor({ timeout: 20000 })
       .catch(() => {});
-    const { statuses, elapsed } = await page.evaluate(async (token) => {
-      const base = '/api/v1';
-      const headers = { Authorization: `Bearer ${token}` };
-      const t0 = performance.now();
-      const [c, t] = await Promise.all([
-        fetch(`${base}/admin/health/completeness`, { headers }),
-        fetch(`${base}/admin/health/tables`, { headers }),
-      ]);
-      return {
-        statuses: [c.status, t.status],
-        elapsed: performance.now() - t0,
-      };
-    }, ADMIN_TOKEN);
+    const { statuses, elapsed } = await page.evaluate(
+      async ({ token, base }) => {
+        const headers = { Authorization: `Bearer ${token}` };
+        const t0 = performance.now();
+        const [c, t] = await Promise.all([
+          fetch(`${base}/admin/health/completeness`, { headers }),
+          fetch(`${base}/admin/health/tables`, { headers }),
+        ]);
+        return {
+          statuses: [c.status, t.status],
+          elapsed: performance.now() - t0,
+        };
+      },
+      { token: ADMIN_TOKEN, base: '/api/v1' }
+    );
     // Parallel wall-clock for both must be well inside the page budget; each
     // individual query is independently asserted <200 ms in the API suite.
     expect(elapsed).toBeLessThan(400);
