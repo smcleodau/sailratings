@@ -7,6 +7,7 @@ Archive raw XML to data/raw/orc/.
 The full index (~6,750 certs) takes about 60 seconds with 2s rate limiting.
 """
 
+import asyncio
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -207,12 +208,19 @@ def _extract_performance_fields(rms: dict) -> dict:
 
 async def backfill_orc_details(
     limit: int | None = None,
-    concurrency: int = 1,
+    concurrency: int = 3,
 ) -> dict:
     """Fetch full RMS data for ORC certs that are missing GPH.
 
     Only fetches for the latest snapshot to avoid re-fetching old data.
     Returns stats dict.
+
+    ``concurrency`` bounds the number of in-flight RMS fetches.  Every
+    request still passes through the shared 2s ``orc_limiter`` (the
+    responsible-collection policy), so concurrency only overlaps the
+    server-response + DB-write latency — it does not raise the request
+    rate.  The scheduling policy (``cadence.DOMAIN_CONCURRENCY_CAPS``)
+    caps ``data.orc.org`` at 3 in-flight requests; the default matches.
     """
     from sqlalchemy import text as sa_text
     from irc_data.db.connection import get_engine
@@ -221,24 +229,33 @@ async def backfill_orc_details(
     stats = {"total_missing": 0, "fetched": 0, "errors": 0}
 
     with engine.connect() as conn:
-        # Get certs missing GPH from the latest snapshot only
+        # Get certs whose VPP detail (CDL/allowances) is missing from the
+        # latest snapshot only.  CDL/allowances are the reliable "detail
+        # drained" markers: every cert type that exposes an RMS payload
+        # carries CDL + Allowances, whereas ~6% of certs are APH/single-
+        # number and never expose GPH — keying the backlog on gph IS NULL
+        # would re-fetch those forever.  GPH is still written whenever the
+        # RMS payload provides it.
         rows = conn.execute(sa_text("""
             SELECT id, ref_no
             FROM orc_certificates
-            WHERE gph IS NULL
+            WHERE (cdl IS NULL OR allowances IS NULL)
               AND snapshot_date = (SELECT max(snapshot_date) FROM orc_certificates)
               AND ref_no IS NOT NULL AND ref_no != ''
             ORDER BY id
         """ + (f" LIMIT {int(limit)}" if limit else ""))).fetchall()
 
     stats["total_missing"] = len(rows)
-    print(f"  {len(rows)} certs missing detail data")
+    print(f"  {len(rows)} certs missing detail data", flush=True)
 
     from irc_data.db.ingest_log import log_event
 
-    async with get_http_client(timeout=httpx.Timeout(60.0, connect=15.0)) as client:
-        for i, row in enumerate(rows):
-            cert_id, ref_no = row[0], row[1]
+    sem = asyncio.Semaphore(max(1, int(concurrency)))
+    processed = 0
+
+    async def _drain_one(client: httpx.AsyncClient, cert_id: int, ref_no: str) -> None:
+        nonlocal processed
+        async with sem:
             try:
                 rms = await fetch_certificate_rms(client, ref_no)
                 if rms:
@@ -276,13 +293,23 @@ async def backfill_orc_details(
             except Exception as e:
                 stats["errors"] += 1
                 if stats["errors"] <= 3:
-                    print(f"    Error on {ref_no}: {e}")
+                    print(f"    Error on {ref_no}: {e}", flush=True)
                 log_event(engine, "orc", "parse", "error", ref_no, str(e))
+            finally:
+                processed += 1
+                if processed % 100 == 0:
+                    print(
+                        f"    {processed}/{len(rows)} processed "
+                        f"({stats['fetched']} fetched, {stats['errors']} errors)",
+                        flush=True,
+                    )
 
-            if (i + 1) % 100 == 0:
-                print(f"    {i + 1}/{len(rows)} processed ({stats['fetched']} fetched, {stats['errors']} errors)")
+    async with get_http_client(timeout=httpx.Timeout(60.0, connect=15.0)) as client:
+        await asyncio.gather(
+            *(_drain_one(client, row[0], row[1]) for row in rows)
+        )
 
-    print(f"  Done: {stats['fetched']} fetched, {stats['errors']} errors")
+    print(f"  Done: {stats['fetched']} fetched, {stats['errors']} errors", flush=True)
     return stats
 
 

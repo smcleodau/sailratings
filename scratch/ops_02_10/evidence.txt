@@ -1,0 +1,41 @@
+============================================================
+OPS-02-10 VERIFICATION
+============================================================
+
+--- 1. COVERAGE QUERY (latest snapshot) ---
+snapshot_date       = 2026-09-02
+total certs         = 13074
+GPH        coverage = 12223/13074 = 93.49%
+CDL        coverage = 13070/13074 = 99.97%  (>95% PASS)
+allowances coverage = 13070/13074 = 99.97%  (>95% PASS)
+GPH fetchable yield (among RMS-record certs) = 12223/13070 = 93.52%  (remaining 6.5% are APH single-number certs, no GPH key upstream)
+
+--- 2. refresh-views INCLUDES ORC ---
+refreshed views: ['mv_design_class_stats', 'mv_country_fleet_trends', 'mv_within_class_stats', 'mv_boat_performance_summary', 'mv_tcc_drift', 'mv_orc_design_stats', 'mv_orc_country_fleet']
+PASS: mv_orc_design_stats + mv_orc_country_fleet refreshed
+
+--- 3. FLEET ENDPOINT: dual-rated design ORC stats ---
+GET /v1/fleet/countries/AUS -> orc_designs['First 40.7']:
+{
+  "design": "First 40.7",
+  "orc_fleet_size": 193,
+  "avg_gph": 601.05,
+  "min_gph": 577.5,
+  "max_gph": 649.3,
+  "avg_cdl": 10.063,
+  "avg_triple_low": 687.32,
+  "avg_triple_med": 532.39,
+  "avg_triple_high": 476.99
+}
+GET /v1/fleet/countries -> results[AUS].orc:
+{
+  "cert_count": 433,
+  "with_gph": 433,
+  "with_cdl": 433,
+  "with_allowances": 433,
+  "avg_gph": 603.3,
+  "min_gph": 332.2,
+  "max_gph": 821.9,
+  "avg_cdl": 9.942,
+  "design_count": 182
+}
