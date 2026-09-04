@@ -1,5 +1,6 @@
 from datetime import timedelta
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
 
 # Import activities with a longer timeout since they interact with docker and git
@@ -135,10 +136,25 @@ class EpicExecutionWorkflow:
                             args=[notion_page_id, "✅ Gatekeeper APPROVED! Evidence verified. Opening Pull Request."],
                             start_to_close_timeout=timedelta(minutes=1)
                         )
+                    # No retry_policy here previously meant Temporal's default
+                    # (unlimited attempts) — a genuine merge conflict or a
+                    # GitHub push-protection block on a leaked secret can
+                    # never resolve itself, so the activity retried forever
+                    # (observed: attempts into the 90s over multiple hours),
+                    # permanently pinning a factory concurrency slot with the
+                    # workflow never reaching the except/finally below that
+                    # would have DLQ'd it and torn down its worktree. Cap
+                    # attempts so a genuinely unrecoverable failure surfaces.
                     await workflow.execute_activity(
-                        create_pull_request, 
+                        create_pull_request,
                         worktree_path,
-                        start_to_close_timeout=timedelta(minutes=5)
+                        start_to_close_timeout=timedelta(minutes=5),
+                        retry_policy=RetryPolicy(
+                            initial_interval=timedelta(seconds=10),
+                            backoff_coefficient=2.0,
+                            maximum_interval=timedelta(minutes=5),
+                            maximum_attempts=5,
+                        ),
                     )
                     return # Exit loop and finish
                 else:

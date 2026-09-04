@@ -371,7 +371,10 @@ async def create_pull_request(worktree_path: str) -> None:
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             )
             await abort_proc.communicate()
-            raise ApplicationError(f"Merge failed: {stderr.decode()[:1000]}")
+            # git writes CONFLICT details to stdout, not stderr — stderr
+            # alone renders as "Merge failed: " with nothing after it.
+            detail = (stdout.decode() + stderr.decode())[:1000]
+            raise ApplicationError(f"Merge failed: {detail}")
 
         activity.logger.info(f"Merged {branch}. Pushing develop to origin.")
 
