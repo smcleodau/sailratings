@@ -32,13 +32,21 @@ from ..replay.replay_activities import (
     count_batch_artifacts_activity,
     promote_batch_activity,
 )
+from irc_data.telemetry import setup_telemetry
 
 async def main():
     temporal_address = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
     
+    # Setup OpenTelemetry
+    tracing_interceptor = setup_telemetry("temporal-worker")
+    
     try:
         # Connect to Temporal server
-        client = await Client.connect(temporal_address, namespace="sailratings")
+        client = await Client.connect(
+            temporal_address, 
+            namespace="sailratings",
+            interceptors=[tracing_interceptor]
+        )
 
         # Run a worker for the orchestrator workflow
         # Cap concurrent activities: each OpenHands lane worker is very heavy
