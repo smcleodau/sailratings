@@ -228,11 +228,12 @@ export default function IdentityAdjudicationPage() {
             Queue is clear — no uncertain or high-impact candidates pending.
           </div>
         )}
-        {queue.map((item) => (
+        {queue.map((item, idx) => (
           <MatchCard
             key={item.case_id}
             item={item}
             acting={acting.has(item.case_id)}
+            isTop={idx === 0}
             onDecide={decide}
             onReverse={reverse}
             lastResolutionId={lastResolutionFor(item.case_id)}
