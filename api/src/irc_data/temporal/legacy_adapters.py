@@ -312,6 +312,71 @@ def _run_sailracehq(record: Mapping[str, Any]) -> Mapping[str, Any]:
     return {"records_written": 0, "records_found": total, "events": len(events)}
 
 
+def _run_rorc(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """RORC results (register pointed at a nonexistent ``RORCScraper``;
+    the real class is ``RORCSource`` — same DP-01 SDK pattern as isora/
+    rhkyc/sailracehq, just never wired into this registry)."""
+    import asyncio
+
+    from irc_data.scrapers.rorc import RORCSource
+
+    src = RORCSource()
+    events = asyncio.run(src.discover_events())
+    total = 0
+    for event in events:
+        event_results = asyncio.run(src.scrape_event(event)) or []
+        total += len(event_results)
+    return {"records_written": 0, "records_found": total, "events": len(events)}
+
+
+def _run_sydneyhobart(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Sydney Hobart results (register pointed at a nonexistent
+    ``SydneyHobartScraper``; the real class is ``SydneyHobartSource``)."""
+    import asyncio
+
+    from irc_data.scrapers.sydneyhobart import SydneyHobartSource
+
+    src = SydneyHobartSource()
+    events = asyncio.run(src.discover_events())
+    total = 0
+    for event in events:
+        event_results = asyncio.run(src.scrape_event(event)) or []
+        total += len(event_results)
+    return {"records_written": 0, "records_found": total, "events": len(events)}
+
+
+def _run_cowesweek(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Cowes Week results (register pointed at a nonexistent
+    ``CowesWeekScraper``; the real class is ``CowesWeekSource``)."""
+    import asyncio
+
+    from irc_data.scrapers.cowesweek import CowesWeekSource
+
+    src = CowesWeekSource()
+    events = asyncio.run(src.discover_events())
+    total = 0
+    for event in events:
+        event_results = asyncio.run(src.scrape_event(event)) or []
+        total += len(event_results)
+    return {"records_written": 0, "records_found": total, "events": len(events)}
+
+
+def _run_yachtscoring(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """YachtScoring results (register pointed at a nonexistent
+    ``YachtScoringScraper``; the real class is ``YachtScoringSource``)."""
+    import asyncio
+
+    from irc_data.scrapers.yachtscoring import YachtScoringSource
+
+    src = YachtScoringSource()
+    events = asyncio.run(src.discover_events())
+    total = 0
+    for event in events:
+        event_results = asyncio.run(src.scrape_event(event)) or []
+        total += len(event_results)
+    return {"records_written": 0, "records_found": total, "events": len(events)}
+
+
 def _run_cert_discovery(record: Mapping[str, Any]) -> Mapping[str, Any]:
     """IRC certificate discovery — exhaustive 2-letter search + download.
 
@@ -443,6 +508,30 @@ LEGACY_CLI_ADAPTERS: dict[str, LegacyScraperAdapter] = {
         cli_argv=("scrape", "results", "--source", "sailracehq"),
         description="SailRaceHQ race results.",
         runner=_run_sailracehq,
+    ),
+    "rorc": LegacyScraperAdapter(
+        slug="rorc",
+        cli_argv=("scrape", "results", "--source", "rorc"),
+        description="RORC race results.",
+        runner=_run_rorc,
+    ),
+    "sydney-hobart": LegacyScraperAdapter(
+        slug="sydney-hobart",
+        cli_argv=("scrape", "results", "--source", "sydneyhobart"),
+        description="Sydney Hobart race results.",
+        runner=_run_sydneyhobart,
+    ),
+    "cowesweek": LegacyScraperAdapter(
+        slug="cowesweek",
+        cli_argv=("scrape", "results", "--source", "cowesweek"),
+        description="Cowes Week race results.",
+        runner=_run_cowesweek,
+    ),
+    "yachtscoring": LegacyScraperAdapter(
+        slug="yachtscoring",
+        cli_argv=("scrape", "results", "--source", "yachtscoring"),
+        description="YachtScoring race results.",
+        runner=_run_yachtscoring,
     ),
     "irc-certs": LegacyScraperAdapter(
         slug="irc-certs",

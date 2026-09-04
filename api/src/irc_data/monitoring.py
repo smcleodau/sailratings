@@ -37,7 +37,7 @@ def check_health(engine: Engine) -> dict:
     with engine.connect() as conn:
         # --- Data counts ---
         counts = {}
-        for table in ["boats", "tcc_snapshots", "certificates", "orc_certificates", "race_results"]:
+        for table in ["boats", "tcc_snapshots", "irc_certificates", "orc_certificates", "race_results"]:
             counts[table] = conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
 
         checks["counts"] = counts
