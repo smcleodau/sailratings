@@ -2,19 +2,19 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Send,
-  ChevronDown,
-  ChevronRight,
-  Check,
-  X,
-  Database,
-  AlertTriangle,
-  MessageSquare,
-  Plus,
-  Trash2,
-  PanelLeftClose,
-  PanelLeftOpen,
-} from "lucide-react";
+  SendIcon as Send,
+  ChevronDownIcon as ChevronDown,
+  ChevronRightIcon as ChevronRight,
+  CheckIcon as Check,
+  XIcon as X,
+  DatabaseIcon as Database,
+  AlertTriangleIcon as AlertTriangle,
+  MessageSquareIcon as MessageSquare,
+  PlusIcon as Plus,
+  TrashIcon as Trash2,
+  PanelLeftCloseIcon as PanelLeftClose,
+  PanelLeftOpenIcon as PanelLeftOpen,
+} from "@/components/admin/AdminIcons";
 import { useAdminNavRightSlot } from "@/components/AdminNavShell";
 
 /* ── Types ────────────────────────────────────────────────────────────── */

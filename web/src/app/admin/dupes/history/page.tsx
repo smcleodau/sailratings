@@ -12,12 +12,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
-  ChevronDown,
-  GitMerge,
-  Minus,
-  RefreshCw,
-} from "lucide-react";
+  ArrowLeftIcon as ArrowLeft,
+  ChevronDownIcon as ChevronDown,
+  GitMergeIcon as GitMerge,
+  MinusIcon as Minus,
+  RefreshIcon as RefreshCw,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 

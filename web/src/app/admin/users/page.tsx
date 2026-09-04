@@ -11,16 +11,16 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Anchor,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
-  RefreshCw,
-  Search,
-  Ship,
-  X,
-} from "lucide-react";
+  AnchorIcon as Anchor,
+  CheckIcon as Check,
+  ChevronDownIcon as ChevronDown,
+  ChevronRightIcon as ChevronRight,
+  ExternalLinkIcon as ExternalLink,
+  RefreshIcon as RefreshCw,
+  SearchIcon as Search,
+  ShipIcon as Ship,
+  XIcon as X,
+} from "@/components/admin/AdminIcons";
 import {
   AdminOrder,
   AdminUser,

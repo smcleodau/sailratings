@@ -17,15 +17,15 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle,
-  Anchor,
-  CheckCircle2,
-  Clock,
-  GitMerge,
-  ListChecks,
-  RefreshCw,
-  Waves,
-} from "lucide-react";
+  AlertTriangleIcon as AlertTriangle,
+  AnchorIcon as Anchor,
+  CheckCircleIcon as CheckCircle2,
+  ClockIcon as Clock,
+  GitMergeIcon as GitMerge,
+  ListChecksIcon as ListChecks,
+  RefreshIcon as RefreshCw,
+  WavesIcon as Waves,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 

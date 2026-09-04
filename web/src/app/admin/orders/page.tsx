@@ -10,12 +10,12 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ExternalLink,
-  FileText,
-  RefreshCw,
-  RotateCw,
-  Search,
-} from "lucide-react";
+  ExternalLinkIcon as ExternalLink,
+  FileTextIcon as FileText,
+  RefreshIcon as RefreshCw,
+  RotateCwIcon as RotateCw,
+  SearchIcon as Search,
+} from "@/components/admin/AdminIcons";
 import {
   AdminOrder,
   MONEY_CLASS,
