@@ -32,3 +32,4 @@ web/screenshot.png
 # E2E test artifacts
 e2e_tests/test-results/
 e2e_tests/playwright-report/
+env_dump.txt

@@ -20,6 +20,8 @@ from sqlalchemy.engine import Engine
 
 from irc_data.api.deps import get_db
 
+from irc_data.api.deps import get_optional_identity, CallerIdentity
+from irc_data.api.audit import log_admin_action
 
 def _jsonable(value: Any) -> Any:
     """Best-effort conversion of a DB value to a JSON-serialisable form for the UI."""
@@ -850,6 +852,7 @@ async def confirm_discovery(
     discovery_id: int,
     engine: Engine = Depends(get_db),
     authorization: str = Header(None),
+    caller: CallerIdentity | None = Depends(get_optional_identity),
 ):
     """Confirm + ingest. Returns the ingestion result."""
     _verify_admin(authorization)
@@ -864,6 +867,9 @@ async def confirm_discovery(
             WHERE id = :id AND status IN ('pending','failed')
         """), {"id": discovery_id})
 
+    who = caller.email if caller and caller.email else "admin"
+    log_admin_action(engine, who, "confirm_discovery", "event_discovery", str(discovery_id))
+
     try:
         result = ingest_confirmed(engine, discovery_id)
     except Exception as e:
@@ -876,6 +882,7 @@ async def reject_discovery(
     discovery_id: int,
     engine: Engine = Depends(get_db),
     authorization: str = Header(None),
+    caller: CallerIdentity | None = Depends(get_optional_identity),
 ):
     """Mark a discovery as rejected — won't show in the pending list."""
     _verify_admin(authorization)
@@ -884,6 +891,8 @@ async def reject_discovery(
             text("UPDATE event_discovery SET status='rejected' WHERE id=:id"),
             {"id": discovery_id},
         )
+    who = caller.email if caller and caller.email else "admin"
+    log_admin_action(engine, who, "reject_discovery", "event_discovery", str(discovery_id))
     return {"status": "rejected"}
 
 

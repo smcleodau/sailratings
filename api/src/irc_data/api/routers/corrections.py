@@ -20,6 +20,8 @@ from irc_data.api.deps import get_db
 
 logger = logging.getLogger(__name__)
 
+from irc_data.api.deps import get_optional_identity, CallerIdentity
+from irc_data.api.audit import log_admin_action
 router = APIRouter(tags=["Corrections"])
 
 ALLOWED_FIELDS = {"designer", "builder", "year_built", "design_canonical", "new_design_class"}
@@ -176,6 +178,7 @@ def approve_correction(
     body: ApproveBody = ApproveBody(),
     engine: Engine = Depends(get_db),
     authorization: str = Header(None),
+    caller: CallerIdentity | None = Depends(get_optional_identity),
 ):
     """Apply the correction to the underlying data, then mark applied."""
     _verify_admin(authorization)
@@ -236,6 +239,8 @@ def approve_correction(
                 """),
                 {"id": correction_id, "notes": body.review_notes},
             )
+        who = caller.email if caller and caller.email else "admin"
+        log_admin_action(engine, who, "approve", "corrections", str(correction_id), after={"status": "applied", "notes": body.review_notes})
     except HTTPException:
         raise
     except Exception as e:
@@ -265,6 +270,7 @@ def reject_correction(
     body: RejectBody = RejectBody(),
     engine: Engine = Depends(get_db),
     authorization: str = Header(None),
+    caller: CallerIdentity | None = Depends(get_optional_identity),
 ):
     """Mark a correction rejected. No data change."""
     _verify_admin(authorization)
@@ -283,6 +289,9 @@ def reject_correction(
 
     if not result:
         raise HTTPException(status_code=404, detail="Correction not found or already reviewed")
+    
+    who = caller.email if caller and caller.email else "admin"
+    log_admin_action(engine, who, "reject", "corrections", str(correction_id), after={"status": "rejected", "notes": body.review_notes})
 
     try:
         from irc_data.api.services.analytics_service import track
