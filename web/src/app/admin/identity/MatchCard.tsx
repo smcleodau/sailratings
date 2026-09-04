@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeftRightIcon,
   FlagIcon,
@@ -97,12 +97,14 @@ function impactBadge(impact: string) {
 export function MatchCard({
   item,
   acting,
+  isTop,
   onDecide,
   onReverse,
   lastResolutionId,
 }: {
   item: MatchCardData;
   acting: boolean;
+  isTop?: boolean;
   onDecide: (caseId: string, action: AdjudicationAction) => void;
   onReverse?: (resolutionId: string) => void;
   lastResolutionId?: string | null;
@@ -122,6 +124,46 @@ export function MatchCard({
     setConfirming(false);
     onDecide(item.case_id, "merge");
   };
+
+  useEffect(() => {
+    if (!isTop || acting) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input field
+      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") return;
+      
+      switch (e.key) {
+        case "m":
+        case "M":
+          handleMerge();
+          break;
+        case "s":
+        case "S":
+          onDecide(item.case_id, "separate");
+          break;
+        case "e":
+        case "E":
+          onDecide(item.case_id, "escalate");
+          break;
+        case "d":
+        case "D":
+          onDecide(item.case_id, "defer");
+          break;
+        case "z":
+        case "Z":
+        case "u":
+        case "U":
+          if (onReverse && lastResolutionId) {
+            onReverse(lastResolutionId);
+          }
+          break;
+        case "Escape":
+          if (confirming) setConfirming(false);
+          break;
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isTop, acting, handleMerge, onDecide, item.case_id, onReverse, lastResolutionId, confirming]);
 
   return (
     <article
@@ -249,6 +291,9 @@ export function MatchCard({
             : awaitingSecond
               ? "Merge (second review)"
               : "Merge"}
+          {isTop && (
+            <kbd className="ml-1 font-mono text-[10px] opacity-60">M</kbd>
+          )}
         </button>
         {confirming && (
           <button
@@ -266,6 +311,9 @@ export function MatchCard({
           className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-[var(--sr-marine-600)]/40 hover:bg-[var(--sr-marine-600)]/70 text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
         >
           <XIcon size={15} /> Keep separate
+          {isTop && (
+            <kbd className="ml-1 font-mono text-[10px] opacity-60">S</kbd>
+          )}
         </button>
         <button
           type="button"
@@ -274,6 +322,9 @@ export function MatchCard({
           className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs bg-[var(--sr-status-warning)]/10 hover:bg-[var(--sr-status-warning)]/20 text-[var(--sr-status-warning)] border border-[var(--sr-status-warning)]/30 transition-colors disabled:opacity-40"
         >
           <FlagIcon size={13} /> Escalate
+          {isTop && (
+            <kbd className="ml-1 font-mono text-[10px] opacity-60">E</kbd>
+          )}
         </button>
         <button
           type="button"
@@ -282,6 +333,9 @@ export function MatchCard({
           className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs bg-[var(--sr-marine-600)]/10 hover:bg-[var(--sr-marine-600)]/30 text-[var(--sr-text-secondary)] transition-colors disabled:opacity-40"
         >
           <PauseIcon size={13} /> Defer
+          {isTop && (
+            <kbd className="ml-1 font-mono text-[10px] opacity-60">D</kbd>
+          )}
         </button>
         {onReverse && lastResolutionId && (
           <button
@@ -291,6 +345,9 @@ export function MatchCard({
             className="ml-auto flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-[var(--sr-status-danger)] border border-[var(--sr-status-danger)]/30 hover:bg-[var(--sr-status-danger)]/10 transition-colors disabled:opacity-40"
           >
             <RotateCcwIcon size={13} /> Undo last decision
+            {isTop && (
+              <kbd className="ml-1 font-mono text-[10px] opacity-60">U</kbd>
+            )}
           </button>
         )}
       </footer>
