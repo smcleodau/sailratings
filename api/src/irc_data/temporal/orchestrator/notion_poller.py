@@ -92,16 +92,31 @@ class NotionPoller:
 
         logger.info(f"Found {len(results)} tasks ready for agent.")
 
-        # Query DB for Epics that need Specifications
-        try:
-            spec_results = self._query_all({
-                "filter": {
-                    "property": "Status",
-                    "select": {"equals": "Needs Specification"}
-                }
-            })
-        except Exception as e:
-            logger.error(f"Error querying Notion for Epics needing specs: {e}")
+        # Query DB for Epics that need Specifications.
+        #
+        # Sprint Manager dispatch is off by default (4 Sep 2026, Stuart's
+        # call after 11 Sprint Manager runs got triggered by a status
+        # mis-set — TEMPLATE-01 cards get written by hand for now). Set
+        # FACTORY_SPRINT_MANAGER_ENABLED=1 to turn it back on.
+        #
+        # The query itself was also too broad: "Status = Needs Specification"
+        # alone matched any row of any Type, including Issues — an issue row
+        # should never spawn a Sprint Manager. Scoped to Epic + not gated.
+        if os.environ.get("FACTORY_SPRINT_MANAGER_ENABLED", "0") == "1":
+            try:
+                spec_results = self._query_all({
+                    "filter": {
+                        "and": [
+                            {"property": "Status", "select": {"equals": "Needs Specification"}},
+                            {"property": "Type", "select": {"equals": "Epic"}},
+                            {"property": "Human Gate", "checkbox": {"equals": False}},
+                        ]
+                    }
+                })
+            except Exception as e:
+                logger.error(f"Error querying Notion for Epics needing specs: {e}")
+                spec_results = []
+        else:
             spec_results = []
 
         logger.info(f"Found {len(spec_results)} epics needing specification.")
