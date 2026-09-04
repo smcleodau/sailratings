@@ -20,16 +20,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle,
-  Check,
-  ChevronDown,
-  GitMerge,
-  History,
-  Minus,
-  RefreshCw,
-  SkipForward,
-  X,
-} from "lucide-react";
+  AlertTriangleIcon as AlertTriangle,
+  CheckIcon as Check,
+  ChevronDownIcon as ChevronDown,
+  GitMergeIcon as GitMerge,
+  HistoryIcon as History,
+  MinusIcon as Minus,
+  RefreshIcon as RefreshCw,
+  SkipForwardIcon as SkipForward,
+  XIcon as X,
+} from "@/components/admin/AdminIcons";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
 

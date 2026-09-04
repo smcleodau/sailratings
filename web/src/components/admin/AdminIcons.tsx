@@ -401,3 +401,139 @@ export function RotateCcwIcon(p: AdminIconProps) {
     </Icon>
   );
 }
+
+export function TagIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42l-8.704-8.704z" />
+      <circle cx="7.5" cy="7.5" r=".5" fill="currentColor" />
+    </Icon>
+  );
+}
+
+export function WalletIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+      <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+      <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+    </Icon>
+  );
+}
+
+export function AnchorIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 22V8" />
+      <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
+      <circle cx="12" cy="5" r="3" />
+    </Icon>
+  );
+}
+
+export function WavesIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+      <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+      <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+    </Icon>
+  );
+}
+
+export function ListChecksIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m3 17 2 2 4-4" />
+      <path d="m3 7 2 2 4-4" />
+      <path d="M13 6h8" />
+      <path d="M13 12h8" />
+      <path d="M13 18h8" />
+    </Icon>
+  );
+}
+
+export function MinusIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 12h14" />
+    </Icon>
+  );
+}
+
+export function SkipForwardIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <polygon points="5 4 15 12 5 20 5 4" />
+      <line x1="19" x2="19" y1="5" y2="19" />
+    </Icon>
+  );
+}
+
+export function HistoryIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M12 7v5l4 2" />
+    </Icon>
+  );
+}
+
+export function PanelLeftCloseIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+      <path d="M9 3v18" />
+      <path d="m16 15-3-3 3-3" />
+    </Icon>
+  );
+}
+
+export function PanelLeftOpenIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+      <path d="M9 3v18" />
+      <path d="m14 9 3 3-3 3" />
+    </Icon>
+  );
+}
+
+export function SendIconAlt(props: AdminIconProps) {
+  // Same as SendIcon but some components might import it as Send
+  return <SendIcon {...props} />;
+}
+
+export function FileTextIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+      <path d="M10 9H8" />
+      <path d="M16 13H8" />
+      <path d="M16 17H8" />
+    </Icon>
+  );
+}
+
+export function RotateCwIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+    </Icon>
+  );
+}
+
+export function ShipIcon(props: AdminIconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" />
+      <path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76" />
+      <path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6" />
+      <path d="M12 10v4" />
+      <path d="M12 2v3" />
+    </Icon>
+  );
+}
