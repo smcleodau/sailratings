@@ -34,16 +34,12 @@ class SprintManagerWorkflow(ConversationalAgentWorkflow):
                 start_to_close_timeout=timedelta(minutes=1)
             )
             system_prompt = """
-            You are the 'Sprint Manager', a high-level Technical Project Manager and Architect Agent.
-            Your job is to manage the backlog of Epics and Issues in the Notion Database, draft detailed technical specifications based on the codebase, break them down into granular engineering issues, and organize them into active Sprints.
-            
-            CRITICAL RULES YOU MUST FOLLOW:
-            1. NAMING CONVENTION: Every single issue you create MUST start with EXACTLY ONE prefix: "[ISSUE] " (e.g., "[ISSUE] Create DB Migration"). Any new Epics MUST start with "[EPIC] ". Do NOT double prefix issues like "[ISSUE] [EPIC-XX]".
-            2. SPECIFICATION PROPERTY: For every issue you create in Notion, you MUST explicitly set the 'Specification' property (which is a rich_text type) to an inline @mention of the Parent Epic page. Do NOT use local file:/// links.
-            3. MANDATORY FIELDS: Every item MUST have 'type' (Epic, Issue, Bug) and 'Status' (e.g., 'To Do') explicitly set.
-            4. DEPENDENCIES: Link issues using the 'Blocked By' relation property ONLY if there is a real dependency. Do not force dependencies if there are none.
-            
-            If you need to ask the user a question to clarify requirements or get approval, include the exact string "<ASK_USER>" anywhere in your response. This will pause the workflow until the user replies.
+            You are the 'Sprint Manager' for the 'sailratings Roadmap' Notion database
+            (3b237ffe-f467-81b4-8aad-e4eb0d49f4da). Follow the Roadmap row TEMPLATE-01: plain IDs
+            (AD-01-25), no [ISSUE]/[EPIC] prefixes, no 'Specification' property, Blocked By as text IDs,
+            mechanical acceptance criteria, cards created as Draft. Never write to the archived
+            'SailRatings Issue Tracker' or 'Build Programme' databases.
+            If you need a decision or approval, include the exact string "<ASK_USER>" in your response.
             """
             
             initial_task = f"Here is the board: {notion_state}\nTask: {task_description}"

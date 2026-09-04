@@ -225,6 +225,26 @@ class NotionPoller:
             logger.info(f"Skipping {off_epic} tasks from other epics (active: {active_epic_id})")
         logger.info(f"{len(eligible)} tasks eligible from active epic {active_epic_id}")
 
+        # Task-level Blocked By (4 Sep 2026). Until now only the *epic's*
+        # Blocked By was checked; every Ready task inside the active epic was
+        # dispatched in parallel regardless of its own Blocked By text. That is
+        # how AD-01-16 and AD-01-06 (and AD-01-03 vs a sibling) ended up editing
+        # AdminSidebar.tsx / admin.py in the same hour and colliding at merge.
+        # A task now waits until every ID it names is Done.
+        def _task_blockers_met(page):
+            blocked = _rt(page, 'Blocked By').strip()
+            if not blocked:
+                return True
+            missing = [b.strip() for b in re.split(r'[;,]', blocked)
+                       if b.strip() and b.strip() not in done_ids]
+            if missing:
+                logger.info(f"Holding {_rt(page, 'ID') or page['id']}: blocked by {missing}")
+            return not missing
+
+        eligible = [p for p in eligible if _task_blockers_met(p)]
+        # Deterministic order: lowest ID first, so AD-01-17 goes before AD-01-24.
+        eligible.sort(key=lambda p: _rt(p, 'ID'))
+
         for page in eligible[:min(len(eligible), self.MAX_PER_POLL, slots_available)]:
             try:
                 # Extract title — Roadmap uses type:title on 'Title', type:rich_text on 'ID'
@@ -250,28 +270,43 @@ class NotionPoller:
                     return ''
 
                 props = page.get('properties', {})
+                # Roadmap schema property names (4 Sep 2026). The previous
+                # names — 'Spec Reference', 'Deliverable', 'Handoff / Output
+                # Contract' — were the Build Programme's; on the Roadmap they
+                # do not exist, so Spec Ref and Output Contract never reached
+                # the worker prompt. Fall back to the old names so a row that
+                # still carries them is not silently emptied.
+                def prop_first(page, *keys):
+                    for k in keys:
+                        v = prop_text(page, k)
+                        if v:
+                            return v
+                    return ''
+
                 issue_id = prop_text(page, 'ID')
                 goal = prop_text(page, 'Goal')
                 scope = prop_text(page, 'Scope')
-                deliverable = prop_text(page, 'Deliverable')
                 acceptance = prop_text(page, 'Acceptance Criteria')
-                spec_ref = prop_text(page, 'Spec Reference')
+                spec_ref = prop_first(page, 'Spec Ref', 'Spec Reference')
                 verification = prop_text(page, 'Verification')
                 blocked_by = prop_text(page, 'Blocked By')
-                handoff = prop_text(page, 'Handoff / Output Contract')
+                output_contract = prop_first(page, 'Output Contract', 'Handoff / Output Contract')
+                parent_epic = prop_text(page, 'Parent Epic')
+                autonomy = prop_text(page, 'Autonomy')
+                agent_role = prop_text(page, 'Agent Role')
 
                 description = (
                     f"Issue: {issue_id} — {title}\n"
                     f"URL: {page['url']}\n"
-                    f"Spec Reference: {spec_ref}\n\n"
+                    f"Epic: {parent_epic}    Agent Role: {agent_role}    Autonomy: {autonomy}\n"
+                    f"Spec Ref: {spec_ref}\n\n"
                     f"Goal: {goal}\n\n"
                     f"Scope: {scope}\n\n"
-                    f"Deliverable: {deliverable}\n\n"
-                    f"Handoff / Output Contract: {handoff}\n\n"
+                    f"Output Contract: {output_contract}\n\n"
                     f"Acceptance Criteria:\n{acceptance}\n\n"
                     f"Verification: {verification}\n\n"
                     f"Blocked By: {blocked_by}\n\n"
-                    f"Additional notes from page body:\n"
+                    f"Page body (Files you own / must NOT touch / Prototype / Acceptance commands / Evidence):\n"
                 )
 
                 for child in children:
@@ -305,6 +340,13 @@ class NotionPoller:
                         rt = child['quote'].get('rich_text', [])
                         text = "".join([t['text']['content'] for t in rt])
                         description += f"> {text}\n"
+                    elif btype in ('callout', 'toggle', 'to_do'):
+                        rt = child[btype].get('rich_text', [])
+                        text = "".join([t.get('text', {}).get('content', '') for t in rt])
+                        description += text + "\n"
+                    # Nested children (indented list items, table rows, toggle
+                    # bodies) are deliberately not fetched: cards must keep
+                    # everything at the top level (TEMPLATE-01).
 
                 task_payload = {"id": page["id"], "url": page["url"], "description": description, "title": title}
                 

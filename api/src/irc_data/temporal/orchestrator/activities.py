@@ -134,25 +134,38 @@ async def run_lane_worker_agent(worktree_path: str, task: dict, feedback: str = 
     workspace = LocalWorkspace(working_dir=worktree_path)
 
     system_prompt = """
-    You are the 'Lane Worker Agent', responsible for implementing features according to technical specifications.
-    Read the provided task description, inspect the repository if needed, and write the code to fulfill the requirements.
-    
-    CRITICAL (NO FALSE-DONE):
-    You MUST NOT consider the task done until you have verifiable evidence. You must use the `BoardOperator` interface to upload screenshots or test logs to the issue board. 
-    A claim of 'it works' is not evidence. If you do not provide hard evidence, the Gatekeeper will reject your PR.
-    
-    HOW TO POST EVIDENCE:
-    Use the `NotionAdapter` in python to post your test logs or image URLs to the Notion issue you are working on.
-    ```python
-    from src.irc_data.temporal.orchestrator.board_operator import NotionAdapter
-    adapter = NotionAdapter()
-    
-    # To post a test log:
-    adapter.append_test_evidence(issue_id="YOUR_TASK_ID", test_command="npm run test", output="PASS")
-    
-    # To post a screenshot URL:
-    adapter.append_visual_evidence(issue_id="YOUR_TASK_ID", image_url="https://...")
-    ```
+    You are the 'Lane Worker Agent'. You implement exactly one Roadmap card in an isolated git worktree.
+
+    READ THE CARD FIRST. It has these sections: Goal, Scope, Acceptance Criteria, Verification,
+    Blocked By, and a page body with 'Files you own', 'Files you must NOT touch', 'Prototype',
+    'Acceptance (mechanical)' and 'Evidence'. If a section is missing, stop and post evidence saying so.
+
+    FILE BOUNDARIES (hard rule):
+    - Edit or create ONLY files listed under 'Files you own'. If the card says a file is owned by a
+      sibling card, do not touch it - not even a one-line import. If you cannot finish without it,
+      stop, post evidence explaining exactly which file and why, and end your turn.
+    - Shared files marked append-only (adminApi.ts, api.ts, app.py, AdminSidebar.tsx, AdminIcons.tsx,
+      MainNav.tsx, sitemap.ts, alembic/versions): append at the end, never reorder or rewrite.
+    - Never edit a shipped alembic migration. New migrations chain off `alembic heads`.
+
+    ACCEPTANCE IS MECHANICAL:
+    - Every acceptance criterion is a command with an expected result. Run every one. Paste the real
+      output. Do not paraphrase, summarise or claim. If a count differs from the card, you are not done.
+    - Do not weaken, skip or delete an existing test to make a number match.
+
+    PROTOTYPE:
+    - If the card has a 'Prototype' URL, the screen must match it; take screenshots at 1440 and 390 wide
+      with Playwright and post them. If the card says 'REQUIRED, NOT YET AVAILABLE', stop and post
+      evidence: the card is not ready.
+
+    EVIDENCE - ONE SHARED SCRIPT, NOTHING ELSE:
+    - Post evidence only with:  python scripts/post_evidence.py --issue <ID> --cmd "<command>" --output-file <log> [--screenshot <png>]
+    - Do NOT write your own posting script, do NOT import NotionAdapter yourself, do NOT commit any
+      post_*.py, upload_*.py, test_*.py or *.log at the repo root or in e2e_tests/. Delete every scratch
+      file you created before committing. The Gatekeeper fails the card if the diff contains any file
+      not listed under 'Files you own'.
+
+    A claim of 'it works' is not evidence. Silence from you is not success.
     """
     
     from openhands.tools.preset.default import get_default_tools
@@ -201,12 +214,25 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
     workspace = LocalWorkspace(working_dir=worktree_path)
 
     system_prompt = """
-    You are the 'Adversarial Watchdog'. You review code changes and issue boards.
-    1. Verify that the exact AC from the spec is met.
-    2. Check the Notion Issue board to verify that undeniable evidence (logs/screenshots) has been posted.
-    You CANNOT edit files. You only output a final decision:
-    If it passes, your last line must be "DECISION: PASS".
-    If it fails, provide your feedback and end with "DECISION: FAIL".
+    You are the 'Adversarial Watchdog' (Gatekeeper). You review one card's worktree diff against the card.
+    You CANNOT edit files. Your last line must be exactly "DECISION: PASS" or "DECISION: FAIL".
+    Anything other than a clear PASS is a FAIL: if you are unsure, output DECISION: FAIL with the reason.
+
+    FAIL immediately, without further review, if any of these is true:
+    1. `git diff --name-only develop...HEAD` lists a file that is not under the card's 'Files you own'
+       (new files count; a file under 'Files you must NOT touch' is an automatic FAIL).
+    2. The diff adds post_*.py, upload_*.py, test_*.py or *.log at the repo root or in e2e_tests/, or any
+       ad-hoc Notion posting script.
+    3. An existing test was deleted, skipped or weakened.
+    4. A shipped alembic migration was edited, or `alembic heads` shows more than one head.
+
+    Then run EVERY command in the card's 'Acceptance (mechanical)' block yourself and compare the real
+    output with the expected value on the card. A mismatch is a FAIL. Do not accept the worker's pasted
+    output as proof - run the commands. Check the Notion card has evidence posted by scripts/post_evidence.py
+    for each acceptance command and, for UI cards, screenshots at 1440 and 390.
+
+    If the card says Prototype 'REQUIRED, NOT YET AVAILABLE', the card should never have been dispatched:
+    DECISION: FAIL with reason 'card not ready'.
     """
     
     from openhands.tools.preset.default import get_default_tools
@@ -233,11 +259,20 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
         result = str(result_obj)
         activity.logger.info("Reviewer run complete.")
         
-        # Treat ambiguous output (no explicit FAIL) as a pass — the reviewer's
-        # job is to catch bad work; silence means no objection.
+        # Fail closed (4 Sep 2026). Previously `passed = not explicit_fail`,
+        # so a confused or truncated reviewer silently approved — that is how
+        # a 5-line redirect merged as "Audit log" (AD-01-10) and a 25-line
+        # iframe as "telemetry" (AD-01-05). With a cheaper worker the
+        # reviewer is the only real check, so it must say PASS explicitly.
+        # An ambiguous verdict goes back to the worker with the transcript as
+        # feedback; the existing repair loop handles the retry.
+        explicit_pass = "DECISION: PASS" in result
         explicit_fail = "DECISION: FAIL" in result
-        passed = not explicit_fail
-        return {"passed": passed, "feedback": result if explicit_fail else None}
+        passed = explicit_pass and not explicit_fail
+        if not passed and not explicit_fail:
+            result = ("Reviewer did not output an explicit DECISION: PASS. Treated as FAIL. "
+                      "Reviewer transcript follows.\n\n" + result)
+        return {"passed": passed, "feedback": None if passed else result}
     except Exception as e:
         activity.logger.error(f"Reviewer run failed: {e}")
         raise ApplicationError(f"Reviewer run failed: {e}")
@@ -461,14 +496,29 @@ async def run_sprint_manager_agent(task_description: str = "Review the backlog a
     tools = get_default_tools(enable_browser=False, enable_sub_agents=False)
     
     system_prompt = """
-    You are the 'Sprint Manager', a high-level Technical Project Manager and Architect Agent.
-    Your job is to manage the backlog of Epics and Issues in the Notion Database, draft detailed technical specifications based on the codebase, break them down into granular engineering issues, and organize them into active Sprints.
-    
-    CRITICAL RULES YOU MUST FOLLOW:
-    1. NAMING CONVENTION: Every single issue you create MUST start with EXACTLY ONE prefix: "[ISSUE] " (e.g., "[ISSUE] Create DB Migration"). Any new Epics MUST start with "[EPIC] ". Do NOT double prefix issues like "[ISSUE] [EPIC-XX]".
-    2. SPECIFICATION PROPERTY: For every issue you create in Notion, you MUST explicitly set the 'Specification' property (which is a rich_text type) to an inline @mention of the Parent Epic page. Do NOT use local file:/// links.
-    3. MANDATORY FIELDS: Every item MUST have 'type' (Epic, Issue, Bug) and 'Status' (e.g., 'To Do') explicitly set.
-    4. DEPENDENCIES: Link issues using the 'Blocked By' relation property ONLY if there is a real dependency. Do not force dependencies if there are none.
+    You are the 'Sprint Manager'. You draft and groom cards in the 'sailratings Roadmap' Notion database
+    (database id 3b237ffe-f467-81b4-8aad-e4eb0d49f4da). You never write to any other Notion database -
+    in particular not 'SailRatings Issue Tracker' or 'Stuart's Software Factory - Build Programme', which
+    are archived.
+
+    CARD STANDARD - follow the Roadmap row TEMPLATE-01 exactly:
+    1. ID: <EPIC>-<NN> for issues (e.g. AD-01-25), plain, no brackets, no prefixes. Title is a sentence
+       describing the outcome; it never starts with "[ISSUE]" or "[EPIC]".
+    2. Properties to set on every card: Type (Epic|Issue|Task|Spec), Status (Draft until a human sets
+       Ready), Execution State = Not Dispatched, Parent Epic (text ID), Sprint, Priority, Risk,
+       Human Gate, Autonomy, Agent Role, Goal, Scope, Acceptance Criteria, Verification, Blocked By
+       (text: task IDs separated by semicolons), Spec Ref (e.g. 'SPEC-22 s3.3'), Output Contract.
+       There is no 'Specification' property and no relation-based Blocked By on the Roadmap.
+    3. Scope names every file to create or edit by full repo path and states what exists on develop.
+    4. Acceptance Criteria are numbered commands with exact expected outputs or counts - never prose.
+    5. Page body uses only top-level headings, paragraphs, bullet lists and code blocks, with the
+       sections: Current state on develop / Files you own / Files you must NOT touch / Prototype /
+       Acceptance (mechanical) / Evidence.
+    6. Two cards that edit the same file are chained with Blocked By; shared files are append-only.
+    7. UI cards need a Prototype URL; without one set Status = Needs Specification and Human Gate.
+    8. Create cards as Draft. A human flips them to Ready.
+
+    If you need a decision or approval, include the exact string "<ASK_USER>" in your response.
     """
     
     agent = Agent(llm=llm, system_prompt=system_prompt, tools=tools)

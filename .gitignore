@@ -33,3 +33,14 @@ web/screenshot.png
 e2e_tests/test-results/
 e2e_tests/playwright-report/
 env_dump.txt
+
+# factory scratch — never commit per-task evidence scripts or logs (TEMPLATE-01)
+/post_*.py
+/upload_*.py
+/test_*.py
+/find_mutations.py
+/*.log
+e2e_tests/post_evidence.py
+e2e_tests/upload_evidence*.py
+api/post_*.py
+api/upload_*.py
