@@ -134,7 +134,7 @@ class NotionPoller:
 
         def _rt(page, key):
             rt = page.get('properties', {}).get(key, {}).get('rich_text', [])
-            return rt[0]['text']['content'] if rt else ''
+            return rt[0].get('text', {}).get('content', '') if rt else ''
 
         def _sel(page, key):
             s = page.get('properties', {}).get(key, {}).get('select') or {}
@@ -276,9 +276,9 @@ class NotionPoller:
                     p = page.get('properties', {}).get(key, {})
                     ptype = p.get('type')
                     if ptype == 'rich_text':
-                        return "".join(t['text']['content'] for t in p.get('rich_text', []))
+                        return "".join(t.get('text', {}).get('content', '') for t in p.get('rich_text', []))
                     elif ptype == 'title':
-                        return "".join(t['text']['content'] for t in p.get('title', []))
+                        return "".join(t.get('text', {}).get('content', '') for t in p.get('title', []))
                     elif ptype == 'select':
                         sel = p.get('select')
                         return sel['name'] if sel else ''
@@ -328,32 +328,32 @@ class NotionPoller:
                     btype = child['type']
                     if btype == 'paragraph':
                         rt = child['paragraph'].get('rich_text', [])
-                        text = "".join([t['text']['content'] for t in rt])
+                        text = "".join([t.get('text', {}).get('content', '') for t in rt])
                         description += text + "\n"
                     elif btype == 'heading_1':
                         rt = child['heading_1'].get('rich_text', [])
-                        text = "".join([t['text']['content'] for t in rt])
+                        text = "".join([t.get('text', {}).get('content', '') for t in rt])
                         description += f"# {text}\n"
                     elif btype == 'heading_2':
                         rt = child['heading_2'].get('rich_text', [])
-                        text = "".join([t['text']['content'] for t in rt])
+                        text = "".join([t.get('text', {}).get('content', '') for t in rt])
                         description += f"## {text}\n"
                     elif btype == 'heading_3':
                         rt = child['heading_3'].get('rich_text', [])
-                        text = "".join([t['text']['content'] for t in rt])
+                        text = "".join([t.get('text', {}).get('content', '') for t in rt])
                         description += f"### {text}\n"
                     elif btype in ('bulleted_list_item', 'numbered_list_item'):
                         rt = child[btype].get('rich_text', [])
-                        text = "".join([t['text']['content'] for t in rt])
+                        text = "".join([t.get('text', {}).get('content', '') for t in rt])
                         description += f"- {text}\n"
                     elif btype == 'code':
                         rt = child['code'].get('rich_text', [])
-                        text = "".join([t['text']['content'] for t in rt])
+                        text = "".join([t.get('text', {}).get('content', '') for t in rt])
                         lang = child['code'].get('language', '')
                         description += f"```{lang}\n{text}\n```\n"
                     elif btype == 'quote':
                         rt = child['quote'].get('rich_text', [])
-                        text = "".join([t['text']['content'] for t in rt])
+                        text = "".join([t.get('text', {}).get('content', '') for t in rt])
                         description += f"> {text}\n"
                     elif btype in ('callout', 'toggle', 'to_do'):
                         rt = child[btype].get('rich_text', [])
@@ -401,7 +401,7 @@ class NotionPoller:
                 for child in children:
                     if child['type'] == 'paragraph':
                         rt = child['paragraph'].get('rich_text', [])
-                        text = "".join([t['text']['content'] for t in rt])
+                        text = "".join([t.get('text', {}).get('content', '') for t in rt])
                         description += text + "\n"
 
                 task_payload = {"id": page["id"], "url": page["url"], "description": description, "title": title}
