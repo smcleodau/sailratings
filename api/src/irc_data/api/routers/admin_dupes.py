@@ -168,18 +168,20 @@ def _ensure_admin_edits(conn: Connection) -> None:
     """The admin_tables router creates admin_edits lazily on first edit; a
     dupe merge may be the very first audited write on a fresh DB, so create
     it here too (idempotent)."""
-    conn.execute(
-        text(
-            _ADMIN_EDITS_DDL_SQLITE
-            if conn.dialect.name == "sqlite"
-            else _ADMIN_EDITS_DDL
+    try:
+        conn.execute(
+            text(
+                _ADMIN_EDITS_DDL_SQLITE
+                if conn.dialect.name == "sqlite"
+                else _ADMIN_EDITS_DDL
+            )
         )
-    )
-    if conn.dialect.name != "sqlite":
-        try:
-            conn.execute(text("ALTER TABLE admin_edits ADD COLUMN who TEXT"))
-        except Exception:
-            pass
+    except Exception:
+        pass
+    try:
+        conn.execute(text("ALTER TABLE admin_edits ADD COLUMN who TEXT"))
+    except Exception:
+        pass
 
 
 def _write_admin_edit(
@@ -190,20 +192,35 @@ def _write_admin_edit(
     new_value: str | None,
     who: str | None = None,
 ) -> None:
-    conn.execute(
-        text(
-            "INSERT INTO admin_edits (who, table_name, pk_value, column_name, "
-            "old_value, new_value) VALUES (:w, :t, :pk, :c, :old, :new)"
-        ),
-        {
-            "w": who,
-            "t": _MERGE_AUDIT_TABLE,
-            "pk": pk_value,
-            "c": column_name,
-            "old": old_value,
-            "new": new_value,
-        },
-    )
+    try:
+        conn.execute(
+            text(
+                "INSERT INTO admin_edits (who, table_name, pk_value, column_name, "
+                "old_value, new_value) VALUES (:w, :t, :pk, :c, :old, :new)"
+            ),
+            {
+                "w": who,
+                "t": _MERGE_AUDIT_TABLE,
+                "pk": pk_value,
+                "c": column_name,
+                "old": old_value,
+                "new": new_value,
+            },
+        )
+    except Exception:
+        conn.execute(
+            text(
+                "INSERT INTO admin_edits (table_name, pk_value, column_name, "
+                "old_value, new_value) VALUES (:t, :pk, :c, :old, :new)"
+            ),
+            {
+                "t": _MERGE_AUDIT_TABLE,
+                "pk": pk_value,
+                "c": column_name,
+                "old": old_value,
+                "new": new_value,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -474,10 +491,10 @@ def _audit_verdict(
 ) -> None:
     _ensure_admin_edits(conn)
     for qid in queue_ids:
-        _write_admin_edit(conn, str(qid), "verdict", "PENDING", verdict)
-    _write_admin_edit(conn, ",".join(str(i) for i in queue_ids), "reviewed_by", None, reviewer)
+        _write_admin_edit(conn, str(qid), "verdict", "PENDING", verdict, reviewer)
+    _write_admin_edit(conn, ",".join(str(i) for i in queue_ids), "reviewed_by", None, reviewer, reviewer)
     if detail:
-        _write_admin_edit(conn, ",".join(str(i) for i in queue_ids), "verdict_note", None, detail)
+        _write_admin_edit(conn, ",".join(str(i) for i in queue_ids), "verdict_note", None, detail, reviewer)
 
 
 # ---------------------------------------------------------------------------

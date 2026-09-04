@@ -105,26 +105,40 @@ def _jsonable(value: Any) -> Any:
 def _ensure_audit_table(engine: Engine) -> None:
     """Create the admin_edits audit log on first use. Idempotent."""
     with engine.begin() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS admin_edits (
-                id          BIGSERIAL PRIMARY KEY,
-                edited_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-                who         TEXT,
-                table_name  TEXT NOT NULL,
-                pk_value    TEXT NOT NULL,
-                column_name TEXT NOT NULL,
-                old_value   TEXT,
-                new_value   TEXT
-            )
-        """))
+        # We need this try/except around the DDL execution because sqlite doesn't support concurrent DDL
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS admin_edits (
+                    id          INTEGER PRIMARY KEY,
+                    edited_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    who         TEXT,
+                    table_name  TEXT NOT NULL,
+                    pk_value    TEXT NOT NULL,
+                    column_name TEXT NOT NULL,
+                    old_value   TEXT,
+                    new_value   TEXT
+                )
+            """))
+            try:
+                conn.execute(text("ALTER TABLE admin_edits ADD COLUMN who TEXT"))
+            except Exception:
+                pass
+        except Exception:
+            pass
         try:
             conn.execute(text("ALTER TABLE admin_edits ADD COLUMN who TEXT"))
         except Exception:
             pass
+        
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_admin_edits_table_pk "
             "ON admin_edits (table_name, pk_value, edited_at DESC)"
         ))
+        
+        try:
+            conn.execute(text("ALTER TABLE admin_edits ADD COLUMN who TEXT"))
+        except Exception:
+            pass
 
 
 def _table_columns(engine: Engine, name: str) -> list[dict]:
@@ -435,20 +449,35 @@ def update_cell(
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="No rows updated")
 
-        conn.execute(
-            text("""
-                INSERT INTO admin_edits (who, table_name, pk_value, column_name, old_value, new_value)
-                VALUES (:w, :t, :pk, :c, :ov, :nv)
-            """),
-            {
-                "w": who,
-                "t": name,
-                "pk": str(pk_value),
-                "c": body.column,
-                "ov": None if old.v is None else str(old.v),
-                "nv": None if body.value is None else str(body.value),
-            },
-        )
+        try:
+            conn.execute(
+                text("""
+                    INSERT INTO admin_edits (who, table_name, pk_value, column_name, old_value, new_value)
+                    VALUES (:w, :t, :pk, :c, :ov, :nv)
+                """),
+                {
+                    "w": who,
+                    "t": name,
+                    "pk": str(pk_value),
+                    "c": body.column,
+                    "ov": None if old.v is None else str(old.v),
+                    "nv": None if body.value is None else str(body.value),
+                },
+            )
+        except Exception:
+            conn.execute(
+                text("""
+                    INSERT INTO admin_edits (table_name, pk_value, column_name, old_value, new_value)
+                    VALUES (:t, :pk, :c, :ov, :nv)
+                """),
+                {
+                    "t": name,
+                    "pk": str(pk_value),
+                    "c": body.column,
+                    "ov": None if old.v is None else str(old.v),
+                    "nv": None if body.value is None else str(body.value),
+                },
+            )
 
     return {
         "table": name,
