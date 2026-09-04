@@ -56,6 +56,7 @@ const SECTIONS: SidebarSection[] = [
     icon: OperationsIcon,
     items: [
       { href: "/admin/scrapers", label: "Scrapers" },
+      { href: "/admin/telemetry", label: "Telemetry" },
       { href: "/admin/discovery", label: "Discovery" },
       { href: "/admin/firecrawl", label: "Firecrawl" },
     ],
