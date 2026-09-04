@@ -76,6 +76,7 @@ const SECTIONS: SidebarSection[] = [
     label: "Agents",
     icon: AgentsIcon,
     items: [
+      { href: "/admin/chat", label: "Admin Chat" },
       { href: "/admin/swarm", label: "Swarm" },
       { href: "/admin/tables/admin_edits", label: "Audit" },
     ],
