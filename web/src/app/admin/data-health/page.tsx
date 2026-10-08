@@ -9,12 +9,23 @@ import {
   ClockIcon,
   DatabaseIcon,
   GitBranchIcon,
+  ListChecksIcon,
   RefreshIcon,
   ShieldAlertIcon,
   UsersIcon,
 } from "@/components/admin/AdminIcons";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+import {
+  BOATS_COMPLETENESS_COLUMNS,
+  COMPLETENESS_WARNING_THRESHOLD,
+  DataHealthApiError,
+  EVENTS_VENUE_NULL_METRIC,
+  fetchDataHealthCompleteness,
+  fetchDataHealthDashboard,
+  fetchDataHealthTables,
+  runIncidentAction,
+  type CompletenessMetric,
+  type TableCensusRow,
+} from "@/lib/adminApi.health";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 
@@ -155,6 +166,35 @@ function fmtPct(x: number | null | undefined): string {
   return `${(x * 100).toFixed(1)}%`;
 }
 
+/** "computed <ago>" — the age of a nightly admin_metrics snapshot. */
+function fmtComputedAgo(iso: string | null | undefined): string {
+  if (!iso) return "computed —";
+  const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (!Number.isFinite(seconds) || seconds < 0) return "computed —";
+  return `computed ${fmtAge(seconds)} ago`;
+}
+
+function fmtBytes(bytes: number | null | undefined): string {
+  if (bytes == null) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let n = bytes;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i += 1;
+  }
+  return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function fmtRows(rows: number | null | undefined): string {
+  if (rows == null) return "—";
+  return rows.toLocaleString("en-GB");
+}
+
+function errMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 /* ── Small presentational bits ─────────────────────────────────────────── */
 
 function SeverityPill({ severity }: { severity: Incident["severity"] }) {
@@ -231,24 +271,15 @@ function IncidentRow({
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch(
-        `${API_BASE}/admin/data-health/incidents/${incident.incident_id}/${action}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
-        },
+      await runIncidentAction(
+        token,
+        incident.incident_id,
+        action as "acknowledge" | "mitigate" | "resolve" | "notes",
+        body,
       );
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.detail || `HTTP ${res.status}`);
-      }
       onChanged();
-    } catch (e: any) {
-      setErr(e.message);
+    } catch (e) {
+      setErr(errMessage(e));
     } finally {
       setBusy(false);
     }
@@ -398,6 +429,210 @@ function IncidentRow({
   );
 }
 
+/* ── AD-01-15 · Completeness meter ─────────────────────────────────────── */
+
+function CompletenessMeter({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | null;
+}) {
+  const pct = value == null ? 0 : Math.min(100, Math.max(0, value));
+  const low = value != null && value < COMPLETENESS_WARNING_THRESHOLD;
+  const barColour = low ? "bg-[var(--sr-buoy)]" : "bg-[var(--sr-status-success)]";
+  const textColour = low ? "text-[var(--sr-buoy)]" : "text-[var(--sr-text-primary)]";
+  return (
+    <div data-testid="completeness-meter" className="space-y-1">
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="text-[var(--sr-text-secondary)] admin-mono-font">
+          {label}
+        </span>
+        <span className={`admin-mono-font ${textColour}`}>
+          {value == null ? "—" : `${value.toFixed(1)}%`}
+        </span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-[var(--sr-surface-interactive)]/40 overflow-hidden">
+        <div
+          className={`h-full rounded-full ${barColour}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ── AD-01-15 · Completeness section (GET /completeness) ───────────────── */
+
+function CompletenessSection({
+  metrics,
+  error,
+}: {
+  metrics: CompletenessMetric[] | null;
+  error: string | null;
+}) {
+  const byMetric = new Map((metrics ?? []).map((m) => [m.metric, m]));
+  const boatMeters = BOATS_COMPLETENESS_COLUMNS.map((col) => ({
+    col,
+    metric: byMetric.get(`completeness.boats.${col}`) ?? null,
+  }));
+  const venue = byMetric.get(EVENTS_VENUE_NULL_METRIC) ?? null;
+  const latestComputedAt =
+    metrics && metrics.length ? metrics[0].computed_at : null;
+
+  return (
+    <section data-testid="completeness-section">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] flex items-center gap-2">
+          <ListChecksIcon size={12} /> Completeness
+        </h2>
+        <span className="admin-mono-font text-[10px] text-[var(--sr-text-label)]">
+          {fmtComputedAgo(latestComputedAt)}
+        </span>
+      </div>
+      <div className="border border-[var(--sr-border-subtle)] rounded-[4px] bg-[var(--sr-surface-card)] px-4 py-4">
+        {error ? (
+          <p className="text-[13px] text-[var(--sr-action-pressed)]">{error}</p>
+        ) : metrics == null ? (
+          <p className="text-[13px] text-[var(--sr-text-tertiary)]">Loading…</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+              {boatMeters.map(({ col, metric }) => (
+                <CompletenessMeter
+                  key={col}
+                  label={col}
+                  value={metric?.value ?? null}
+                />
+              ))}
+            </div>
+            <div className="border-t border-[var(--sr-border-subtle)] pt-3">
+              <div
+                data-testid="completeness-venue-null"
+                className="flex items-center justify-between text-[12px]"
+              >
+                <span className="text-[var(--sr-text-secondary)]">
+                  events.venue — null rate
+                </span>
+                <span
+                  className={`admin-mono-font ${
+                    venue && venue.value != null && venue.value > 60
+                      ? "text-[var(--sr-buoy)]"
+                      : "text-[var(--sr-text-primary)]"
+                  }`}
+                >
+                  {venue?.value == null ? "—" : `${venue.value.toFixed(1)}%`}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/* ── AD-01-15 · Tables census section (GET /tables) ─────────────────────── */
+
+function TablesCensusSection({
+  tables,
+  error,
+}: {
+  tables: TableCensusRow[] | null;
+  error: string | null;
+}) {
+  const latestComputedAt =
+    tables && tables.length ? tables[0].computed_at : null;
+  // Empty tables first (the API already sorts this way; re-sort
+  // defensively so the UI invariant doesn't depend on it).
+  const sorted = tables
+    ? [...tables].sort((a, b) =>
+        a.empty === b.empty ? a.name.localeCompare(b.name) : a.empty ? -1 : 1,
+      )
+    : null;
+  const emptyCount = sorted ? sorted.filter((t) => t.empty).length : 0;
+
+  return (
+    <section data-testid="tables-census-section">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] flex items-center gap-2">
+          <DatabaseIcon size={12} /> Tables census
+          {sorted && (
+            <span className="text-[var(--sr-text-tertiary)] normal-case tracking-normal">
+              ({emptyCount} empty / {sorted.length})
+            </span>
+          )}
+        </h2>
+        <span className="admin-mono-font text-[10px] text-[var(--sr-text-label)]">
+          {fmtComputedAgo(latestComputedAt)}
+        </span>
+      </div>
+      <div className="border border-[var(--sr-border-subtle)] rounded-[4px] overflow-x-auto bg-[var(--sr-surface-card)]">
+        {error ? (
+          <p className="px-4 py-6 text-[13px] text-[var(--sr-action-pressed)]">
+            {error}
+          </p>
+        ) : sorted == null ? (
+          <p className="px-4 py-6 text-[13px] text-[var(--sr-text-tertiary)]">
+            Loading…
+          </p>
+        ) : (
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-left admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-label)] border-b border-[var(--sr-border-subtle)]">
+                <th className="px-3 py-2">Table</th>
+                <th className="px-3 py-2">Rows</th>
+                <th className="px-3 py-2">Size</th>
+                <th className="px-3 py-2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.length ? (
+                sorted.map((t) => (
+                  <tr
+                    key={t.name}
+                    data-testid="table-census-row"
+                    data-table-empty={t.empty ? "true" : "false"}
+                    className="border-b border-[var(--sr-border-subtle)]/60 last:border-0"
+                  >
+                    <td className="px-3 py-2 text-[var(--sr-text-primary)] font-medium">
+                      {t.name}
+                    </td>
+                    <td className="px-3 py-2 admin-mono-font text-[11px] text-[var(--sr-text-primary)]">
+                      {fmtRows(t.rows)}
+                    </td>
+                    <td className="px-3 py-2 admin-mono-font text-[11px] text-[var(--sr-text-secondary)]">
+                      {fmtBytes(t.bytes)}
+                    </td>
+                    <td className="px-3 py-2">
+                      {t.empty ? (
+                        <span className="inline-flex items-center gap-1 text-[var(--sr-buoy)]">
+                          <AlertTriangleIcon size={11} /> empty
+                        </span>
+                      ) : (
+                        <span className="text-[var(--sr-text-tertiary)]">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-3 py-6 text-center text-[var(--sr-text-tertiary)]"
+                  >
+                    No table census yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /* ── Page ──────────────────────────────────────────────────────────────── */
 
 export default function DataHealthPage() {
@@ -406,6 +641,17 @@ export default function DataHealthPage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // AD-01-15 / SPEC-22 §3.4 — completeness + table-census snapshot, fed
+  // by the nightly admin_metrics job (irc-data compute-admin-metrics).
+  const [completeness, setCompleteness] = useState<
+    CompletenessMetric[] | null
+  >(null);
+  const [completenessError, setCompletenessError] = useState<string | null>(
+    null,
+  );
+  const [tables, setTables] = useState<TableCensusRow[] | null>(null);
+  const [tablesError, setTablesError] = useState<string | null>(null);
 
   useEffect(() => {
     const t =
@@ -418,34 +664,63 @@ export default function DataHealthPage() {
     }
   }, []);
 
+  const dropSessionIfExpired = useCallback((e: unknown) => {
+    if (e instanceof DataHealthApiError && e.status === 401) {
+      localStorage.removeItem("admin_token");
+      setToken(null);
+      return true;
+    }
+    return false;
+  }, []);
+
   const fetchDashboard = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/admin/data-health/dashboard`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.status === 401) {
-        localStorage.removeItem("admin_token");
-        setToken(null);
-        throw new Error("Session expired");
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
-    } catch (e: any) {
-      setError(e.message);
+      setData(await fetchDataHealthDashboard<Dashboard>(token));
+    } catch (e) {
+      if (!dropSessionIfExpired(e)) setError(errMessage(e));
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, dropSessionIfExpired]);
+
+  const fetchCompleteness = useCallback(async () => {
+    if (!token) return;
+    setCompletenessError(null);
+    try {
+      const body = await fetchDataHealthCompleteness(token);
+      setCompleteness(body.metrics);
+    } catch (e) {
+      if (!dropSessionIfExpired(e)) setCompletenessError(errMessage(e));
+    }
+  }, [token, dropSessionIfExpired]);
+
+  const fetchTables = useCallback(async () => {
+    if (!token) return;
+    setTablesError(null);
+    try {
+      const body = await fetchDataHealthTables(token);
+      setTables(body.tables);
+    } catch (e) {
+      if (!dropSessionIfExpired(e)) setTablesError(errMessage(e));
+    }
+  }, [token, dropSessionIfExpired]);
+
+  const refreshAll = useCallback(() => {
+    fetchDashboard();
+    fetchCompleteness();
+    fetchTables();
+  }, [fetchDashboard, fetchCompleteness, fetchTables]);
 
   useEffect(() => {
-    fetchDashboard();
+    refreshAll();
     if (!token) return;
-    const id = setInterval(fetchDashboard, 60000);
+    const id = setInterval(refreshAll, 60000);
     return () => clearInterval(id);
-  }, [fetchDashboard, token]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   if (!token) {
     return (
@@ -505,7 +780,7 @@ export default function DataHealthPage() {
               </span>
             )}
             <button
-              onClick={fetchDashboard}
+              onClick={refreshAll}
               disabled={loading}
               className="inline-flex items-center gap-1.5 admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] transition-colors disabled:opacity-40"
             >
@@ -691,6 +966,13 @@ export default function DataHealthPage() {
             </table>
           </div>
         </section>
+
+        {/* AD-01-15 / SPEC-22 §3.4 — completeness + table census, fed by
+            the nightly admin_metrics snapshot (no on-request heavy query) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <CompletenessSection metrics={completeness} error={completenessError} />
+          <TablesCensusSection tables={tables} error={tablesError} />
+        </div>
 
         {/* Identity uncertainty + lineage gaps side by side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

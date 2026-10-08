@@ -3771,3 +3771,153 @@ from irc_data.operations.cli import ops_soak as _ops_soak  # noqa: E402
 
 cli.add_command(_ops_soak)
 
+
+# ---------------------------------------------------------------------------
+# AD-01-15 / SPEC-22 §3.4 — nightly admin_metrics snapshot
+#
+# /admin/data-health/{tables,completeness} (irc_data.api.routers.data_health)
+# read ONLY this table so the admin page never pays for a live COUNT(*) or
+# non-null scan on every request. This command is the one thing that writes
+# the facts those endpoints serve; it runs nightly at 05:30 UTC off
+# api/crontab.txt.
+# ---------------------------------------------------------------------------
+
+_ADMIN_METRICS_BOAT_COLUMNS = (
+    "design",
+    "design_canonical",
+    "country",
+    "year_built",
+    "builder",
+    "designer",
+    "loa",
+    "lwl",
+    "beam_max",
+    "displacement_kg",
+)
+
+
+def _compute_admin_metrics_snapshot(engine) -> dict:
+    """Compute and write the AD-01-15 ``admin_metrics`` snapshot.
+
+    Writes:
+      * ``completeness.boats.<col>``            — % of ``boats`` rows where
+        ``<col>`` is non-NULL, one row per column in
+        ``_ADMIN_METRICS_BOAT_COLUMNS`` (10 metrics).
+      * ``completeness.events.venue_null_pct``   — % of ``events`` rows with
+        a NULL ``venue`` (1 metric; 11 completeness rows total).
+      * ``tables.<name>.rows`` / ``tables.<name>.bytes`` — one pair per user
+        table, read straight from ``pg_stat_user_tables`` /
+        ``pg_total_relation_size`` (Postgres only — skipped over SQLite,
+        e.g. the hermetic test engine, which has no such catalog).
+
+    This is a point-in-time snapshot, not an append-only evidence ledger
+    like the OPS-02-09/12 recorders elsewhere in this file: each run first
+    deletes the exact metric names it is about to rewrite, so re-running
+    replaces the previous numbers instead of piling up duplicate history,
+    and the two GET endpoints always serve exactly the latest run.
+
+    Returns ``{"completeness_rows": int, "table_rows": int}``.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import bindparam
+
+    now = datetime.now(timezone.utc)
+    metric_rows: list[dict] = []
+
+    with engine.connect() as conn:
+        boats_total = conn.execute(text("SELECT COUNT(*) FROM boats")).scalar() or 0
+        for col in _ADMIN_METRICS_BOAT_COLUMNS:
+            non_null = (
+                conn.execute(
+                    text(f"SELECT COUNT(*) FROM boats WHERE {col} IS NOT NULL")
+                ).scalar()
+                or 0
+            )
+            pct = (100.0 * non_null / boats_total) if boats_total else 0.0
+            metric_rows.append({"metric": f"completeness.boats.{col}", "value": pct})
+
+        events_total = conn.execute(text("SELECT COUNT(*) FROM events")).scalar() or 0
+        events_venue_null = (
+            conn.execute(
+                text("SELECT COUNT(*) FROM events WHERE venue IS NULL")
+            ).scalar()
+            or 0
+        )
+        venue_null_pct = (
+            (100.0 * events_venue_null / events_total) if events_total else 0.0
+        )
+        metric_rows.append(
+            {"metric": "completeness.events.venue_null_pct", "value": venue_null_pct}
+        )
+
+        completeness_count = len(metric_rows)
+
+        if conn.dialect.name == "postgresql":
+            table_stats = conn.execute(
+                text(
+                    "SELECT s.relname AS table_name, "
+                    "COALESCE(s.n_live_tup, 0) AS est_rows, "
+                    "pg_total_relation_size(s.relid::regclass) AS total_bytes "
+                    "FROM pg_stat_user_tables s"
+                )
+            ).mappings().all()
+            for row in table_stats:
+                metric_rows.append(
+                    {
+                        "metric": f"tables.{row['table_name']}.rows",
+                        "value": float(row["est_rows"] or 0),
+                    }
+                )
+                metric_rows.append(
+                    {
+                        "metric": f"tables.{row['table_name']}.bytes",
+                        "value": float(row["total_bytes"] or 0),
+                    }
+                )
+
+    table_count = len(metric_rows) - completeness_count
+
+    with engine.begin() as conn:
+        metric_names = [r["metric"] for r in metric_rows]
+        if metric_names:
+            delete_stmt = text(
+                "DELETE FROM admin_metrics WHERE metric IN :metrics"
+            ).bindparams(bindparam("metrics", expanding=True))
+            conn.execute(delete_stmt, {"metrics": metric_names})
+        for r in metric_rows:
+            conn.execute(
+                text(
+                    "INSERT INTO admin_metrics "
+                    "(metric, scope, phase, value_num, value, computed_at, recorded_at) "
+                    "VALUES (:metric, '', 'nightly', :value, :value, "
+                    ":computed_at, :computed_at)"
+                ),
+                {"metric": r["metric"], "value": r["value"], "computed_at": now},
+            )
+
+    return {"completeness_rows": completeness_count, "table_rows": table_count}
+
+
+@cli.command(name="compute-admin-metrics")
+@click.pass_context
+def compute_admin_metrics_cmd(ctx):
+    """AD-01-15 / SPEC-22 §3.4 — nightly completeness + table-census
+    snapshot into ``admin_metrics``.
+
+    Writes ``completeness.boats.<col>`` (10 identity columns),
+    ``completeness.events.venue_null_pct``, and ``tables.<name>.{rows,bytes}``
+    for every user table — exactly what GET /admin/data-health/{completeness,
+    tables} read, so those endpoints are a flat SELECT, never an on-request
+    COUNT(*) or catalog scan. Cron runs this at 05:30 UTC
+    (api/crontab.txt); re-running replaces the previous snapshot rather than
+    duplicating it.
+    """
+    engine = ctx.obj["engine"]
+    summary = _compute_admin_metrics_snapshot(engine)
+    console.print(
+        f"[green]admin_metrics: wrote {summary['completeness_rows']} "
+        f"completeness row(s) + {summary['table_rows']} table-census "
+        f"row(s).[/green]"
+    )
+
