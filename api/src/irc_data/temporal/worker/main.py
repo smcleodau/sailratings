@@ -64,6 +64,17 @@ async def main() -> None:
         NightlyRawCaptureYsM2sWorkflow,
     )
 
+    # AD-01-19 — OTel tracing for this worker, guarded by the OTLP endpoint
+    # env var so a plain dev run without a collector configured doesn't try
+    # (and fail) to export anywhere.
+    worker_interceptors = []
+    if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        from irc_data.telemetry.setup import setup_telemetry
+        import temporalio.contrib.opentelemetry as _otel_contrib
+
+        setup_telemetry("sailratings-temporal-worker", app=None, engine=None)
+        worker_interceptors.append(_otel_contrib.TracingInterceptor())
+
     try:
         client = await Client.connect(address, namespace=namespace)
 
@@ -122,6 +133,7 @@ async def main() -> None:
                 raw_capture_ys_m2s_activities.write_ledger_activity,
             ],
             workflow_runner=UnsandboxedWorkflowRunner(),
+            interceptors=worker_interceptors,
         )
 
         print(
