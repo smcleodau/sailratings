@@ -73,3 +73,7 @@ OP_ENV="source /home/irc-data/.credentials/op-service-account.env && op run --en
 
 # Weekly e2e checkout-flow smoke test (not ingestion)
 0 10 * * 1 cd $IRC_DATA_DIR && bash -c "export PYTHONPATH=src && $OP_ENV python3 -m pytest tests/e2e_checkout_flow.py -v --timeout=120" >> /home/irc-data/logs/e2e_$(date +\%Y\%m\%d).log 2>&1
+
+# AD-01-15 / SPEC-22 §3.4 — nightly admin_metrics snapshot (completeness +
+# table census) that /admin/data-health/{tables,completeness} read, 05:30 UTC
+30 5 * * *   cd $IRC_DATA_DIR && bash -c "$OP_ENV irc-data compute-admin-metrics" >> $LOG_DIR/admin_metrics_$(date +\%F).log 2>&1

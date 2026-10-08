@@ -11,7 +11,7 @@ events.
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.pool import StaticPool
 
 from irc_data.diagnostics.reconciliation import (
@@ -56,6 +56,66 @@ def engine():
     init_reconciliation_tables(eng)
     gate_store.init_quality_tables(eng)
     health.init_data_incident_tables(eng)
+    with eng.begin() as conn:
+        # AD-01-15 / SPEC-22 §3.4 — the admin_metrics columns the nightly
+        # compute-admin-metrics CLI writes and the two new GET endpoints
+        # read (mirrors alembic revision 0035's real Postgres schema).
+        conn.execute(
+            text(
+                """
+                CREATE TABLE admin_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    recorded_at TIMESTAMP,
+                    metric TEXT NOT NULL,
+                    scope TEXT DEFAULT '',
+                    phase TEXT DEFAULT '',
+                    value_num REAL,
+                    value_text TEXT,
+                    meta TEXT,
+                    computed_at TIMESTAMP,
+                    value REAL
+                )
+                """
+            )
+        )
+        # Minimal boats/events fixtures so the compute-admin-metrics tests
+        # have something to measure completeness over, and so the "no query
+        # against boats/events" test exercises real tables rather than
+        # ones that don't exist.
+        conn.execute(
+            text(
+                """
+                CREATE TABLE boats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    design TEXT, design_canonical TEXT, country TEXT,
+                    year_built INTEGER, builder TEXT, designer TEXT,
+                    loa REAL, lwl REAL, beam_max REAL, displacement_kg REAL
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO boats (design, design_canonical, country, "
+                "year_built, builder, designer, loa, lwl, beam_max, "
+                "displacement_kg) VALUES "
+                "('X-41', 'X-41', 'GBR', 2005, 'X-Yachts', 'Niels Jeppesen', "
+                "12.4, 10.6, 3.75, 7300), "
+                "(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "name TEXT, venue TEXT)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO events (name, venue) VALUES "
+                "('Cowes Week', 'Cowes'), ('Fastnet', NULL)"
+            )
+        )
     return eng
 
 
@@ -317,3 +377,157 @@ def test_reconcile_endpoint(client, engine):
     assert body["reconciled"] == 1
     assert len(body["unreconciled"]) == 1
     assert body["unreconciled"][0]["reconciliation"] == "unreconciled"
+
+
+# ---------------------------------------------------------------------------
+# AD-01-15 / SPEC-22 §3.4 — GET /tables + GET /completeness
+#
+# Both endpoints read ONLY the nightly admin_metrics snapshot written by
+# `irc-data compute-admin-metrics`; they must never query boats or events.
+# ---------------------------------------------------------------------------
+
+
+def _insert_admin_metric(engine, metric: str, value: float, computed_at: str) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO admin_metrics "
+                "(metric, scope, phase, value_num, value, computed_at, recorded_at) "
+                "VALUES (:metric, '', 'nightly', :value, :value, "
+                ":computed_at, :computed_at)"
+            ),
+            {"metric": metric, "value": value, "computed_at": computed_at},
+        )
+
+
+def test_tables_requires_admin_auth(client):
+    assert client.get("/v1/admin/data-health/tables").status_code == 401
+    assert client.get("/v1/admin/data-health/completeness").status_code == 401
+
+
+def test_tables_endpoint_lists_rows_and_flags_empty(client, engine):
+    _insert_admin_metric(engine, "tables.boats.rows", 9421, "2026-09-08T05:30:00")
+    _insert_admin_metric(engine, "tables.boats.bytes", 4_194_304, "2026-09-08T05:30:00")
+    _insert_admin_metric(engine, "tables.events.rows", 0, "2026-09-08T05:30:00")
+    _insert_admin_metric(engine, "tables.events.bytes", 16_384, "2026-09-08T05:30:00")
+
+    resp = client.get("/v1/admin/data-health/tables", headers=_auth())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 2
+    by_name = {t["name"]: t for t in body["tables"]}
+    assert by_name["boats"]["rows"] == 9421
+    assert by_name["boats"]["empty"] is False
+    assert by_name["events"]["rows"] == 0
+    assert by_name["events"]["empty"] is True
+    # Empty tables listed first.
+    assert body["tables"][0]["name"] == "events"
+
+
+def test_completeness_endpoint_returns_11_metrics_with_computed_at(client, engine):
+    boat_cols = [
+        "design", "design_canonical", "country", "year_built", "builder",
+        "designer", "loa", "lwl", "beam_max", "displacement_kg",
+    ]
+    for i, col in enumerate(boat_cols):
+        # An older row for the same metric must not survive the dedup.
+        _insert_admin_metric(
+            engine, f"completeness.boats.{col}", 1.0, "2026-09-01T05:30:00"
+        )
+        _insert_admin_metric(
+            engine, f"completeness.boats.{col}", 50.0 + i, "2026-09-08T05:30:00"
+        )
+    _insert_admin_metric(
+        engine, "completeness.events.venue_null_pct", 12.5, "2026-09-08T05:30:00"
+    )
+
+    resp = client.get("/v1/admin/data-health/completeness", headers=_auth())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 11
+    assert len(body["metrics"]) == 11
+    by_metric = {m["metric"]: m for m in body["metrics"]}
+    assert by_metric["completeness.boats.design"]["value"] == 50.0
+    assert by_metric["completeness.boats.design"]["computed_at"] is not None
+    assert by_metric["completeness.events.venue_null_pct"]["value"] == 12.5
+    for m in body["metrics"]:
+        assert m["computed_at"] is not None
+
+
+def test_tables_and_completeness_issue_no_boats_or_events_query(client, engine):
+    _insert_admin_metric(engine, "tables.boats.rows", 10, "2026-09-08T05:30:00")
+    _insert_admin_metric(
+        engine, "completeness.boats.design", 80.0, "2026-09-08T05:30:00"
+    )
+
+    statements: list[str] = []
+
+    def _capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", _capture)
+    try:
+        assert (
+            client.get("/v1/admin/data-health/tables", headers=_auth()).status_code
+            == 200
+        )
+        assert (
+            client.get(
+                "/v1/admin/data-health/completeness", headers=_auth()
+            ).status_code
+            == 200
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", _capture)
+
+    for stmt in statements:
+        low = stmt.lower()
+        assert "from boats" not in low and "join boats" not in low
+        assert "from events" not in low and "join events" not in low
+
+
+# ---------------------------------------------------------------------------
+# AD-01-15 / SPEC-22 §3.4 — irc-data compute-admin-metrics
+# ---------------------------------------------------------------------------
+
+
+def test_compute_admin_metrics_writes_completeness_rows(engine):
+    from irc_data.cli import _compute_admin_metrics_snapshot
+
+    summary = _compute_admin_metrics_snapshot(engine)
+    assert summary["completeness_rows"] >= 11
+
+    with engine.connect() as conn:
+        n = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM admin_metrics WHERE metric LIKE "
+                "'completeness.%'"
+            )
+        ).scalar()
+    assert n >= 11
+
+
+def test_compute_admin_metrics_rerun_replaces_snapshot(engine):
+    from irc_data.cli import _compute_admin_metrics_snapshot
+
+    _compute_admin_metrics_snapshot(engine)
+    with engine.connect() as conn:
+        first = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM admin_metrics WHERE metric LIKE "
+                "'completeness.%'"
+            )
+        ).scalar()
+
+    _compute_admin_metrics_snapshot(engine)
+    with engine.connect() as conn:
+        second = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM admin_metrics WHERE metric LIKE "
+                "'completeness.%'"
+            )
+        ).scalar()
+
+    # Re-running replaces the latest snapshot — it does not pile up
+    # duplicate history.
+    assert second == first
