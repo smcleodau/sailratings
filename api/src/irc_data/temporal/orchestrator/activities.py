@@ -17,6 +17,49 @@ from .llm_client import (
     MODEL_REVIEW_INDEPENDENT,
 )
 
+
+def _final_agent_text(conversation) -> str:
+    """Extract the agent's last real message from a finished conversation.
+
+    BaseConversation.run() is `-> None` by design (OpenHands SDK) — it never
+    returns the transcript, it just drives the agent loop as a side effect.
+    Every caller here used to do `str(conversation.run())`, which is always
+    the literal string "None". For run_lane_worker_agent that was cosmetic
+    (its return value isn't pass/fail-gated). For run_reviewer_agent it was
+    not: the Gatekeeper's PASS/FAIL verdict is a substring check against
+    this string, so the reviewer's actual output was never read — before
+    4 Sep 2026 `passed = not explicit_fail` meant "None" always PASSED
+    (every review was a silent rubber stamp, independent of what the
+    reviewer model actually thought); the fail-closed fix landed that day
+    flipped it to the opposite failure mode, where "None" always FAILS.
+    Four cards hit exactly that after 4 Sep, exhausted their 3 attempts
+    against a reviewer that was never actually running a real check, and
+    sat "Running" in Temporal for a month after a no-op HITL handoff.
+
+    Reads the conversation's event log instead: the most recent
+    MessageEvent from the agent, or — if the agent errored out instead of
+    replying — the most recent AgentErrorEvent's error text, so a real
+    crash is visible instead of silently stringifying to "None".
+    """
+    from openhands.sdk.event import AgentErrorEvent, MessageEvent
+    from openhands.sdk.llm.message import content_to_str
+
+    try:
+        events = list(conversation.state.events)
+    except Exception as e:
+        return f"[no conversation state available: {e}]"
+
+    for event in reversed(events):
+        if isinstance(event, MessageEvent) and event.source == "agent":
+            text = "".join(content_to_str(event.llm_message.content)).strip()
+            if text:
+                return text
+    for event in reversed(events):
+        if isinstance(event, AgentErrorEvent):
+            return f"[agent error, no final message: {event.error}]"
+    return "[agent produced no message or error — conversation ended empty]"
+
+
 def _sync_provision_worktree(task_id: str, branch_name: str, repo_path: str, worktrees_dir: str, worktree_path: str) -> str:
     """Run in a thread via run_in_executor — keeps git calls off the asyncio event loop
     so concurrent OpenHands lane workers can't starve this activity."""
@@ -190,9 +233,9 @@ async def run_lane_worker_agent(worktree_path: str, task: dict, feedback: str = 
                     loop.close()
             return conversation.run()
 
-        result = await asyncio.get_event_loop().run_in_executor(None, _run)
+        await asyncio.get_event_loop().run_in_executor(None, _run)
         activity.logger.info("Lane Worker run complete.")
-        return {"status": "success", "result": str(result)}
+        return {"status": "success", "result": _final_agent_text(conversation)}
     except Exception as e:
         activity.logger.error(f"Lane Worker run failed: {e}")
         raise ApplicationError(f"Lane Worker run failed: {e}")
@@ -255,8 +298,8 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
                     loop.close()
             return conversation.run()
 
-        result_obj = await asyncio.get_event_loop().run_in_executor(None, _run)
-        result = str(result_obj)
+        await asyncio.get_event_loop().run_in_executor(None, _run)
+        result = _final_agent_text(conversation)
         activity.logger.info("Reviewer run complete.")
         
         # Fail closed (4 Sep 2026). Previously `passed = not explicit_fail`,
@@ -429,8 +472,44 @@ async def create_pull_request(worktree_path: str) -> None:
 
 @activity.defn
 async def notify_admin_hitl(details: dict) -> None:
-    activity.logger.info(f"Notifying admin for HITL: {details}")
-    pass
+    """Alert a human that a card exhausted its retries and is stuck.
+
+    Was a no-op (`pass`) until 8 Sep 2026 — it only ever logged, never
+    actually reached anyone. Four cards hit this path that day (AD-01-15,
+    -17, -19, -20, all via the run_reviewer_agent None-result bug fixed
+    alongside this), landed in an unconditional `wait_condition(lambda:
+    False)` with nothing downstream of this call ever firing, and sat
+    "Running" in Temporal for a month with no human any the wiser — found
+    only because Stuart asked what was going on. Routes through the same
+    dispatch_alert (Slack + Resend email) the scrape watchdog already
+    uses; best-effort and never raises, so a missing/misconfigured
+    channel can't block the workflow from reaching wait_condition.
+    """
+    activity.logger.warning(f"HITL: a card is stuck and needs a human. {details}")
+    task = details.get("task") or {}
+    title = task.get("title") or task.get("id") or "unknown task"
+    url = task.get("url") or ""
+    reason = details.get("reason") or "unknown reason"
+    subject = f"Factory HITL: {title}"
+    text = (
+        f"A factory card exhausted its retries and is stuck awaiting a human.\n\n"
+        f"Task: {title}\n"
+        f"Reason: {reason}\n"
+        f"Notion: {url}\n"
+    )
+    try:
+        from irc_data import alerting
+
+        result = alerting.dispatch_alert(subject, text)
+        if not result.channels:
+            activity.logger.warning(
+                f"HITL alert sent to no channel (attempted={result.attempted}, "
+                f"errors={result.errors}) — Slack/Resend not configured in this process's env."
+            )
+    except Exception as e:
+        # Best-effort: a broken alert path must never stop the workflow from
+        # reaching its terminal wait_condition.
+        activity.logger.error(f"HITL alert dispatch failed: {e}")
 
 @activity.defn
 async def route_to_dlq(details: dict) -> None:
@@ -528,9 +607,12 @@ async def run_sprint_manager_agent(task_description: str = "Review the backlog a
     try:
         conversation = Conversation(agent=agent, workspace=workspace)
         conversation.send_message(task_description)
-        result = await conversation.run() if asyncio.iscoroutinefunction(conversation.run) else conversation.run()
+        if asyncio.iscoroutinefunction(conversation.run):
+            await conversation.run()
+        else:
+            conversation.run()
         activity.logger.info("Sprint Manager run complete.")
-        return {"status": "success", "result": str(result)}
+        return {"status": "success", "result": _final_agent_text(conversation)}
     except Exception as e:
         activity.logger.error(f"Sprint Manager run failed: {e}")
         raise ApplicationError(f"Sprint Manager run failed: {e}")
