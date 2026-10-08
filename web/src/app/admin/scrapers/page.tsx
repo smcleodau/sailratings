@@ -22,16 +22,26 @@
  * admin "Dusk" tokens exposed as --sr-surface-* / --sr-text-* (AD-01-12).
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangleIcon,
   CheckCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   ClockIcon,
+  PauseIcon,
   RefreshIcon,
+  RotateCcwIcon,
+  SkipForwardIcon,
 } from "@/components/admin/AdminIcons";
 import { adminFetch, clearAdminToken, getAdminToken } from "@/lib/adminApi";
+import {
+  fetchScheduleState,
+  pauseScraperSchedule,
+  resumeScraperSchedule,
+  runScraperNow,
+  type ScheduleStateRow,
+} from "@/lib/adminApi.scrapers";
 
 /** Acceptance: auto-refresh every 60 s. `?refresh_ms=` overrides it so the
  *  component tests can observe the interval without waiting a minute. */
@@ -175,6 +185,48 @@ function SignalPill({ label, state }: { label: string; state: SignalState }) {
   );
 }
 
+/** AD-01-20 — paused/active pill for the Schedule column, sourced from
+ *  GET /admin/scrapers/schedule-state (not the AD-01-06 run/data pills). */
+function SchedulePill({
+  slug,
+  paused,
+}: {
+  slug: string;
+  paused: boolean | null | undefined;
+}) {
+  if (paused == null) {
+    return (
+      <span
+        data-testid={`schedule-pill-${slug}`}
+        data-state="unknown"
+        className="admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-text-secondary)]"
+      >
+        schedule: —
+      </span>
+    );
+  }
+  if (paused) {
+    return (
+      <span
+        data-testid={`schedule-pill-${slug}`}
+        data-state="paused"
+        className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-status-warning)]"
+      >
+        <PauseIcon size={11} strokeWidth={2} /> paused
+      </span>
+    );
+  }
+  return (
+    <span
+      data-testid={`schedule-pill-${slug}`}
+      data-state="active"
+      className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] text-[var(--sr-status-success)]"
+    >
+      <CheckCircleIcon size={11} strokeWidth={2} /> active
+    </span>
+  );
+}
+
 /* ── Page ──────────────────────────────────────────────────────────────── */
 
 export default function ScrapersPage() {
@@ -187,6 +239,37 @@ export default function ScrapersPage() {
   const [runs, setRuns] = useState<Record<string, ScraperRun[]>>({});
   // Resolved once on mount — the ?refresh_ms= override is a test hook.
   const [refreshMs] = useState(resolveRefreshMs);
+
+  // AD-01-20 — schedule state (keyed by slug), the "Paused" filter chip, a
+  // per-row pending action so buttons disable mid-flight, and a toast for
+  // the fire-and-forget pause/resume/run outcomes.
+  const [scheduleState, setScheduleState] = useState<
+    Record<string, ScheduleStateRow>
+  >({});
+  const [pausedOnly, setPausedOnly] = useState(false);
+  const [pendingAction, setPendingAction] = useState<
+    Record<string, "pause" | "resume" | "run" | undefined>
+  >({});
+  const [toast, setToast] = useState<{
+    message: string;
+    tone: "success" | "error";
+  } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback(
+    (message: string, tone: "success" | "error") => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      setToast({ message, tone });
+      toastTimer.current = setTimeout(() => setToast(null), 4000);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     setToken(getAdminToken());
@@ -221,6 +304,22 @@ export default function ScrapersPage() {
     } finally {
       setLoading(false);
     }
+
+    // AD-01-20 — schedule state (cadence / paused / schedule_id) rides its
+    // own request against the OPS-02-04 control router. Fetched alongside
+    // the AD-01-06 summary, on the same 60 s cadence, but failures here
+    // don't block the health table from rendering.
+    try {
+      const schedule = await fetchScheduleState();
+      setScheduleState((prev) => {
+        const next: Record<string, ScheduleStateRow> = { ...prev };
+        for (const row of schedule.scrapers) next[row.slug] = row;
+        return next;
+      });
+    } catch {
+      // Schedule-state unavailable — the Schedule column falls back to the
+      // health summary's own cadence field and an "unknown" pause pill.
+    }
   }, [token]);
 
   // Initial load + 60 s auto-refresh (acceptance: "auto-refresh 60 s").
@@ -250,6 +349,96 @@ export default function ScrapersPage() {
       }
     },
     [openRow, runs, token],
+  );
+
+  /* ── AD-01-20 pause / resume / run-now ───────────────────────────────
+   * Optimistic pill flip: the Schedule column updates immediately on
+   * click, then reconciles with whatever the control endpoint actually
+   * reports. A failure reverts the pill and raises the error toast —
+   * the UI never silently disagrees with the Temporal desired state. */
+
+  const handlePause = useCallback(
+    async (slug: string) => {
+      setPendingAction((p) => ({ ...p, [slug]: "pause" }));
+      setScheduleState((prev) => ({
+        ...prev,
+        [slug]: { ...(prev[slug] ?? { slug, cadence: null, schedule_id: null }), schedule_paused: true },
+      }));
+      try {
+        const res = await pauseScraperSchedule(slug);
+        setScheduleState((prev) => ({
+          ...prev,
+          [slug]: {
+            ...prev[slug],
+            schedule_paused:
+              typeof res.paused === "boolean" ? res.paused : true,
+          },
+        }));
+      } catch (err) {
+        setScheduleState((prev) => ({
+          ...prev,
+          [slug]: { ...prev[slug], schedule_paused: false },
+        }));
+        showToast(
+          err instanceof Error ? err.message : `Failed to pause ${slug}`,
+          "error",
+        );
+      } finally {
+        setPendingAction((p) => ({ ...p, [slug]: undefined }));
+      }
+    },
+    [showToast],
+  );
+
+  const handleResume = useCallback(
+    async (slug: string) => {
+      setPendingAction((p) => ({ ...p, [slug]: "resume" }));
+      setScheduleState((prev) => ({
+        ...prev,
+        [slug]: { ...(prev[slug] ?? { slug, cadence: null, schedule_id: null }), schedule_paused: false },
+      }));
+      try {
+        const res = await resumeScraperSchedule(slug);
+        setScheduleState((prev) => ({
+          ...prev,
+          [slug]: {
+            ...prev[slug],
+            schedule_paused:
+              typeof res.paused === "boolean" ? res.paused : false,
+          },
+        }));
+      } catch (err) {
+        setScheduleState((prev) => ({
+          ...prev,
+          [slug]: { ...prev[slug], schedule_paused: true },
+        }));
+        showToast(
+          err instanceof Error ? err.message : `Failed to resume ${slug}`,
+          "error",
+        );
+      } finally {
+        setPendingAction((p) => ({ ...p, [slug]: undefined }));
+      }
+    },
+    [showToast],
+  );
+
+  const handleRun = useCallback(
+    async (slug: string) => {
+      setPendingAction((p) => ({ ...p, [slug]: "run" }));
+      try {
+        const res = await runScraperNow(slug);
+        showToast(`${slug}: ${res.status ?? "run queued"}`, "success");
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : `Failed to run ${slug}`,
+          "error",
+        );
+      } finally {
+        setPendingAction((p) => ({ ...p, [slug]: undefined }));
+      }
+    },
+    [showToast],
   );
 
   /* ── Password gate (AD-01-01 shared admin bearer token) ─────────────── */
@@ -384,18 +573,44 @@ export default function ScrapersPage() {
           </div>
         )}
 
+        {/* AD-01-20 — "Paused" filter chip: narrows the table to sources
+            whose Temporal schedule is currently paused (schedule-state). */}
+        <div className="flex items-center gap-2 mb-[14px]">
+          <button
+            type="button"
+            data-testid="filter-paused"
+            aria-pressed={pausedOnly}
+            onClick={() => setPausedOnly((v) => !v)}
+            className={`admin-mono-font text-[9px] uppercase tracking-[0.14em] px-[10px] py-[5px] rounded-full border transition-colors ${
+              pausedOnly
+                ? "bg-[var(--sr-status-warning)]/20 border-[var(--sr-status-warning)] text-[var(--sr-status-warning)]"
+                : "border-[var(--sr-link)]/30 text-[var(--sr-text-secondary)] hover:text-[var(--sr-text-primary)]"
+            }`}
+          >
+            Paused
+          </button>
+        </div>
+
         {/* Source table (design 2a) */}
         <div className="admin-table-container" data-testid="scrapers-table">
-          <div className="admin-table-header grid grid-cols-[1.6fr_1fr_1fr_170px_40px] gap-[14px] admin-mono-font text-[9px] tracking-[0.16em] uppercase">
+          <div className="admin-table-header grid grid-cols-[1.3fr_0.85fr_0.85fr_0.95fr_130px_215px] gap-[14px] admin-mono-font text-[9px] tracking-[0.16em] uppercase">
             <span>Source</span>
             <span>Last run</span>
             <span>Last new data</span>
+            <span>Schedule</span>
             <span className="text-right">7-day runs / fails / rows</span>
-            <span></span>
+            <span className="text-right">Actions</span>
           </div>
 
-          {data?.sources.map((src) => {
+          {(data?.sources ?? [])
+            .filter(
+              (src) =>
+                !pausedOnly || scheduleState[src.source]?.schedule_paused === true,
+            )
+            .map((src) => {
             const open = openRow === src.source;
+            const sched = scheduleState[src.source];
+            const isPaused = sched?.schedule_paused === true;
             return (
               <div
                 key={src.source}
@@ -407,7 +622,7 @@ export default function ScrapersPage() {
                   data-testid={`source-row-header-${src.source}`}
                   onClick={() => handleRowClick(src.source)}
                   aria-expanded={open}
-                  className="grid grid-cols-[1.6fr_1fr_1fr_170px_40px] gap-[14px] p-[12px_16px] items-start cursor-pointer hover:bg-[var(--sr-surface-interactive)] transition-colors"
+                  className="grid grid-cols-[1.3fr_0.85fr_0.85fr_0.95fr_130px_215px] gap-[14px] p-[12px_16px] items-start cursor-pointer hover:bg-[var(--sr-surface-interactive)] transition-colors"
                 >
                   <div>
                     <div className="text-[13px] text-[var(--sr-text-primary)] font-medium">
@@ -455,6 +670,29 @@ export default function ScrapersPage() {
                     </div>
                   </div>
 
+                  {/* AD-01-20 — Schedule: cadence, paused/active pill, and
+                      the Temporal schedule_id (mono, truncated). */}
+                  <div>
+                    <div className="admin-mono-font text-[11px] text-[var(--sr-text-primary)]">
+                      {sched?.cadence ?? src.cadence}
+                    </div>
+                    <div className="mt-[5px]">
+                      <SchedulePill
+                        slug={src.source}
+                        paused={sched?.schedule_paused}
+                      />
+                    </div>
+                    {sched?.schedule_id && (
+                      <div
+                        data-testid={`schedule-id-${src.source}`}
+                        className="admin-mono-font text-[9px] text-[var(--sr-text-label)] mt-[2px] truncate"
+                        title={sched.schedule_id}
+                      >
+                        {sched.schedule_id}
+                      </div>
+                    )}
+                  </div>
+
                   {/* 7-day runs / fails / rows */}
                   <div className="text-right">
                     <div className="admin-mono-font text-[11px] text-[var(--sr-text-primary)]">
@@ -485,12 +723,59 @@ export default function ScrapersPage() {
                     </div>
                   </div>
 
-                  <div className="text-right admin-mono-font text-[11px] text-[var(--sr-text-secondary)] flex justify-end">
-                    {open ? (
-                      <ChevronDownIcon size={14} />
+                  {/* AD-01-20 — Pause / Resume / Run now. Buttons stop
+                      propagation so they don't also toggle the recent-runs
+                      drawer; the chevron still bubbles up to the row. */}
+                  <div className="flex items-center justify-end gap-[6px]">
+                    {isPaused ? (
+                      <button
+                        type="button"
+                        data-testid={`btn-resume-${src.source}`}
+                        disabled={pendingAction[src.source] === "resume"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleResume(src.source);
+                        }}
+                        title="Resume"
+                        className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] px-[8px] py-[4px] rounded-[4px] border border-[var(--sr-link)]/30 text-[var(--sr-text-primary)] hover:border-[var(--sr-link)] disabled:opacity-40 transition-colors"
+                      >
+                        <RotateCcwIcon size={11} strokeWidth={2} /> Resume
+                      </button>
                     ) : (
-                      <ChevronRightIcon size={14} />
+                      <button
+                        type="button"
+                        data-testid={`btn-pause-${src.source}`}
+                        disabled={pendingAction[src.source] === "pause"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePause(src.source);
+                        }}
+                        title="Pause"
+                        className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] px-[8px] py-[4px] rounded-[4px] border border-[var(--sr-link)]/30 text-[var(--sr-text-primary)] hover:border-[var(--sr-link)] disabled:opacity-40 transition-colors"
+                      >
+                        <PauseIcon size={11} strokeWidth={2} /> Pause
+                      </button>
                     )}
+                    <button
+                      type="button"
+                      data-testid={`btn-run-${src.source}`}
+                      disabled={pendingAction[src.source] === "run"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRun(src.source);
+                      }}
+                      title="Run now"
+                      className="inline-flex items-center gap-1 admin-mono-font text-[9px] uppercase tracking-[0.12em] px-[8px] py-[4px] rounded-[4px] border border-[var(--sr-link)]/30 text-[var(--sr-text-primary)] hover:border-[var(--sr-link)] disabled:opacity-40 transition-colors"
+                    >
+                      <SkipForwardIcon size={11} strokeWidth={2} /> Run
+                    </button>
+                    <span className="admin-mono-font text-[11px] text-[var(--sr-text-secondary)] flex items-center">
+                      {open ? (
+                        <ChevronDownIcon size={14} />
+                      ) : (
+                        <ChevronRightIcon size={14} />
+                      )}
+                    </span>
                   </div>
                 </div>
 
@@ -649,6 +934,23 @@ export default function ScrapersPage() {
             </div>
           )}
       </div>
+
+      {/* AD-01-20 — pause/resume/run-now toast. Fixed, bottom-right, auto
+          dismisses after 4 s (showToast). */}
+      {toast && (
+        <div
+          data-testid="scrapers-toast"
+          role="status"
+          data-tone={toast.tone}
+          className={`fixed bottom-6 right-6 max-w-sm px-4 py-3 rounded-[6px] text-[13px] shadow-lg border admin-mono-font ${
+            toast.tone === "error"
+              ? "bg-[var(--sr-action-pressed)]/15 border-[var(--sr-action-pressed)]/50 text-[var(--sr-action-pressed)]"
+              : "bg-[var(--sr-status-success)]/15 border-[var(--sr-status-success)]/50 text-[var(--sr-status-success)]"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }
