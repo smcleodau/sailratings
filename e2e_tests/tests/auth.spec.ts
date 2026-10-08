@@ -96,9 +96,15 @@ test.describe('AUTH-01-02 with Clerk configured', () => {
     // Google OAuth
     await expect(form.getByRole('button', { name: /google/i }).first()).toBeVisible();
 
-    // Forgot password (link or button depending on Clerk version)
+    // Forgot password (link or button depending on Clerk version). Clerk's
+    // hosted UI renders this inline action alongside the Password label only
+    // once the field carries a value, so a throwaway keystroke surfaces it
+    // without needing a real credential.
+    const password = form.locator('input[type="password"]').first();
+    await password.fill('x');
     const forgot = form.getByText(/forgot password/i).first();
     await expect(forgot).toBeVisible();
+    await password.fill('');
   }
 
   test('sign-in renders email+password, Google, and forgot-password', async ({ page }) => {
@@ -137,7 +143,10 @@ test.describe('AUTH-01-02 with Clerk configured', () => {
     }).toPass({ timeout: 20000 });
 
     await form.getByLabel(/email/i).first().fill('no-such-user-auth0102@example.com');
-    await form.getByRole('button', { name: /continue/i }).first().click();
+    // Exact match: the social buttons ("Continue with Google" etc.) also
+    // match a loose /continue/i, and sit before the form's own submit
+    // button in the DOM.
+    await form.getByRole('button', { name: 'Continue', exact: true }).first().click();
 
     // Clerk either flags the field inline or shows an alert above the form —
     // either way the user gets a visible error state, never a silent dead end.

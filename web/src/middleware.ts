@@ -63,6 +63,15 @@ async function resolveAdminRole(
 
 const ADMIN_ROLES = new Set(["admin", "staff"]);
 
+// Carry the originally-requested URL across the sign-in bounce so the user
+// can be sent back to it once authenticated (Clerk's <SignIn/> honours
+// `redirect_url` unless a page hard-codes `forceRedirectUrl`).
+function signInRedirect(req: NextRequest) {
+  const signIn = new URL('/sign-in', req.url);
+  signIn.searchParams.set('redirect_url', req.nextUrl.pathname + req.nextUrl.search);
+  return signIn;
+}
+
 function adminHostRedirect(req: NextRequest) {
   const url = req.nextUrl;
   const hostname = req.headers.get('host');
@@ -81,7 +90,7 @@ const clerkConfiguredMiddleware = clerkMiddleware(async (auth, req) => {
     if (!adminE2eBypass) {
       const authObject = await auth();
       if (!authObject.userId) {
-        return noStore(NextResponse.redirect(new URL('/sign-in', req.url)));
+        return noStore(NextResponse.redirect(signInRedirect(req)));
       }
       const role = await resolveAdminRole(
         authObject.userId,
