@@ -1,4 +1,4 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkClient, clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -30,6 +30,39 @@ function noStore(res: NextResponse): NextResponse {
   return res;
 }
 
+// AD-01-17: the admin gate is more than "has a session" — the signed-in
+// user must carry an admin/staff role. Clerk mirrors users.role (SPEC-23
+// §1, kept current by AUTH-01-01) onto the user's publicMetadata, and —
+// once "Customize session token" is enabled on the Clerk instance — onto
+// sessionClaims.publicMetadata too, so the common case never leaves the
+// edge-cached session token. Until/unless that's enabled, or for sessions
+// minted before it was, we fall back to a live Backend API lookup so the
+// gate is always correct, never merely "no session claim, so let it
+// through".
+type RoleClaim = { publicMetadata?: { role?: unknown } } | null | undefined;
+
+async function resolveAdminRole(
+  userId: string,
+  sessionClaims: RoleClaim,
+): Promise<string | undefined> {
+  const claimRole = sessionClaims?.publicMetadata?.role;
+  if (typeof claimRole === "string" && claimRole.length > 0) {
+    return claimRole;
+  }
+  try {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    const role = (user.publicMetadata as { role?: unknown } | null | undefined)?.role;
+    return typeof role === "string" ? role : undefined;
+  } catch {
+    // Backend API unreachable / user vanished mid-session: fail closed —
+    // no role resolved means no admin access.
+    return undefined;
+  }
+}
+
+const ADMIN_ROLES = new Set(["admin", "staff"]);
+
 function adminHostRedirect(req: NextRequest) {
   const url = req.nextUrl;
   const hostname = req.headers.get('host');
@@ -49,6 +82,13 @@ const clerkConfiguredMiddleware = clerkMiddleware(async (auth, req) => {
       const authObject = await auth();
       if (!authObject.userId) {
         return noStore(NextResponse.redirect(new URL('/sign-in', req.url)));
+      }
+      const role = await resolveAdminRole(
+        authObject.userId,
+        authObject.sessionClaims as RoleClaim,
+      );
+      if (!role || !ADMIN_ROLES.has(role)) {
+        return noStore(NextResponse.redirect(new URL('/account?denied=admin', req.url)));
       }
     }
     return noStore(NextResponse.next());

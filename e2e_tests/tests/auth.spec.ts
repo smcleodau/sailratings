@@ -167,3 +167,102 @@ test.describe('AUTH-01-02 with Clerk configured', () => {
     }).toPass({ timeout: 20000 });
   });
 });
+
+// ── AD-01-17 — Clerk role claim enforced in middleware ────────────────────
+//
+// /admin must gate on more than "is signed in": the session's role (Clerk
+// publicMetadata.role, mirrored from users.role — SPEC-23 §1) has to be
+// 'admin' or 'staff'. These two tests exercise the live Clerk instance end
+// to end rather than stubbing the gate:
+//   1. create a throwaway Clerk user via the Backend API (CLERK_SECRET_KEY)
+//      with the desired publicMetadata.role,
+//   2. mint a sign-in token for it and redeem the ticket against the app's
+//      own /sign-in page (no UI interaction, no password needed),
+//   3. request /admin from that authenticated context and assert the
+//      middleware's decision.
+// The user is deleted again in `finally` so the Clerk instance doesn't
+// accumulate test accounts.
+test.describe('AUTH-01-02 with Clerk configured', () => {
+  test.skip(!CLERK_CONFIGURED, 'requires E2E_CLERK=1 and live Clerk keys (playwright.auth.config.ts)');
+
+  async function clerkBackend(path: string, init?: RequestInit) {
+    const secret = process.env.CLERK_SECRET_KEY;
+    if (!secret) throw new Error('CLERK_SECRET_KEY is required to mint test Clerk sessions');
+    const res = await fetch(`https://api.clerk.com/v1${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Clerk Backend API ${path} → ${res.status}: ${await res.text()}`);
+    }
+    return res.json();
+  }
+
+  async function createClerkUser(role?: 'admin' | 'staff'): Promise<string> {
+    const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const user = await clerkBackend('/users', {
+      method: 'POST',
+      body: JSON.stringify({
+        email_address: [`ad0117_${role ?? 'none'}_${suffix}@example.com`],
+        password: `Sr!${suffix}Aa1`,
+        public_metadata: role ? { role } : {},
+        skip_password_checks: true,
+      }),
+    });
+    return user.id as string;
+  }
+
+  async function deleteClerkUser(userId: string) {
+    await fetch(`https://api.clerk.com/v1/users/${userId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
+    }).catch(() => {
+      // best-effort cleanup only
+    });
+  }
+
+  // Redeem a Clerk sign-in token ("ticket" strategy) against our own
+  // /sign-in page — the same mechanism Clerk documents for passwordless
+  // test sign-in — then wait for the resulting redirect away from
+  // /sign-in, which only happens once ClerkJS has called setActive().
+  // Tickets are single-use and short-lived, and the hosted-UI round trip
+  // occasionally outruns a single attempt, so a fresh ticket is minted on
+  // each retry rather than reusing (and failing with) a spent one.
+  async function signInWithTicket(page: Page, userId: string) {
+    await expect(async () => {
+      const { token } = await clerkBackend('/sign_in_tokens', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId, expires_in_seconds: 60 }),
+      });
+      await page.goto(`/sign-in?__clerk_ticket=${token}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForURL((url) => !url.pathname.startsWith('/sign-in'), { timeout: 10000 });
+    }).toPass({ timeout: 45000 });
+  }
+
+  test('signed-in non-admin → /admin redirects to /account?denied=admin', async ({ page }) => {
+    const userId = await createClerkUser();
+    try {
+      await signInWithTicket(page, userId);
+      await page.goto('/admin', { waitUntil: 'domcontentloaded' });
+      await expect(page).toHaveURL(/\/account\?denied=admin/);
+    } finally {
+      await deleteClerkUser(userId);
+    }
+  });
+
+  test('admin → /admin renders the sidebar', async ({ page }) => {
+    const userId = await createClerkUser('admin');
+    try {
+      await signInWithTicket(page, userId);
+      await page.goto('/admin', { waitUntil: 'domcontentloaded' });
+      await expect(page).toHaveURL(/\/admin$/);
+      await expect(page.getByTestId('admin-sidebar')).toBeVisible();
+    } finally {
+      await deleteClerkUser(userId);
+    }
+  });
+});
