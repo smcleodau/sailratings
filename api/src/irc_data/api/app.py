@@ -79,3 +79,9 @@ def root():
         "version": "1.0.0",
         "docs": "/v1/docs",
     }
+
+
+# AD-01-19 — Factory telemetry API (appended; see card for file ownership).
+from irc_data.api.routers import factory_telemetry  # noqa: E402
+
+app.include_router(factory_telemetry.router, prefix="/v1", tags=["Admin"])
