@@ -3,9 +3,9 @@
 ## 1. Overview
 The SailRatings platform relies on LLMs (like GLM 5.2) to analyze complex data (like regression coefficients, TCC drift, and race results) and generate expert-level prose for the Substantial Premium Report. To prevent hallucination and ensure the AI sounds like a true domain expert, we must explicitly define its persona, its rules of engagement, and provide it with a massive, foundational knowledge base.
 
-## 2. The Domain Knowledge Base (`docs/domain/sailing-knowledge.md`)
+## 2. The Domain Knowledge Base (`docs/ai/knowledge/`)
 
-The agent must create a comprehensive, highly detailed markdown file at `docs/domain/sailing-knowledge.md`. This file will be injected into the LLM's context window. It MUST cover all of the following:
+The knowledge base is a numbered set of markdown files in `docs/ai/knowledge/` (01–08) plus `docs/ai/glossary.yaml`, loaded by `api/src/irc_data/api/services/report/knowledge.py` (path changed from `docs/domain/sailing-knowledge.md` by card AI-01-01). These files will be injected into the LLM's context window. It MUST cover all of the following:
 
 ### 2.1 Handicapping & Measurement
 - Definitions of **IRC** (secret, empirical) and **ORC** (open, VPP-based) rating systems.
@@ -33,6 +33,6 @@ The agent must draft the actual system prompts (e.g., in `api/src/irc_data/api/s
 - **Truth Discipline:** The prompt must reiterate the "Facts Contract" pattern. The LLM must only cite numbers provided to it in its input JSON/Dataclass and is strictly forbidden from inventing statistics.
 
 ## 4. Acceptance Criteria
-- [ ] `docs/domain/sailing-knowledge.md` is created and thoroughly covers Handicapping, Weather, and Tactics.
+- [ ] `docs/ai/knowledge/` is created and thoroughly covers Handicapping, Weather, and Tactics.
 - [ ] A new system prompt string is drafted (e.g., `SYSTEM_PROMPT_EXPERT`) that explicitly instructs the LLM to adopt the "Technical Expert & Tactician" persona.
 - [ ] The system prompt explicitly enforces the "Empirical Deduction" rule regarding the secret nature of the IRC formula.
