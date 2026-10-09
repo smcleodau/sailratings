@@ -18,6 +18,7 @@ with workflow.unsafe.imports_passed_through():
         teardown_worktree,
         add_notion_comment,
         fetch_board_state,
+        update_notion_card_state,
     )
 
 from .base_agent import ConversationalAgentWorkflow
@@ -152,6 +153,12 @@ class EpicExecutionWorkflow:
                             maximum_attempts=5,
                         ),
                     )
+                    if notion_page_id:
+                        await workflow.execute_activity(
+                            update_notion_card_state,
+                            args=[notion_page_id, "Done", "Merged"],
+                            start_to_close_timeout=timedelta(minutes=1),
+                        )
                     return # Exit loop and finish
                 else:
                     feedback = review_result.get("feedback")
@@ -169,6 +176,11 @@ class EpicExecutionWorkflow:
                     args=[notion_page_id, "❌ Exhausted all agent attempts. Routing to Human-In-The-Loop (HITL)."],
                     start_to_close_timeout=timedelta(minutes=1)
                 )
+                await workflow.execute_activity(
+                    update_notion_card_state,
+                    args=[notion_page_id, None, "Awaiting Human"],
+                    start_to_close_timeout=timedelta(minutes=1),
+                )
             await workflow.execute_activity(
                 notify_admin_hitl, 
                 {"reason": "Exhausted all attempts or Reviewer repeatedly rejected", "task": task_payload},
@@ -183,8 +195,13 @@ class EpicExecutionWorkflow:
                     args=[notion_page_id, f"❌ FATAL ERROR:\n```\n{str(e)}\n```\nRouting to DLQ."],
                     start_to_close_timeout=timedelta(minutes=1)
                 )
+                await workflow.execute_activity(
+                    update_notion_card_state,
+                    args=[notion_page_id, None, "Failed"],
+                    start_to_close_timeout=timedelta(minutes=1),
+                )
             await workflow.execute_activity(
-                route_to_dlq, 
+                route_to_dlq,
                 {"error": str(e), "task": task_payload},
                 start_to_close_timeout=timedelta(minutes=1)
             )

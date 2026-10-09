@@ -570,6 +570,51 @@ async def add_notion_comment(page_id: str, comment: str) -> None:
     except Exception as e:
         activity.logger.error(f"Failed to add Notion comment: {e}")
 
+
+@activity.defn
+async def update_notion_card_state(page_id: str, status: str | None = None, execution_state: str | None = None) -> None:
+    """Patch a Roadmap card's Status and/or Execution State select properties.
+
+    Found missing (9-10 Oct 2026): the poller sets Execution State =
+    "Queued" at dispatch and nothing else ever writes to either property
+    again — not on a successful merge, not on HITL exhaustion. Every
+    "Done" status visible on the board before this was set by hand
+    during manual cleanup, not by the factory. This silently breaks the
+    Blocked By dependency graph too: notion_poller.py's _task_blockers_met
+    checks Status == "Done", so a card that's actually merged but never
+    flipped to Done can permanently block every card that lists it as a
+    blocker, with no error or signal anywhere.
+    """
+    activity.logger.info(f"Updating Notion card {page_id}: status={status} execution_state={execution_state}")
+    notion_token = os.environ.get("SAILRATINGS_NOTION_TOKEN")
+    if not notion_token:
+        return
+
+    properties: dict = {}
+    if status is not None:
+        properties["Status"] = {"select": {"name": status}}
+    if execution_state is not None:
+        properties["Execution State"] = {"select": {"name": execution_state}}
+    if not properties:
+        return
+
+    headers = {
+        'Authorization': f'Bearer {notion_token}',
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json',
+    }
+    req = urllib.request.Request(
+        f"https://api.notion.com/v1/pages/{page_id}",
+        data=json.dumps({"properties": properties}).encode(),
+        method='PATCH',
+        headers=headers,
+    )
+    try:
+        urllib.request.urlopen(req)
+    except Exception as e:
+        activity.logger.error(f"Failed to update Notion card state: {e}")
+
+
 @activity.defn
 async def run_sprint_manager_agent(task_description: str = "Review the backlog and plan the next sprint.") -> dict:
     repo_path = "/home/irc-data/code/sailratings"
