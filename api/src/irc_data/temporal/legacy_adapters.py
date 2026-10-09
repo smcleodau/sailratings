@@ -231,6 +231,8 @@ def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
     """SailSys results, all clubs (legacy ``scrape results --source sailsys --all-clubs``)."""
     import asyncio
 
+    from irc_data.db.connection import get_engine
+    from irc_data.scrapers.result_import import import_scraper_results
     from irc_data.scrapers.sailsys import CLUBS, scrape_club_irc_results
 
     # Every run before this fix did a full, unbounded, all-history scrape
@@ -243,14 +245,28 @@ def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
     # `since` parameter docs: "Only scrape races after this date
     # (incremental mode)").
     since = _last_successful_run_since("sailsys")
+    engine = get_engine()
     total = 0
+    written = 0
     per_club: dict[str, int] = {}
     for club_name, club_id in CLUBS.items():
         results = asyncio.run(scrape_club_irc_results(club_id=club_id, since=since))
         per_club[club_name] = len(results or [])
         total += per_club[club_name]
+        # This call was simply missing (9 Oct 2026) — "records_written": 0
+        # was hardcoded with a comment claiming the import "happens
+        # downstream", which was never true for this code path: nothing
+        # ever called it. The scraper itself was healthy and finding real
+        # new results every 30 minutes for over a month (confirmed:
+        # records_found=239 on a single October run, RANSA/SHCC among
+        # others) while every one of them was silently discarded. Matches
+        # the CLI's own `scrape results --source sailsys --store` call
+        # exactly (irc_data/cli.py).
+        if results:
+            stats = import_scraper_results(engine, results, source="sailsys", organizing_club=club_name)
+            written += stats.get("imported", 0)
     return {
-        "records_written": 0,  # import happens via result_import downstream
+        "records_written": written,
         "records_found": total,
         "clubs": per_club,
         "since": str(since) if since else None,
@@ -261,10 +277,31 @@ def _run_topyacht(record: Mapping[str, Any]) -> Mapping[str, Any]:
     """TopYacht incremental (legacy ``scrape results --source topyacht --incremental --store``)."""
     import asyncio
 
+    from irc_data.db.connection import get_engine
+    from irc_data.scrapers.result_import import import_scraper_results
     from irc_data.scrapers.topyacht import scrape_all_clubs
 
-    results = asyncio.run(scrape_all_clubs())
-    return {"records_written": 0, "records_found": len(results or [])}
+    # Two real bugs fixed here together (9 Oct 2026), found diagnosing the
+    # scrape-watchdog alert: (1) despite the "incremental" name/docstring,
+    # `since` was never actually passed to scrape_all_clubs — every daily
+    # run did a full, unbounded re-scrape of every club's entire history.
+    # (2) "records_written": 0 was hardcoded with no persistence call at
+    # all, identical to the sailsys bug fixed alongside this — confirmed
+    # via source_runs: this source had reported "success" every single day
+    # for 5+ months while writing zero new race_results rows the entire
+    # time, because nothing here ever called import_scraper_results.
+    since = _last_successful_run_since("topyacht")
+    engine = get_engine()
+    results = asyncio.run(scrape_all_clubs(since=since))
+    written = 0
+    if results:
+        stats = import_scraper_results(engine, results, source="topyacht")
+        written = stats.get("imported", 0)
+    return {
+        "records_written": written,
+        "records_found": len(results or []),
+        "since": str(since) if since else None,
+    }
 
 
 def _run_isora(record: Mapping[str, Any]) -> Mapping[str, Any]:
