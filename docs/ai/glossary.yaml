@@ -1,0 +1,401 @@
+# SailRatings sailing glossary — shared by every LLM persona.
+# Loaded by api/src/irc_data/api/services/report/knowledge.py (load_glossary()).
+# Each term: term, definition, unit (null if none), aliases, source.
+# Source ids refer to the Sources lists in docs/ai/knowledge/*.md.
+# Review status: DRAFT — awaiting Stuart's review (Human Gate, card AI-01-01).
+terms:
+  - term: TCC
+    definition: Time Correction Coefficient, the single IRC rating number. Corrected time = elapsed time x TCC.
+    unit: dimensionless multiplier (3 decimals)
+    aliases: [Time Correction Coefficient, IRC rating]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Non-spinnaker TCC
+    definition: The IRC TCC for racing without a spinnaker.
+    unit: dimensionless multiplier
+    aliases: [Non Spi TCC, non_spi_tcc]
+    source: IRC Rating Rule (ircrating.org)
+  - term: IRC
+    definition: A time-on-time handicap system managed jointly by the RORC Rating Office and the UNCL. The rating formula is confidential.
+    unit: null
+    aliases: [International Rating Certificate]
+    source: IRC Rating Rule (ircrating.org)
+  - term: ORC
+    definition: Offshore Racing Congress; its rating is derived from a published VPP applied to measured data.
+    unit: null
+    aliases: [Offshore Racing Congress]
+    source: ORC International Rating Rule (orc.org)
+  - term: PHRF
+    definition: Performance Handicap Racing Fleet, a time-on-distance handicap system used mainly in North America, assigned by regional fleets.
+    unit: seconds per mile
+    aliases: [Performance Handicap Racing Fleet]
+    source: US Sailing PHRF information
+  - term: RORC
+    definition: Royal Ocean Racing Club; its Rating Office co-manages IRC.
+    unit: null
+    aliases: [Royal Ocean Racing Club]
+    source: IRC Rating Rule (ircrating.org)
+  - term: UNCL
+    definition: Union Nationale pour la Course au Large, the French offshore racing body that co-manages IRC.
+    unit: null
+    aliases: [Union Nationale pour la Course au Large]
+    source: IRC Rating Rule (ircrating.org)
+  - term: GPH
+    definition: General Purpose Handicap, the ORC time allowance. A lower GPH is a faster boat.
+    unit: seconds per nautical mile
+    aliases: [General Purpose Handicap]
+    source: ORC International Rating Rule (orc.org)
+  - term: CDL
+    definition: Class Division Length, an ORC length-based value used to divide boats into classes.
+    unit: metres
+    aliases: [Class Division Length]
+    source: ORC International Rating Rule (orc.org)
+  - term: OSN
+    definition: Offshore Single Number, a single ORC time-on-time coefficient for offshore racing.
+    unit: dimensionless multiplier
+    aliases: [Offshore Single Number]
+    source: ORC International Rating Rule (orc.org)
+  - term: Triple Number
+    definition: Three ORC time-on-time coefficients, one each for low, medium and high wind strength.
+    unit: dimensionless multiplier
+    aliases: [Triple Number Offshore, Triple Number Inshore, triple_low, triple_med, triple_high]
+    source: ORC International Rating Rule (orc.org)
+  - term: TMF
+    definition: Time Multiplication Factor, the ORC multiplier for offshore or inshore scoring.
+    unit: dimensionless multiplier
+    aliases: [Time Multiplication Factor, tmf_offshore, tmf_inshore]
+    source: ORC International Rating Rule (orc.org)
+  - term: Allowances
+    definition: The ORC VPP time allowances tabulated by wind speed and point of sailing for circular-random (CR) and windward-leeward (WL) courses.
+    unit: seconds per nautical mile
+    aliases: [ORC allowances, polars table]
+    source: ORC VPP Documentation (orc.org)
+  - term: PCS
+    definition: Performance Curve Scoring, an ORC scoring method that corrects time using the wind strength actually sailed.
+    unit: null
+    aliases: [Performance Curve Scoring]
+    source: ORC Performance Curve Scoring documentation (orc.org)
+  - term: VPP
+    definition: Velocity Prediction Program, software that predicts boat speed from measured hull, rig and sail data.
+    unit: null
+    aliases: [Velocity Prediction Program]
+    source: ORC VPP Documentation (orc.org)
+  - term: Polar
+    definition: A plot of predicted boat speed against true wind angle at a given true wind speed.
+    unit: knots
+    aliases: [polar plot, polar diagram]
+    source: ORC VPP Documentation (orc.org)
+  - term: TWS
+    definition: True wind speed, the wind speed as measured by a stationary observer.
+    unit: knots
+    aliases: [true wind speed]
+    source: ORC VPP Documentation (orc.org)
+  - term: TWA
+    definition: True wind angle, the angle between the boat's heading and the true wind.
+    unit: degrees
+    aliases: [true wind angle]
+    source: ORC VPP Documentation (orc.org)
+  - term: AWS
+    definition: Apparent wind speed, the wind speed felt on the moving boat.
+    unit: knots
+    aliases: [apparent wind speed]
+    source: ORC VPP Documentation (orc.org)
+  - term: AWA
+    definition: Apparent wind angle, the angle between the boat's heading and the apparent wind.
+    unit: degrees
+    aliases: [apparent wind angle]
+    source: ORC VPP Documentation (orc.org)
+  - term: VMG
+    definition: Velocity made good, the component of boat speed towards the mark (upwind or downwind).
+    unit: knots
+    aliases: [velocity made good]
+    source: ORC VPP Documentation (orc.org)
+  - term: Target speed
+    definition: The VPP-predicted boat speed for the current wind conditions.
+    unit: knots
+    aliases: [target boat speed]
+    source: ORC VPP Documentation (orc.org)
+  - term: Elapsed time
+    definition: The time a boat takes from her start to her finish, before any handicap is applied.
+    unit: hh:mm:ss
+    aliases: [ET, raw time]
+    source: Racing Rules of Sailing; platform convention
+  - term: Corrected time
+    definition: Elapsed time after the handicap is applied; the lowest corrected time wins.
+    unit: hh:mm:ss
+    aliases: [CT, handicap time]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Time-on-time
+    definition: A correction method where corrected time = elapsed time x a rating multiplier. Used by IRC.
+    unit: null
+    aliases: [ToT, TOT]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Time-on-distance
+    definition: A correction method where corrected time = elapsed time minus (allowance per mile x distance). Used by PHRF and ORC GPH.
+    unit: seconds per mile
+    aliases: [ToD, TOD]
+    source: ORC International Rating Rule (orc.org)
+  - term: Point
+    definition: One IRC rating point is 0.001 TCC, equal to 3.6 seconds per hour of racing.
+    unit: 0.001 TCC
+    aliases: [rating point, TCC point]
+    source: Platform convention (report prompts)
+  - term: Rule year
+    definition: The year of the IRC Rule a certificate was issued under; a new IRC Rule year takes effect each 1 January.
+    unit: year
+    aliases: [cert year, certificate year]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Endorsed certificate
+    definition: A certificate whose measurement data has been verified by an approved measurer.
+    unit: null
+    aliases: [Endorsed, IRC endorsed]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Standard certificate
+    definition: A certificate based on declared data rather than endorsed measurement.
+    unit: null
+    aliases: [non-endorsed certificate]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Secondary certificate
+    definition: A further certificate for the same boat, for example short-handed; it is not a different boat.
+    unit: null
+    aliases: [SEC, short-handed certificate, Secondary]
+    source: Platform convention (tcc_csv parser)
+  - term: Trial certificate
+    definition: A certificate an owner can request to see the rating effect of a proposed change before making it.
+    unit: null
+    aliases: [trial cert, what-if certificate]
+    source: IRC Rating Rule (ircrating.org)
+  - term: LH
+    definition: Hull length as measured for the certificate.
+    unit: metres
+    aliases: [hull length]
+    source: IRC Rating Rule (ircrating.org)
+  - term: LOA
+    definition: Length overall.
+    unit: metres
+    aliases: [length overall]
+    source: ORC International Rating Rule (orc.org)
+  - term: Beam
+    definition: Maximum beam of the hull.
+    unit: metres
+    aliases: [BMAX, maximum beam]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Draft
+    definition: Depth from the waterline to the bottom of the keel.
+    unit: metres
+    aliases: [draught]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Displacement
+    definition: The boat's measured weight. Use "displacement", not "weight".
+    unit: kilograms
+    aliases: [boat weight, disp]
+    source: IRC Rating Rule (ircrating.org)
+  - term: DLR
+    definition: Displacement-length ratio, stored by the platform as an integer.
+    unit: dimensionless
+    aliases: [displacement-length ratio]
+    source: IRC Rating Rule (ircrating.org)
+  - term: STIX
+    definition: Stability index printed on the certificate.
+    unit: dimensionless
+    aliases: [stability index]
+    source: IRC Rating Rule (ircrating.org)
+  - term: AVS
+    definition: Angle of vanishing stability, the heel angle beyond which the boat will not right itself.
+    unit: degrees
+    aliases: [angle of vanishing stability]
+    source: IRC Rating Rule (ircrating.org)
+  - term: WB
+    definition: Water ballast, where fitted.
+    unit: kilograms
+    aliases: [water ballast]
+    source: IRC Rating Rule (ircrating.org)
+  - term: BO
+    definition: Bow overhang.
+    unit: metres
+    aliases: [bow overhang]
+    source: IRC Rating Rule (ircrating.org)
+  - term: SO
+    definition: Stern overhang.
+    unit: metres
+    aliases: [stern overhang]
+    source: IRC Rating Rule (ircrating.org)
+  - term: P
+    definition: Mainsail luff length (hoist).
+    unit: metres
+    aliases: [mainsail luff, hoist]
+    source: IRC Rating Rule (ircrating.org)
+  - term: E
+    definition: Mainsail foot length (boom).
+    unit: metres
+    aliases: [mainsail foot, boom length]
+    source: IRC Rating Rule (ircrating.org)
+  - term: J
+    definition: Base of the fore-triangle, from the mast to the forestay at deck level.
+    unit: metres
+    aliases: [foretriangle base]
+    source: IRC Rating Rule (ircrating.org)
+  - term: MUW
+    definition: Mainsail upper width.
+    unit: metres
+    aliases: [mainsail upper width]
+    source: IRC Rating Rule (ircrating.org)
+  - term: MTW
+    definition: Mainsail three-quarter width.
+    unit: metres
+    aliases: [mainsail three-quarter width]
+    source: IRC Rating Rule (ircrating.org)
+  - term: MHW
+    definition: Mainsail half width.
+    unit: metres
+    aliases: [mainsail half width]
+    source: IRC Rating Rule (ircrating.org)
+  - term: HLU
+    definition: Headsail luff length.
+    unit: metres
+    aliases: [headsail luff]
+    source: IRC Rating Rule (ircrating.org)
+  - term: HLP
+    definition: Headsail luff perpendicular, the distance from the clew to the luff.
+    unit: metres
+    aliases: [headsail luff perpendicular, headsail perpendicular]
+    source: IRC Rating Rule (ircrating.org)
+  - term: HUW
+    definition: Headsail upper width.
+    unit: metres
+    aliases: [headsail upper width]
+    source: IRC Rating Rule (ircrating.org)
+  - term: HTW
+    definition: Headsail three-quarter width.
+    unit: metres
+    aliases: [headsail three-quarter width]
+    source: IRC Rating Rule (ircrating.org)
+  - term: HHW
+    definition: Headsail half width.
+    unit: metres
+    aliases: [headsail half width]
+    source: IRC Rating Rule (ircrating.org)
+  - term: HSA
+    definition: Headsail area.
+    unit: square metres
+    aliases: [headsail area]
+    source: IRC Rating Rule (ircrating.org)
+  - term: SPA
+    definition: Spinnaker area.
+    unit: square metres
+    aliases: [spinnaker area]
+    source: IRC Rating Rule (ircrating.org)
+  - term: SLU
+    definition: Spinnaker luff length.
+    unit: metres
+    aliases: [spinnaker luff]
+    source: IRC Rating Rule (ircrating.org)
+  - term: SLE
+    definition: Spinnaker leech length.
+    unit: metres
+    aliases: [spinnaker leech]
+    source: IRC Rating Rule (ircrating.org)
+  - term: SFL
+    definition: Spinnaker foot length.
+    unit: metres
+    aliases: [spinnaker foot]
+    source: IRC Rating Rule (ircrating.org)
+  - term: SHW
+    definition: Spinnaker half width.
+    unit: metres
+    aliases: [spinnaker half width]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Headsails declared
+    definition: The number of headsails the owner declares on the certificate.
+    unit: count
+    aliases: [headsails, declared headsails]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Flying headsail
+    definition: A headsail not set on the forestay, for example a Code Zero.
+    unit: count
+    aliases: [flying headsails, flying jib]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Symmetric spinnaker
+    definition: A spinnaker whose two luffs are the same length, usually set on a pole.
+    unit: null
+    aliases: [sym spinnaker]
+    source: Platform convention (certificate_pdf parser)
+  - term: Asymmetric spinnaker
+    definition: A spinnaker with one luff longer than the other, set from the bow or a short pole.
+    unit: null
+    aliases: [asym spinnaker, A-sail]
+    source: Platform convention (certificate_pdf parser)
+  - term: Code Zero
+    definition: A large, flat reaching sail, normally counted as a flying headsail.
+    unit: null
+    aliases: [Code 0, C0]
+    source: World Sailing Equipment Rules of Sailing
+  - term: Furling headsail
+    definition: A headsail that rolls up around its stay.
+    unit: null
+    aliases: [roller furling]
+    source: World Sailing Equipment Rules of Sailing
+  - term: Spreaders
+    definition: Struts that hold the shrouds out from the mast.
+    unit: count
+    aliases: [spreader pairs]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Wetted surface
+    definition: Hull area in contact with water; it drives drag.
+    unit: square metres
+    aliases: [WSS, wetted surface area]
+    source: ORC VPP Documentation (orc.org)
+  - term: Form stability
+    definition: Stability that comes from hull shape rather than ballast.
+    unit: null
+    aliases: [hull form stability]
+    source: ORC VPP Documentation (orc.org)
+  - term: Drift
+    definition: A change in the fleet-wide relationship between measurements and TCC over time, observed empirically from regressions.
+    unit: TCC
+    aliases: [formula drift, rating drift]
+    source: Platform convention (facts_builders)
+  - term: Layline
+    definition: The line on which a boat can just reach a mark without tacking or gybing.
+    unit: null
+    aliases: [lay line]
+    source: Racing Rules of Sailing; SPEC-08
+  - term: Lift
+    definition: A wind shift that allows the boat to point higher.
+    unit: null
+    aliases: [lifted]
+    source: SPEC-08
+  - term: Header
+    definition: A wind shift that forces the boat to bear away from her course.
+    unit: null
+    aliases: [headed]
+    source: SPEC-08
+  - term: Covering
+    definition: Staying between a rival and the next mark, or on his wind.
+    unit: null
+    aliases: [cover]
+    source: SPEC-08
+  - term: One-design
+    definition: A class that races identical boats built to class rules, ranked on elapsed time with no handicap.
+    unit: null
+    aliases: [one design, OD]
+    source: World Sailing Equipment Rules of Sailing
+  - term: Class rules
+    definition: The rules of a class association that govern what may be changed on a boat of that class.
+    unit: null
+    aliases: [class association rules]
+    source: Racing Rules of Sailing, Rule 87
+  - term: Low Point System
+    definition: "The default series scoring system, 1 point for a win, 2 for second, and so on."
+    unit: points
+    aliases: [Appendix A scoring]
+    source: Racing Rules of Sailing, Appendix A
+  - term: Crew
+    definition: The number of crew declared on the certificate.
+    unit: count
+    aliases: [crew number]
+    source: IRC Rating Rule (ircrating.org)
+  - term: Racing area
+    definition: The racing-area value printed on the certificate.
+    unit: null
+    aliases: [racing_area]
+    source: IRC Rating Rule (ircrating.org)
