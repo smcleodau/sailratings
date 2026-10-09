@@ -516,9 +516,18 @@ async def route_to_dlq(details: dict) -> None:
     activity.logger.error(f"Routing to DLQ: {details}")
     pass
 
+#: Notion caps a single rich_text object's `text.content` at 2000 chars.
+#: One block well under that, matching scripts/post_evidence.py's own
+#: chunk size for the same limit.
+_NOTION_COMMENT_CHUNK = 1900
+#: Hard cap on total comment length (post-chunking) so one pathological
+#: reviewer transcript can't balloon into a dozen rich_text blocks.
+_NOTION_COMMENT_MAX_CHARS = _NOTION_COMMENT_CHUNK * 4
+
+
 @activity.defn
 async def add_notion_comment(page_id: str, comment: str) -> None:
-    activity.logger.info(f"Adding Notion comment to {page_id}: {comment}")
+    activity.logger.info(f"Adding Notion comment to {page_id}: {comment[:200]}")
     notion_token = os.environ.get("SAILRATINGS_NOTION_TOKEN")
     if not notion_token:
         return
@@ -528,20 +537,28 @@ async def add_notion_comment(page_id: str, comment: str) -> None:
         'Notion-Version': '2022-06-28',
         'Content-Type': 'application/json'
     }
-    
+
+    # A single rich_text object over Notion's 2000-char cap makes the whole
+    # POST a 400 — and that was being caught and only logged below, so real
+    # (often long) reviewer-rejection feedback was silently vanishing from
+    # the card the moment this activity started carrying real transcripts
+    # instead of the 4-char placeholder "None" (see _final_agent_text).
+    # Split across multiple rich_text objects in the same comment instead
+    # of truncating to one block; keep the tail, since a verdict/summary
+    # line is usually at the end of a long transcript.
+    if len(comment) > _NOTION_COMMENT_MAX_CHARS:
+        head = comment[: _NOTION_COMMENT_CHUNK]
+        tail = comment[-(_NOTION_COMMENT_MAX_CHARS - _NOTION_COMMENT_CHUNK):]
+        comment = head + "\n...[truncated]...\n" + tail
+    chunks = [comment[i:i + _NOTION_COMMENT_CHUNK] for i in range(0, len(comment), _NOTION_COMMENT_CHUNK)] or [""]
+
     data = {
         "parent": {
             "page_id": page_id
         },
-        "rich_text": [
-            {
-                "text": {
-                    "content": comment
-                }
-            }
-        ]
+        "rich_text": [{"text": {"content": chunk}} for chunk in chunks],
     }
-    
+
     req = urllib.request.Request(
         "https://api.notion.com/v1/comments",
         data=json.dumps(data).encode(),
