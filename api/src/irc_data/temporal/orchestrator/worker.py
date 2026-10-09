@@ -22,6 +22,7 @@ from .activities import (
     add_notion_comment,
     invoke_llm,
     fetch_board_state,
+    update_notion_card_state,
 )
 from ..replay.replay_activities import (
     init_replay_tables_activity,
@@ -80,6 +81,7 @@ async def main():
                 add_notion_comment,
                 invoke_llm,
                 fetch_board_state,
+                update_notion_card_state,
                 init_replay_tables_activity,
                 create_batch_activity,
                 select_artifacts_activity,
