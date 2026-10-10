@@ -3921,3 +3921,60 @@ def compute_admin_metrics_cmd(ctx):
         f"row(s).[/green]"
     )
 
+
+
+# ---------------------------------------------------------------------------
+# AUTH-01-01 — backfill the users table from the Clerk Backend API
+# ---------------------------------------------------------------------------
+
+_CLERK_API_BASE = "https://api.clerk.com/v1"
+_CLERK_PAGE_SIZE = 100
+
+
+def _fetch_clerk_users_page(secret_key: str, offset: int, limit: int) -> list:
+    """One page of ``GET /v1/users`` from the Clerk Backend API."""
+    import httpx
+
+    resp = httpx.get(
+        f"{_CLERK_API_BASE}/users",
+        params={"limit": limit, "offset": offset, "order_by": "created_at"},
+        headers={"Authorization": f"Bearer {secret_key}"},
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+@cli.command(name="sync-clerk-users")
+@click.pass_context
+def sync_clerk_users_cmd(ctx):
+    """Backfill ``users`` from Clerk (CLERK_SECRET_KEY): pages every Clerk
+    user and upserts on clerk_id. Prints created/updated counts."""
+    import os
+
+    from irc_data.api.services.users_service import upsert_from_clerk_payload
+
+    secret_key = os.environ.get("CLERK_SECRET_KEY")
+    if not secret_key:
+        raise click.ClickException("CLERK_SECRET_KEY is not set")
+
+    engine = ctx.obj["engine"]
+    created = updated = 0
+    offset = 0
+    while True:
+        page = _fetch_clerk_users_page(secret_key, offset, _CLERK_PAGE_SIZE)
+        if not page:
+            break
+        with engine.begin() as conn:
+            for clerk_user in page:
+                _, was_created = upsert_from_clerk_payload(conn, clerk_user)
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+        offset += len(page)
+        if len(page) < _CLERK_PAGE_SIZE:
+            break
+    console.print(
+        f"[green]Clerk sync: created {created}, updated {updated}.[/green]"
+    )

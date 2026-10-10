@@ -560,6 +560,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(Text, nullable=False, server_default="customer")
     plan: Mapped[str] = mapped_column(Text, nullable=False, server_default="free")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deletion_requested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
@@ -584,6 +585,19 @@ class User(Base):
     orders: Mapped[list["Order"]] = relationship(back_populates="user")
     settings: Mapped["UserSettings | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class ClerkEvent(Base):
+    """Clerk (svix) webhook ledger — ``id`` is the ``svix-id`` header; a
+    redelivered webhook is detected by the primary key (AUTH-01-01)."""
+
+    __tablename__ = "clerk_events"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    type: Mapped[str | None] = mapped_column(Text)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 
