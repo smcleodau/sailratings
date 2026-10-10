@@ -26,18 +26,18 @@ from sqlalchemy.exc import IntegrityError
 
 from irc_data.db import migration_verify as mv
 
-PAY_REVISION = "0035"  # 0035_ops_infra_reconciliation (canonical head)
-PAY_PARENT = "0034"  # parent of the canonical head (0035)
+PAY_REVISION = "0035"  # 0035_ops_infra_reconciliation
+PAY_PARENT = "0034"  # parent of 0035
 
 EXPECTED_TABLES = {"users", "subscriptions", "stripe_events", "boat_claims"}
 
 
 @pytest.fixture()
 def pay_db(admin_url):
-    """Throwaway database migrated to the canonical head (0035)."""
+    """Throwaway database migrated to 0035, pinned so later heads don't change what this tests."""
     url = mv.create_temp_database(admin_url, prefix="pay07_test")
     try:
-        mv.upgrade(url, "head")
+        mv.upgrade(url, PAY_REVISION)
         yield url
     finally:
         mv.drop_temp_database(url)
@@ -267,10 +267,10 @@ def test_constraints_enforced(pay_db):
 
 
 def test_downgrade_minus_one_round_trip(admin_url):
-    """``upgrade head`` then ``downgrade -1`` both succeed (issue AC)."""
+    """Upgrade to 0035 then downgrade one step both succeed (issue AC)."""
     url = mv.create_temp_database(admin_url, prefix="pay07_rt")
     try:
-        mv.upgrade(url, "head")
+        mv.upgrade(url, PAY_REVISION)
         engine = create_engine(url)
         with engine.connect() as conn:
             assert conn.execute(
@@ -281,8 +281,8 @@ def test_downgrade_minus_one_round_trip(admin_url):
         assert EXPECTED_TABLES <= _table_names(engine)
         engine.dispose()
 
-        # downgrade -1 (0035 -> 0034)
-        mv.downgrade(url, "-1")
+        # 0035 -> 0034
+        mv.downgrade(url, PAY_PARENT)
         engine = create_engine(url)
         with engine.connect() as conn:
             assert conn.execute(
@@ -330,7 +330,7 @@ def test_downgrade_minus_one_round_trip(admin_url):
         engine.dispose()
 
         # and re-upgrading restores the schema (downgrade is non-destructive)
-        mv.upgrade(url, "head")
+        mv.upgrade(url, PAY_REVISION)
         engine = create_engine(url)
         assert EXPECTED_TABLES <= _table_names(engine)
         with engine.connect() as conn:
