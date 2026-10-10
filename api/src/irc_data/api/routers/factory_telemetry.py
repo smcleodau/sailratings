@@ -19,7 +19,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from irc_data.api.routers.admin import _verify_admin
 
@@ -36,18 +36,26 @@ _TIMED_OUT = "EVENT_TYPE_ACTIVITY_TASK_TIMED_OUT"
 _CANCELED = "EVENT_TYPE_ACTIVITY_TASK_CANCELED"
 
 
-async def get_temporal_client():
+async def get_temporal_client(authorization: str = Header(None)):
     """FastAPI dependency returning a connected Temporal client.
 
     Isolated as its own dependency (rather than called inline) so tests can
     override it with a fake client via ``app.dependency_overrides`` instead
     of talking to a real Temporal server.
+
+    Auth is checked here, before connecting: dependencies run before the
+    handler body, so an unauthenticated request used to reach Temporal first,
+    and where none is reachable (Railway prod) every caller got a bare 500.
     """
     from temporalio.client import Client
 
+    _verify_admin(authorization)
     address = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "sailratings")
-    return await Client.connect(address, namespace=namespace)
+    try:
+        return await Client.connect(address, namespace=namespace)
+    except Exception:
+        raise HTTPException(status_code=503, detail=f"Temporal not reachable at {address}")
 
 
 def _parse_card_page_id(workflow_id: str) -> str | None:

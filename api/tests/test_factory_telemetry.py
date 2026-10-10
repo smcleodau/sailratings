@@ -272,3 +272,39 @@ def test_run_detail_summarises_activities(fake_client, monkeypatch):
     assert failed["status"] == "failed"
     assert failed["duration_s"] == pytest.approx(60.0)
     assert failed["failure_message"] == "lint failed"
+
+
+# ---------------------------------------------------------------------------
+# Real dependency (no override): auth before connecting, 503 when unreachable
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def raw_client(monkeypatch):
+    monkeypatch.setattr(admin_module, "ADMIN_PASSWORD", "test-secret")
+    calls = []
+
+    async def boom(*args, **kwargs):
+        calls.append(args)
+        raise RuntimeError("connection refused")
+
+    from temporalio.client import Client
+
+    monkeypatch.setattr(Client, "connect", boom)
+    return TestClient(app_module.app), calls
+
+
+@pytest.mark.parametrize("path", ["/v1/admin/factory/runs", "/v1/admin/factory/runs/agent-task-x"])
+def test_unauthenticated_gets_401_without_touching_temporal(raw_client, path):
+    http, calls = raw_client
+    assert http.get(path).status_code == 401
+    assert calls == []
+
+
+@pytest.mark.parametrize("path", ["/v1/admin/factory/runs", "/v1/admin/factory/runs/agent-task-x"])
+def test_unreachable_temporal_is_503_not_500(raw_client, path):
+    http, calls = raw_client
+    resp = http.get(path, headers=ADMIN_HEADERS)
+    assert resp.status_code == 503
+    assert "Temporal" in resp.json()["detail"]
+    assert len(calls) == 1
