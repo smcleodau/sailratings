@@ -14,6 +14,25 @@ def _prop_text(page, key):
     return rt[0].get('text', {}).get('content', '') if rt else ''
 
 
+def epics_ready_to_close(all_pages):
+    """Epics not yet Done (or Reference) that have at least one task and every task Done."""
+    def status(p):
+        return (p.get('properties', {}).get('Status', {}).get('select') or {}).get('name', '')
+
+    tasks_by_epic = {}
+    for p in all_pages:
+        parent = _prop_text(p, 'Parent Epic')
+        if parent:
+            tasks_by_epic.setdefault(parent, []).append(p)
+    return [
+        e for e in all_pages
+        if not _prop_text(e, 'Parent Epic')
+        and status(e) not in ('Done', 'Reference')
+        and tasks_by_epic.get(_prop_text(e, 'ID'))
+        and all(status(t) == 'Done' for t in tasks_by_epic[_prop_text(e, 'ID')])
+    ]
+
+
 def pick_active_epic(eligible_epics, tasks, done_ids, is_gated):
     """Return (epic_id, dispatchable tasks sorted by ID) for the first epic that can run something.
 
@@ -174,6 +193,28 @@ class NotionPoller:
         def _sel(page, key):
             s = page.get('properties', {}).get(key, {}).get('select') or {}
             return s.get('name', '')
+
+        # Nothing else marks an epic Done once its last task merges, which left
+        # dependent epics (IN-01 behind SM-01, PAY-01 behind AUTH-01) blocked.
+        # Mutate in memory too so dependents unblock in this same poll.
+        for epic in epics_ready_to_close(all_pages):
+            epic_id = _rt(epic, 'ID')
+            try:
+                req = urllib.request.Request(
+                    f"https://api.notion.com/v1/pages/{epic['id']}",
+                    data=json.dumps({"properties": {"Status": {"select": {"name": "Done"}}}}).encode(),
+                    headers=self.headers, method='PATCH')
+                urllib.request.urlopen(req)
+                req = urllib.request.Request(
+                    "https://api.notion.com/v1/comments",
+                    data=json.dumps({"parent": {"page_id": epic['id']}, "rich_text": [{"text": {
+                        "content": "✅ All tasks Done — epic marked Done automatically by the factory poller."}}]}).encode(),
+                    headers=self.headers, method='POST')
+                urllib.request.urlopen(req)
+                epic['properties']['Status']['select'] = {"name": "Done"}
+                logger.info(f"Marked epic {epic_id} Done: every task is Done.")
+            except Exception as e:
+                logger.error(f"Failed to mark epic {epic_id} Done: {e}")
 
         # Epics: rows with no Parent Epic text
         epic_rows = [p for p in all_pages if not p.get('properties', {}).get('Parent Epic', {}).get('rich_text', [])]
