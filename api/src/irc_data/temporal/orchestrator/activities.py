@@ -126,10 +126,62 @@ async def commit_agent_work(worktree_path: str, message: str = "feat: agent impl
         activity.logger.info(f"Nothing to commit or commit failed: {stderr.decode()[:200]}")
     return True
 
+def _kill_processes_in(path: str, grace_seconds: float = 5.0) -> list[int]:
+    """SIGTERM then SIGKILL every process whose cwd is at or under ``path``."""
+    import signal
+    import time
+
+    root = os.path.realpath(path).rstrip("/")
+    protected = {os.getpid(), os.getppid()}
+    targets = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit() or int(entry) in protected:
+            continue
+        try:
+            cwd = os.readlink(f"/proc/{entry}/cwd")
+        except OSError:
+            continue
+        cwd = cwd.removesuffix(" (deleted)")
+        if cwd == root or cwd.startswith(root + "/"):
+            targets.append(int(entry))
+
+    for sig in (signal.SIGHUP, signal.SIGTERM):
+        for pid in targets:
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                pass
+
+    def running(pid: int) -> bool:
+        try:
+            with open(f"/proc/{pid}/stat") as fh:
+                return fh.read().rsplit(")", 1)[1].split()[0] != "Z"
+        except OSError:
+            return False
+
+    deadline = time.monotonic() + grace_seconds
+    while time.monotonic() < deadline and any(running(p) for p in targets):
+        time.sleep(0.2)
+
+    for pid in targets:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    return targets
+
+
 @activity.defn
 async def teardown_worktree(worktree_path: str) -> None:
     repo_path = "/home/irc-data/code/sailratings"
-    
+
+    # Agents start shells, dev servers and workers inside their worktree;
+    # deleting the directory doesn't stop them. One leaked data-pipeline
+    # worker ran 5 weeks of stale code and silently dropped scraper writes.
+    killed = await asyncio.to_thread(_kill_processes_in, worktree_path)
+    if killed:
+        activity.logger.info(f"Stopped {len(killed)} process(es) left running in {worktree_path}")
+
     # Try to gracefully remove the worktree
     cmd = f"git -C {repo_path} worktree remove --force {worktree_path}"
     proc = await asyncio.create_subprocess_shell(
