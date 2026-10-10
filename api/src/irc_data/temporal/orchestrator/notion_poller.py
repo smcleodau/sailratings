@@ -9,6 +9,41 @@ from temporalio.client import Client as TemporalClient
 
 logger = logging.getLogger(__name__)
 
+def _prop_text(page, key):
+    rt = page.get('properties', {}).get(key, {}).get('rich_text', [])
+    return rt[0].get('text', {}).get('content', '') if rt else ''
+
+
+def pick_active_epic(eligible_epics, tasks, done_ids, is_gated):
+    """Return (epic_id, dispatchable tasks sorted by ID) for the first epic that can run something.
+
+    An epic is skipped when none of its tasks can start, whether because they
+    are human-gated or because their Blocked By isn't Done yet. Skipping only
+    the all-gated case let an epic whose ungated tasks were all waiting on a
+    gated sibling (AI-01-03/05/07 behind AI-01-02) starve every epic after it.
+    """
+    for epic in eligible_epics:
+        epic_id = _prop_text(epic, 'ID')
+        in_epic = [t for t in tasks if _prop_text(t, 'Parent Epic') == epic_id]
+        gated = [t for t in in_epic if is_gated(t)]
+        held, ready = [], []
+        for t in in_epic:
+            if t in gated:
+                continue
+            missing = [b.strip() for b in re.split(r'[;,]', _prop_text(t, 'Blocked By'))
+                       if b.strip() and b.strip() not in done_ids]
+            (held if missing else ready).append((t, missing))
+        if ready:
+            logger.info(f"Active epic: {epic_id}  ({len(ready)} dispatchable, "
+                        f"{len(gated)} human-gated, {len(held)} waiting on Blocked By)")
+            return epic_id, sorted((t for t, _ in ready), key=lambda p: _prop_text(p, 'ID'))
+        if in_epic:
+            waits = {_prop_text(t, 'ID'): m for t, m in held}
+            logger.info(f"Epic {epic_id}: nothing dispatchable ({len(gated)} human-gated, "
+                        f"waiting: {waits or 'none'}); trying next eligible epic.")
+    return None, []
+
+
 class NotionPoller:
     def __init__(self):
         self.notion_token = os.environ.get("SAILRATINGS_NOTION_TOKEN")
@@ -193,72 +228,12 @@ class NotionPoller:
             except Exception:
                 return True
 
-        # Walk eligible_epics in sprint-priority order and dispatch from the
-        # first one that actually has a dispatchable task. Previously we
-        # always picked eligible_epics[0] and stopped there — once that
-        # epic's only remaining tasks were human-gated (its own epic-level
-        # Status/Human Gate fields don't reflect that), the poller reported
-        # "0 tasks eligible" and sat idle forever even with dozens of ready
-        # tasks queued in other epics behind it.
-        eligible = gated = []
-        active_epic_id = None
-        for active_epic in eligible_epics:
-            candidate_id = _rt(active_epic, 'ID')
-
-            def _in_epic(page, epic_id=candidate_id):
-                rt = page.get('properties', {}).get('Parent Epic', {}).get('rich_text', [])
-                return (rt[0]['text']['content'] if rt else '') == epic_id
-
-            candidate_eligible = [p for p in results if _in_epic(p) and not human_gate(p)]
-            candidate_gated = [p for p in results if _in_epic(p) and human_gate(p)]
-            if candidate_eligible:
-                active_epic_id = candidate_id
-                eligible, gated = candidate_eligible, candidate_gated
-                logger.info(
-                    f"Active epic: {active_epic_id}  sprint={_rt(active_epic, 'Sprint') or 'Interim'}"
-                    f"  blocked_by='{_rt(active_epic, 'Blocked By') or 'none'}'"
-                )
-                break
-            if candidate_gated:
-                logger.info(
-                    f"Epic {candidate_id} has only human-gated tasks left "
-                    f"({len(candidate_gated)}); trying next eligible epic."
-                )
-
+        # Walk epics in sprint order; dispatch from the first one with a task
+        # that is neither human-gated nor waiting on an unfinished Blocked By.
+        active_epic_id, eligible = pick_active_epic(eligible_epics, results, done_ids, human_gate)
         if active_epic_id is None:
-            logger.info(
-                "No eligible epics have a dispatchable task "
-                f"(checked {len(eligible_epics)}: all remaining tasks are human-gated)."
-            )
+            logger.info(f"No eligible epic has a dispatchable task (checked {len(eligible_epics)}).")
             return
-
-        off_epic = len(results) - len(eligible) - len(gated)
-        if gated:
-            ids = [(_rt(p, 'ID') or p['id']) for p in gated]
-            logger.info(f"Skipping {len(gated)} human-gate tasks in {active_epic_id}: {ids}")
-        if off_epic:
-            logger.info(f"Skipping {off_epic} tasks from other epics (active: {active_epic_id})")
-        logger.info(f"{len(eligible)} tasks eligible from active epic {active_epic_id}")
-
-        # Task-level Blocked By (4 Sep 2026). Until now only the *epic's*
-        # Blocked By was checked; every Ready task inside the active epic was
-        # dispatched in parallel regardless of its own Blocked By text. That is
-        # how AD-01-16 and AD-01-06 (and AD-01-03 vs a sibling) ended up editing
-        # AdminSidebar.tsx / admin.py in the same hour and colliding at merge.
-        # A task now waits until every ID it names is Done.
-        def _task_blockers_met(page):
-            blocked = _rt(page, 'Blocked By').strip()
-            if not blocked:
-                return True
-            missing = [b.strip() for b in re.split(r'[;,]', blocked)
-                       if b.strip() and b.strip() not in done_ids]
-            if missing:
-                logger.info(f"Holding {_rt(page, 'ID') or page['id']}: blocked by {missing}")
-            return not missing
-
-        eligible = [p for p in eligible if _task_blockers_met(p)]
-        # Deterministic order: lowest ID first, so AD-01-17 goes before AD-01-24.
-        eligible.sort(key=lambda p: _rt(p, 'ID'))
 
         for page in eligible[:min(len(eligible), self.MAX_PER_POLL, slots_available)]:
             try:
