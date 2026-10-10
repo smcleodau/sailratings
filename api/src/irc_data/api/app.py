@@ -85,3 +85,8 @@ def root():
 from irc_data.api.routers import factory_telemetry  # noqa: E402
 
 app.include_router(factory_telemetry.router, prefix="/v1", tags=["Admin"])
+
+# AUTH-01-01 — Clerk -> Postgres user sync webhook (appended).
+from irc_data.api.routers import webhooks_clerk  # noqa: E402
+
+app.include_router(webhooks_clerk.router, prefix="/v1", tags=["Webhooks"])

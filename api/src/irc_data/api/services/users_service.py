@@ -284,3 +284,96 @@ def link_checkout_customer_to_user(
         )
 
     return user["id"]
+
+
+# ── Clerk webhook / backfill sync (AUTH-01-01) ──────────────────────────
+
+
+def _clerk_primary_email(data: dict[str, Any]) -> Optional[str]:
+    """Primary email address of a Clerk user object (falls back to first)."""
+    addresses = data.get("email_addresses") or []
+    primary_id = data.get("primary_email_address_id")
+    chosen = None
+    for addr in addresses:
+        if primary_id and addr.get("id") == primary_id:
+            chosen = addr
+            break
+    if chosen is None and addresses:
+        chosen = addresses[0]
+    return _normalize_email(chosen.get("email_address")) if chosen else None
+
+
+def _clerk_full_name(data: dict[str, Any]) -> Optional[str]:
+    parts = [
+        (data.get("first_name") or "").strip(),
+        (data.get("last_name") or "").strip(),
+    ]
+    return " ".join(p for p in parts if p) or None
+
+
+def upsert_from_clerk_payload(
+    conn: Connection, data: dict[str, Any]
+) -> tuple[int, bool]:
+    """Upsert the ``users`` row for a Clerk user object on ``clerk_id``.
+
+    ``data`` is the ``data`` member of a ``user.created`` / ``user.updated``
+    webhook (or an item of the Clerk Backend API ``GET /users`` response):
+    ``email`` is the primary email address, ``full_name`` is first + last.
+
+    ``users.email`` is UNIQUE — if another row already owns the email it is
+    left untouched on this row rather than failing the whole sync.
+
+    Returns ``(users.id, created)``.
+    """
+    clerk_id = data.get("id")
+    if not clerk_id:
+        raise ValueError("Clerk payload has no user id")
+    email = _clerk_primary_email(data)
+    full_name = _clerk_full_name(data)
+
+    def _email_owned_by_other(exclude_clerk_id: str) -> bool:
+        if not email:
+            return False
+        return conn.execute(
+            text(
+                "SELECT 1 FROM users WHERE lower(email) = :email "
+                "AND clerk_id != :clerk_id LIMIT 1"
+            ),
+            {"email": email, "clerk_id": exclude_clerk_id},
+        ).first() is not None
+
+    taken = _email_owned_by_other(clerk_id)
+    params = {
+        "clerk_id": clerk_id,
+        "email": None if taken else email,
+        "full_name": full_name,
+    }
+
+    inserted = conn.execute(
+        text(
+            """
+            INSERT INTO users (clerk_id, email, full_name)
+            VALUES (:clerk_id, :email, :full_name)
+            ON CONFLICT (clerk_id) DO NOTHING
+            RETURNING id
+            """
+        ),
+        params,
+    ).first()
+    if inserted is not None:
+        return inserted[0], True
+
+    row = conn.execute(
+        text(
+            """
+            UPDATE users
+            SET email = COALESCE(:email, email),
+                full_name = :full_name,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE clerk_id = :clerk_id
+            RETURNING id
+            """
+        ),
+        params,
+    ).first()
+    return row[0], False
