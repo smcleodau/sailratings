@@ -3,26 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   CheckIcon,
+  RotateCcwIcon,
   XIcon,
 } from "@/components/admin/AdminIcons";
+import { AdminApiError, clearAdminToken, getAdminToken } from "@/lib/adminApi";
+import {
+  actOnCorrection,
+  fetchCorrections,
+  isCorrectionsTableEmpty,
+  type Correction,
+  type CorrectionAction,
+  type CorrectionStatus,
+} from "@/lib/adminApi.corrections";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+type Tab = CorrectionStatus;
 
-interface Correction {
-  id: number;
-  boat_id: number | null;
-  boat_name: string | null;
-  field_name: string;
-  current_value: string | null;
-  proposed_value: string;
-  submitted_email: string | null;
-  submitted_at: string;
-  status: string;
-  reviewed_at?: string | null;
-  review_notes?: string | null;
-}
-
-type Tab = "pending" | "applied" | "rejected";
+const TABS: Tab[] = ["pending", "applied", "rejected", "reverted"];
 
 export default function CorrectionsPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -31,13 +27,10 @@ export default function CorrectionsPage() {
   const [tab, setTab] = useState<Tab>("pending");
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState<Set<number>>(new Set());
+  const [tableEmpty, setTableEmpty] = useState(false);
 
   useEffect(() => {
-    const stored = (typeof window !== "undefined" ? localStorage.getItem("admin_token") : null) || process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "sailfast2026";
-    if (stored) {
-      if (typeof window !== "undefined") localStorage.setItem("admin_token", stored);
-      setToken(stored);
-    }
+    setToken(getAdminToken());
   }, []);
 
   const load = useCallback(
@@ -45,21 +38,19 @@ export default function CorrectionsPage() {
       if (!token) return;
       setLoading(true);
       setError(null);
+      setTableEmpty(false);
       try {
-        const res = await fetch(`${API_BASE}/admin/corrections?status=${which}&limit=200`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          if (res.status === 401) {
-            localStorage.removeItem("admin_token");
-            setToken(null);
-            return;
-          }
-          throw new Error(`Load failed: ${res.status}`);
-        }
-        const data: Correction[] = await res.json();
+        const data = await fetchCorrections(which, 200);
         setRows(data);
+        if (which === "pending" && data.length === 0) {
+          setTableEmpty(await isCorrectionsTableEmpty());
+        }
       } catch (e) {
+        if (e instanceof AdminApiError && e.status === 401) {
+          clearAdminToken();
+          setToken(null);
+          return;
+        }
         setError(e instanceof Error ? e.message : "Failed");
       } finally {
         setLoading(false);
@@ -72,22 +63,14 @@ export default function CorrectionsPage() {
     if (token) void load(tab);
   }, [token, tab, load]);
 
-  const act = async (id: number, action: "approve" | "reject", notes?: string) => {
+  const act = async (id: number, action: CorrectionAction, notes?: string) => {
     if (!token) return;
     setActing((prev) => new Set(prev).add(id));
     try {
-      const res = await fetch(`${API_BASE}/admin/corrections/${id}/${action}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ review_notes: notes ?? null }),
-      });
-      if (!res.ok) throw new Error(`${action} failed: ${res.status}`);
+      await actOnCorrection(id, action, notes);
       setRows((prev) => prev.filter((r) => r.id !== id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Action failed");
+      setError(e instanceof Error ? e.message : `${action} failed`);
     } finally {
       setActing((prev) => {
         const next = new Set(prev);
@@ -127,7 +110,7 @@ export default function CorrectionsPage() {
           <span className="admin-mono-font text-[10px] text-[var(--sr-text-label)]">moderation queue</span>
         </div>
         <div className="flex items-center gap-1">
-          {(["pending", "applied", "rejected"] as Tab[]).map((t) => (
+          {TABS.map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -151,7 +134,9 @@ export default function CorrectionsPage() {
 
           {rows.length === 0 && !loading && (
             <p className="text-[13px] text-[var(--sr-text-label)] text-center py-16">
-              No {tab} corrections.
+              {tab === "pending" && tableEmpty
+                ? "No corrections proposed yet — boat_corrections is empty"
+                : `No ${tab} corrections.`}
             </p>
           )}
 
@@ -226,6 +211,22 @@ export default function CorrectionsPage() {
                     >
                       <XIcon size={14} strokeWidth={2} />
                       Reject
+                    </button>
+                  </div>
+                )}
+
+                {tab === "applied" && (
+                  <div className="flex items-start gap-2 md:flex-col md:items-stretch">
+                    <button
+                      onClick={() => {
+                        const reason = window.prompt("Revert reason (optional)") ?? undefined;
+                        act(r.id, "revert", reason);
+                      }}
+                      disabled={acting.has(r.id)}
+                      className="flex items-center justify-center gap-1.5 px-4 py-1.5 border border-[var(--sr-action-pressed)]/40 text-[var(--sr-action-pressed)] hover:bg-[var(--sr-action-pressed)]/10 text-[11px] font-medium transition-colors disabled:opacity-40 rounded-[4px]"
+                    >
+                      <RotateCcwIcon size={14} strokeWidth={2} />
+                      Revert
                     </button>
                   </div>
                 )}
