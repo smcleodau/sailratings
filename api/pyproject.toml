@@ -33,8 +33,6 @@ dependencies = [
     "posthog>=7.0",
     "firecrawl-py>=4.0",
     "temporalio>=1.5",
-    "openhands-sdk>=1.17.0",
-    "openhands-tools>=1.37.1",
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp",
@@ -45,6 +43,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Factory worker only (runs on the dev box, not in the Railway API image).
+# browser-use (pulled in by openhands-tools) pins anthropic<1, which conflicts
+# with the app's anthropic>=1.13; the factory runs with the browser tool off.
+factory = [
+    "openhands-sdk>=1.17.0",
+    "openhands-tools>=1.37.1",
+]
 dev = [
     "pytest>=7.4",
     "pytest-asyncio>=0.23",
