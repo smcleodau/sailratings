@@ -90,3 +90,8 @@ app.include_router(factory_telemetry.router, prefix="/v1", tags=["Admin"])
 from irc_data.api.routers import webhooks_clerk  # noqa: E402
 
 app.include_router(webhooks_clerk.router, prefix="/v1", tags=["Webhooks"])
+
+# IN-01-02 — Intelligence query service (IntelligenceAnswerV1), appended.
+from irc_data.api.routers import intelligence  # noqa: E402
+
+app.include_router(intelligence.router, prefix="/v1", tags=["Intelligence"])
