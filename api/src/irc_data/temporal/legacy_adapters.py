@@ -322,16 +322,24 @@ def _run_topyacht(record: Mapping[str, Any]) -> Mapping[str, Any]:
     # via source_runs: this source had reported "success" every single day
     # for 5+ months while writing zero new race_results rows the entire
     # time, because nothing here ever called import_scraper_results.
+    from irc_data.scrapers.topyacht import scrape_events_directory
+
     since = _last_successful_run_since("topyacht")
     engine = get_engine()
-    results = asyncio.run(scrape_all_clubs(since=since))
+    results = asyncio.run(scrape_all_clubs(since=since)) or []
+    # Most clubs now publish at paths the fixed club list can't guess (or on
+    # their own sites); TopYacht's events directory links each event's real
+    # results page (2026-10-11).
+    directory_results = asyncio.run(scrape_events_directory(since=since)) or []
+    results = results + directory_results
     written = 0
     if results:
         stats = import_scraper_results(engine, results, source="topyacht")
         written = stats.get("imported", 0)
     return {
         "records_written": written,
-        "records_found": len(results or []),
+        "records_found": len(results),
+        "records_found_directory": len(directory_results),
         "since": str(since) if since else None,
     }
 

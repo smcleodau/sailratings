@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from email.utils import parsedate_to_datetime
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urljoin
 
@@ -581,6 +582,7 @@ async def discover_series_from_index(
 async def discover_races_from_series(
     client,
     series_url: str,
+    since: date | None = None,
 ) -> list[dict]:
     """Parse a series.htm page and return IRC race result page URLs.
 
@@ -645,6 +647,17 @@ async def discover_races_from_series(
         href = link["href"]
         full_url = urljoin(series_url, href.replace("\\", "/"))
 
+        # Rows are labelled "dd/mm/yyyy ..." — skip races before the cutoff
+        # without fetching them (the daily crawl would otherwise reopen every
+        # race of every season).
+        m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})", race_label or "")
+        try:
+            label_date = date(int(m.group(3)), int(m.group(2)), int(m.group(1))) if m else None
+        except ValueError:
+            label_date = None
+        if since and label_date and label_date < since:
+            continue
+
         races.append({
             "race_label": race_label,
             "url": full_url,
@@ -653,6 +666,139 @@ async def discover_races_from_series(
         })
 
     return races
+
+
+# ---------------------------------------------------------------------------
+# Events directory (topyacht.com.au/web/events/)
+# ---------------------------------------------------------------------------
+#
+# Clubs no longer keep a predictable {base}/{year}/{division}/ layout on
+# topyacht.net.au: many publish on their own sites, and the rest use paths
+# like hbyc/2025/club_racing/ or rycv/2025/summer/BBst26/. TopYacht's public
+# events directory lists every event with an "Enter" link (the logged-in
+# entry system, not needed here) and a "Results" link, which is the reliable
+# starting point.
+
+EVENTS_DIRECTORY_URL = "https://topyacht.com.au/web/events/"
+_TOPYACHT_PAGE_RE = re.compile(r"(?:/index\.htm|/series\.htm)(?:[?#].*)?$|topyacht\.net\.au/results/", re.I)
+
+
+def parse_events_directory(html: str, years: set[int]) -> list[dict]:
+    """Events whose name mentions one of ``years`` and that have a Results link."""
+    soup = BeautifulSoup(html, "html.parser")
+    year_re = re.compile(r"\b(" + "|".join(str(y) for y in sorted(years)) + r")\b")
+    events = []
+    for row in soup.find_all("tr"):
+        cells = row.find_all("td")
+        if not cells:
+            continue
+        name = " ".join(cells[0].get_text(" ", strip=True).split())
+        if not year_re.search(name):
+            continue
+        link = next((a for a in row.find_all("a", href=True)
+                     if "result" in a.get_text(strip=True).lower()), None)
+        if not link:
+            continue
+        club = cells[2].get_text(" ", strip=True) if len(cells) > 2 else ""
+        events.append({"name": name, "club": club, "results_url": link["href"].strip()})
+    return events
+
+
+async def _fetch(client, url: str):
+    try:
+        return await fetch_with_retry(client, url, rate_limiter=rate_limiter, max_retries=1)
+    except Exception:
+        return None
+
+
+def _modified_before(resp, since: date | None) -> bool:
+    lm = resp.headers.get("last-modified") if since else None
+    if not lm:
+        return False
+    try:
+        return parsedate_to_datetime(lm).date() < since
+    except (TypeError, ValueError):
+        return False
+
+
+async def resolve_series_urls(client, url: str, since: date | None = None, _hop: int = 0) -> list[str]:
+    """Series pages reachable from an event's Results link.
+
+    Handles a TopYacht index (lists series), a series page itself, or a club
+    web page that links to TopYacht pages (followed one hop). An index whose
+    Last-Modified predates ``since`` is skipped: nothing in it can be new.
+    """
+    resp = await _fetch(client, url)
+    if resp is None:
+        return []
+    final = str(resp.url)
+    if _modified_before(resp, since):
+        return []
+    soup = BeautifulSoup(resp.text, "html.parser")
+    if final.lower().split("?")[0].endswith("series.htm") or soup.find("table", class_="centre_index_table"):
+        return [final]
+
+    out: list[str] = []
+    hops: list[str] = []
+    for a in soup.find_all("a", href=True):
+        href = urljoin(final, a["href"].replace("\\", "/"))
+        if href.lower().split("?")[0].endswith("/series.htm"):
+            if href not in out:
+                out.append(href)
+        elif _hop == 0 and _TOPYACHT_PAGE_RE.search(href) and href not in hops:
+            hops.append(href)
+    if out:
+        return out
+    for h in hops:
+        for s_url in await resolve_series_urls(client, h, since, _hop=1):
+            if s_url not in out:
+                out.append(s_url)
+    return out
+
+
+async def scrape_series(client, series_url: str, since: date | None = None,
+                        organizing_club: str | None = None) -> list[RaceResult]:
+    results: list[RaceResult] = []
+    races = await discover_races_from_series(client, series_url, since=since)
+    for race in (r for r in races if not r["is_series_scores"]):
+        html = await _fetch_html(client, race["url"])
+        if not html:
+            continue
+        try:
+            parsed = parse_topyacht_html(html, source_url=race["url"], organizing_club=organizing_club)
+        except Exception as e:
+            print(f"      {race['race_label']}: ERROR — {e}")
+            continue
+        if since:
+            parsed = [r for r in parsed if r.event_date is None or r.event_date >= since]
+        results.extend(parsed)
+    return results
+
+
+async def scrape_events_directory(since: date | None = None, years: set[int] | None = None,
+                                  skip_series: set[str] | None = None) -> list[RaceResult]:
+    """Scrape IRC results for every recent event in TopYacht's events directory."""
+    today = date.today()
+    years = years or {today.year - 1, today.year, today.year + 1}
+    seen = set(skip_series or ())
+    all_results: list[RaceResult] = []
+    async with get_http_client() as client:
+        resp = await _fetch(client, EVENTS_DIRECTORY_URL)
+        if resp is None:
+            raise RuntimeError(f"TopYacht events directory unavailable: {EVENTS_DIRECTORY_URL}")
+        events = parse_events_directory(resp.text, years)
+        print(f"TopYacht directory: {len(events)} recent events with results links")
+        for ev in events:
+            for s_url in await resolve_series_urls(client, ev["results_url"], since=since):
+                if s_url in seen:
+                    continue
+                seen.add(s_url)
+                found = await scrape_series(client, s_url, since=since, organizing_club=ev["club"] or None)
+                if found:
+                    print(f"  {ev['name'][:50]}: {len(found)} results ({s_url})")
+                all_results.extend(found)
+    print(f"TopYacht directory total: {len(all_results)} results")
+    return all_results
 
 
 # ---------------------------------------------------------------------------
