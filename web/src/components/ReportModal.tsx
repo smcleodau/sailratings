@@ -1,17 +1,33 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth as useClerkAuth } from "@clerk/nextjs";
 import { X } from "lucide-react";
 import {
   streamInsights,
   createCheckoutSession,
   type BoatDetail,
+  type CheckoutSessionResponse,
 } from "@/lib/api";
 import { detectCurrency } from "@/lib/currency";
 import PinnedMasthead from "@/components/PinnedMasthead";
 import SealedSectionGrid from "@/components/SealedSectionGrid";
-import StickyCheckoutRail from "@/components/StickyCheckoutRail";
+import StickyCheckoutRail, { type AlreadyOwnedResult } from "@/components/StickyCheckoutRail";
+
+// Clerk is optional (layout.tsx mounts ClerkProvider only when a publishable
+// key is set). Calling useAuth without the provider throws, so keyless
+// environments fall back to guest checkout (no token). We detect the missing
+// provider by catching that throw rather than trusting a build-time env flag:
+// the client bundle and the server can disagree on the key, which previously
+// crashed the modal. The throw happens on every render (before any other
+// hook runs), so the hook order never changes between renders.
+function useAuth(): { getToken: () => Promise<string | null> } {
+  try {
+    return useClerkAuth();
+  } catch {
+    return { getToken: async () => null };
+  }
+}
 
 interface ReportModalProps {
   boat: BoatDetail;
@@ -163,11 +179,14 @@ export default function ReportModal({
     run();
     return () => {
       cancelled = true;
+      // React StrictMode (next dev) mounts, cleans up and re-mounts: without
+      // this reset the re-mount would skip the stream the cleanup cancelled.
+      startedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boat.id]);
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (): Promise<void | AlreadyOwnedResult> => {
     const { track } = await import("@/lib/posthog");
     track("buy_clicked", {
       boat_id: boat.id,
@@ -179,7 +198,10 @@ export default function ReportModal({
     // PAY-01-08: signed-in buyers attach the session to their one Stripe
     // customer; guests (no token) get customer_creation=always server-side.
     const authToken = await getToken().catch(() => null);
-    const { checkout_url, order_token } = await createCheckoutSession({
+    const session: CheckoutSessionResponse & {
+      already_owned?: boolean;
+      report_url?: string;
+    } = await createCheckoutSession({
       boat_id: boat.id,
       boat_name: boat.boat_name,
       currency: currency.code,
@@ -187,6 +209,12 @@ export default function ReportModal({
       teaser_text: briefRef.current,
       authToken,
     });
+    // PAY-01-02: already purchased — show the owned state, never re-charge.
+    if (session.already_owned && session.report_url) {
+      track("checkout_already_owned", { boat_id: boat.id });
+      return { already_owned: true, report_url: session.report_url };
+    }
+    const { checkout_url, order_token } = session;
     track("checkout_redirect", {
       boat_id: boat.id,
       order_token,

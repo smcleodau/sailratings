@@ -42,7 +42,9 @@ const SUPERVISED_SOURCES = [
 // playwright.config.ts). The scrapers-dedicated config
 // (playwright.scrapers.config.ts) exports PW_SCRAPERS_API_BASE pointing at
 // its scrapers-only fixture on :4102.
-const API_BASE = process.env.PW_SCRAPERS_API_BASE || 'http://127.0.0.1:4101/v1';
+const API_BASE =
+  process.env.PW_SCRAPERS_API_BASE ||
+  `http://127.0.0.1:${process.env.PW_API_PORT || '4101'}/v1`;
 
 async function openScrapers(page: Page, query = '') {
   // Wait for the summary fetch to actually resolve OK *while* the page

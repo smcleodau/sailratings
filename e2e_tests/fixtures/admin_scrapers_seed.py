@@ -114,7 +114,7 @@ def seed_admin_scrapers(engine: Engine) -> None:
         completed_at=now - timedelta(hours=3) + timedelta(seconds=12),
     )
 
-    # Data-tap rows: sailsys fresh (30 min), topyacht stale (5 days).
+    # Data-tap rows: sailsys fresh (30 min), topyacht stale (10 days).
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -128,9 +128,11 @@ def seed_admin_scrapers(engine: Engine) -> None:
                     "created": now - timedelta(minutes=30),
                 },
                 {
+                    # 10 days: stale under topyacht's 8-day data budget
+                    # (raised from 26 h in 4c096f0); the run stays 5 days old.
                     "src": "topyacht",
-                    "ev": (now - timedelta(days=6)).date().isoformat(),
-                    "created": now - timedelta(days=5),
+                    "ev": (now - timedelta(days=11)).date().isoformat(),
+                    "created": now - timedelta(days=10),
                 },
             ],
         )
