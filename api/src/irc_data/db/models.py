@@ -679,6 +679,7 @@ class BoatClaim(Base):
 
     __tablename__ = "boat_claims"
     __table_args__ = (
+        UniqueConstraint("user_id", "boat_id", name="uq_boat_claims_user_boat"),
         Index("idx_boat_claims_boat", "boat_id"),
         Index("idx_boat_claims_status", "status"),
     )
@@ -705,6 +706,26 @@ class BoatClaim(Base):
         back_populates="boat_claims", foreign_keys=[user_id]
     )
     boat: Mapped["Boat"] = relationship()
+
+
+class AdminEntitlementGrant(Base):
+    """Admin override of a user's tier (PAY-01-01); beats the Stripe mirror
+    while unexpired. ``tier`` is a product tier name (crew/skipper/programme)."""
+
+    __tablename__ = "admin_entitlement_grants"
+    __table_args__ = (Index("idx_admin_entitlement_grants_user", "user_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    tier: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    granted_by: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class UserSettings(Base):

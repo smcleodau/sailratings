@@ -8,8 +8,10 @@ from typing import Any, Optional
 
 import httpx
 import jwt
-from fastapi import Request
+from fastapi import Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from jwt import PyJWKClient
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from irc_data.db.connection import get_engine
@@ -178,3 +180,90 @@ def get_optional_identity(request: Request) -> Optional[CallerIdentity]:
     if not token:
         return None
     return verify_clerk_token(token)
+
+
+# ── Entitlements (PAY-01-01) ─────────────────────────────────────────────
+
+
+class FeatureNotEntitled(HTTPException):
+    """403 raised by :func:`require_feature`.
+
+    Rendered as ``{"detail": <message>, "required_tier": <tier>}`` once
+    :func:`install_entitlement_handlers` has been called on the app; without
+    it the default handler still returns a valid 403 ``{"detail": <message>}``
+    and the tier is also sent in the ``X-Required-Tier`` header.
+    """
+
+    def __init__(self, feature: str, required_tier: Optional[str]) -> None:
+        self.feature = feature
+        self.required_tier = required_tier
+        headers = {"X-Required-Tier": required_tier} if required_tier else None
+        super().__init__(
+            status_code=403,
+            detail=f"Your plan does not include '{feature}'",
+            headers=headers,
+        )
+
+
+async def feature_not_entitled_handler(
+    request: Request, exc: FeatureNotEntitled
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=403,
+        content={"detail": exc.detail, "required_tier": exc.required_tier},
+        headers=exc.headers,
+    )
+
+
+def install_entitlement_handlers(app: Any) -> None:
+    """Register the flat ``{detail, required_tier}`` 403 body on ``app``."""
+    app.add_exception_handler(FeatureNotEntitled, feature_not_entitled_handler)
+
+
+def require_feature(feature: str):
+    """FastAPI dependency factory: 401 anonymous, 403 when not entitled.
+
+    ``boat_id`` is taken from the route's path parameters when present, so
+    ``Depends(require_feature("report_view"))`` on ``/boats/{boat_id}/...``
+    also honours per-boat ownership. Returns the caller's ``EntitlementV1``.
+    """
+    from irc_data.api.services import entitlements as ent_svc
+
+    if feature not in ent_svc.ALL_FEATURES:
+        raise ValueError(f"Unknown feature '{feature}'")
+
+    def _dependency(
+        request: Request,
+        engine: Engine = Depends(get_db),
+        identity: Optional[CallerIdentity] = Depends(get_optional_identity),
+    ):
+        if identity is None:
+            raise HTTPException(status_code=401, detail="Not signed in")
+
+        boat_id: Optional[int] = None
+        raw_boat = request.path_params.get("boat_id")
+        if raw_boat is not None:
+            try:
+                boat_id = int(raw_boat)
+            except (TypeError, ValueError):
+                boat_id = None
+
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT id FROM users WHERE clerk_id = :c"
+                    " AND deleted_at IS NULL AND deletion_completed_at IS NULL"
+                ),
+                {"c": identity.clerk_user_id},
+            ).first()
+            ent = (
+                ent_svc.get_entitlements(conn, row[0])
+                if row is not None
+                else ent_svc.free_entitlements()
+            )
+
+        if not ent_svc.can(ent, feature, boat_id):
+            raise FeatureNotEntitled(feature, ent_svc.required_tier(feature))
+        return ent
+
+    return _dependency
