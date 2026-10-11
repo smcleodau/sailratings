@@ -79,12 +79,12 @@ SOURCES: list[SourceConfig] = [
         # Run budget 2 h: a 30-min cron that hasn't succeeded in 2 h has
         # missed ~4 runs — worth a page.
         run_within=timedelta(hours=2),
-        # Data budget 26 h: results flow in daily during the season, so a
-        # full day with no new race rows is the "silent tap" signal. This is
-        # deliberately tighter than a multi-week seasonal lull so a genuine
-        # outage pages within a day; seasonal lulls are handled by the
-        # optional/manual sources below, not by loosening this budget.
-        data_within=timedelta(hours=26),
+        # Data budget 8 days: AU club results land mostly after weekend
+        # racing, not daily, so the old 26 h budget fired every week (and
+        # did, 2026-10-11, a day after Saturday's results). A week plus a
+        # day still catches a silent tap (e.g. found>0 but nothing written)
+        # within one racing weekend; run_within above catches crashes in 2 h.
+        data_within=timedelta(days=8),
     ),
     SourceConfig(
         source="orc_api",
@@ -108,7 +108,8 @@ SOURCES: list[SourceConfig] = [
         label="TopYacht (AU/regattas)",
         cadence_human="daily 02:30 UTC",
         run_within=timedelta(hours=26),
-        data_within=timedelta(hours=26),
+        # Weekly club racing, same reasoning as sailsys.
+        data_within=timedelta(days=8),
     ),
     SourceConfig(
         source="sailracehq",

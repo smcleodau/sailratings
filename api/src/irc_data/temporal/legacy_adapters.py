@@ -203,12 +203,21 @@ def _run_tcc(record: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _last_successful_run_since(slug: str) -> "date | None":
-    """The finished_at date of the last successful ``source_runs`` row.
+    """Date to pass as ``since=``: the last successful run's finish, minus one day.
 
-    Used to pass ``since=`` to scrapers that support incremental fetching.
     Returns None (full scrape) when there's no prior success — including
     the very first run, which is expected to be a genuine one-off backfill.
+
+    Scheduled runs all share one ``source_runs`` row (run_key "scheduled"),
+    which is already back to "running" when this is called, so querying it
+    for status='success' fell through to a September ad-hoc row and every
+    30-minute sailsys run re-scraped five weeks. The ledger mirrors each
+    close into ``ingestion_log`` (metadata.trigger = "mirror-close"), which
+    keeps one row per run. The one-day margin matches the old CLI's
+    incremental cutoff and covers results posted late on the same day.
     """
+    from datetime import timedelta
+
     from sqlalchemy import text
 
     from irc_data.db.connection import get_engine
@@ -217,14 +226,18 @@ def _last_successful_run_since(slug: str) -> "date | None":
     with engine.connect() as conn:
         row = conn.execute(
             text(
-                "SELECT finished_at FROM source_runs"
-                " WHERE source_slug = :slug AND status = 'success'"
-                " AND finished_at IS NOT NULL"
-                " ORDER BY finished_at DESC LIMIT 1"
+                "SELECT max(t) FROM ("
+                "  SELECT completed_at AS t FROM ingestion_log"
+                "  WHERE source = :slug AND status = 'completed'"
+                "  AND metadata->>'trigger' = 'mirror-close'"
+                "  UNION ALL"
+                "  SELECT finished_at FROM source_runs"
+                "  WHERE source_slug = :slug AND status = 'success'"
+                ") s"
             ),
             {"slug": slug},
         ).first()
-    return row[0].date() if row and row[0] else None
+    return (row[0] - timedelta(days=1)).date() if row and row[0] else None
 
 
 def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:

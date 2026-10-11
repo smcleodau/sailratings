@@ -4,7 +4,7 @@ Extends the OPS-01-04 watchdog tests with the acceptance criteria for this
 issue:
 
 * **Freshness budgets** match the spec: ORC 26h, TCC 26h, SailSys 2h
-  (run) / 26h (data), TopYacht 26h, weekly sources 8d.
+  (run) / 8d (data), TopYacht 26h (run) / 8d (data), weekly sources 8d.
 * **Multi-channel alert** — a breach fans out to Slack *and* email; a single
   dead transport does not silence the other channel.
 * **watchdog_alerts row** is written for every breach.
@@ -55,8 +55,10 @@ class TestFreshnessBudgets:
     def test_sailsys_run_budget_2h(self):
         assert by_source("sailsys").run_within == timedelta(hours=2)
 
-    def test_sailsys_data_budget_26h(self):
-        assert by_source("sailsys").data_within == timedelta(hours=26)
+    def test_club_results_data_budget_8d(self):
+        # Weekend club racing: 26 h fired every week (changed 2026-10-11).
+        for src in ("sailsys", "topyacht"):
+            assert by_source(src).data_within == timedelta(days=8), src
 
     def test_weekly_sources_budget_8d(self):
         for src in ("sailracehq", "isora", "rhkyc"):
