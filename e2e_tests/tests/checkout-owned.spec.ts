@@ -88,8 +88,15 @@ async function mockApi(
 /** Search for the mocked boat and wait for the checkout rail to appear. */
 async function openReportRail(page: Page) {
   await page.goto('/');
-  await page.getByRole('combobox').fill('Mocked Owner');
-  await page.getByRole('button', { name: 'Search boats' }).click();
+  // The dev server hydrates lazily: a fill() before hydration is wiped when
+  // React takes over, leaving Search disabled. Retry until the controlled
+  // input has actually enabled the button.
+  const search = page.getByRole('button', { name: 'Search boats' });
+  await expect(async () => {
+    await page.getByRole('combobox').fill('Mocked Owner');
+    await expect(search).toBeEnabled({ timeout: 1_000 });
+  }).toPass({ timeout: 30_000 });
+  await search.click();
   // Sealed sections are revealed on a ~15 s timer; the rail follows them.
   await expect(page.getByRole('region', { name: 'Checkout' })).toBeVisible({
     timeout: 25_000,

@@ -16,12 +16,18 @@ import StickyCheckoutRail, { type AlreadyOwnedResult } from "@/components/Sticky
 
 // Clerk is optional (layout.tsx mounts ClerkProvider only when a publishable
 // key is set). Calling useAuth without the provider throws, so keyless
-// environments fall back to guest checkout (no token). The flag is a
-// build-time constant, so the hook order never changes between renders.
-const CLERK_ENABLED = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-const useAuth: () => { getToken: () => Promise<string | null> } = CLERK_ENABLED
-  ? useClerkAuth
-  : () => ({ getToken: async () => null });
+// environments fall back to guest checkout (no token). We detect the missing
+// provider by catching that throw rather than trusting a build-time env flag:
+// the client bundle and the server can disagree on the key, which previously
+// crashed the modal. The throw happens on every render (before any other
+// hook runs), so the hook order never changes between renders.
+function useAuth(): { getToken: () => Promise<string | null> } {
+  try {
+    return useClerkAuth();
+  } catch {
+    return { getToken: async () => null };
+  }
+}
 
 interface ReportModalProps {
   boat: BoatDetail;
