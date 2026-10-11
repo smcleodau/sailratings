@@ -2,8 +2,10 @@
 
 import asyncio
 import random
+import ssl
 import time
-from functools import wraps
+from functools import lru_cache, wraps
+from pathlib import Path
 
 import httpx
 
@@ -37,6 +39,28 @@ class RateLimiter:
         self._last_request = time.monotonic()
 
 
+_EXTRA_INTERMEDIATES = Path(__file__).parent / "certs"
+
+
+@lru_cache(maxsize=1)
+def scraper_ssl_context() -> ssl.SSLContext:
+    """certifi roots plus intermediates some source servers fail to send.
+
+    Browsers fetch a missing intermediate via AIA, so a site with an
+    incomplete chain looks fine to a person while httpx rejects it. TopYacht's
+    results host (tes.topyacht.net.au) serves its leaf without Sectigo DV R36;
+    that silently cost every TopYacht regatta scrape from at least Aug 2026.
+    Intermediates only extend chains to roots already in certifi, so this
+    does not widen what is trusted.
+    """
+    import certifi
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    for pem in sorted(_EXTRA_INTERMEDIATES.glob("*.pem")):
+        ctx.load_verify_locations(cafile=str(pem))
+    return ctx
+
+
 def get_http_client(**kwargs) -> httpx.AsyncClient:
     """Create an httpx async client with sensible defaults.
 
@@ -49,6 +73,7 @@ def get_http_client(**kwargs) -> httpx.AsyncClient:
     defaults = {
         "timeout": httpx.Timeout(30.0, connect=10.0),
         "follow_redirects": True,
+        "verify": scraper_ssl_context(),
         "headers": {
             "User-Agent": ACTIVE_POLICY.attribution.user_agent,
         },

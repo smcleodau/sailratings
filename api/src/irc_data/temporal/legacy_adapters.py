@@ -196,10 +196,29 @@ def _run_tcc(record: Mapping[str, Any]) -> Mapping[str, Any]:
 
     from irc_data.scrapers.tcc_listing import download_tcc_listing
 
+    from datetime import date
+
+    from sqlalchemy import text
+
+    from irc_data.cli import cli
+    from irc_data.db.connection import get_engine
+
     path = asyncio.run(download_tcc_listing())
     if not path:
         raise RuntimeError("TCC listing download failed (no CSV saved)")
-    return {"records_written": 0, "downloaded": str(path)}
+
+    # Same gap as sailsys/topyacht before 42675f8: the legacy `scrape tcc`
+    # imported after downloading, this adapter never did. Reuse the CLI's
+    # import command rather than duplicating its two-pass import.
+    today = date.today()
+    count = text("SELECT count(*) FROM tcc_snapshots WHERE snapshot_date = :d")
+    engine = get_engine()
+    with engine.connect() as conn:
+        before = conn.execute(count, {"d": today}).scalar()
+    cli.main(args=["import", str(path), "--snapshot-date", str(today)], standalone_mode=False)
+    with engine.connect() as conn:
+        after = conn.execute(count, {"d": today}).scalar()
+    return {"records_written": after - before, "snapshot_rows_today": after, "downloaded": str(path)}
 
 
 def _last_successful_run_since(slug: str) -> "date | None":

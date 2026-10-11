@@ -1,17 +1,13 @@
 """TCC listing CSV scraper.
 
-Downloads the current IRC TCC listing CSV from ircrating.org.
+Downloads the current IRC TCC listing CSV.
 
-The site's "Valid Rating Listings" page (online-tcc-listings/) historically
-served the data via an iframe-embedded listing app with a "Club Listing"
-download link. That hosted listing has been broken for some time, and the
-site now publishes the latest CSV directly on the page as a fallback link of
-the form:
+Primary source (since 2026): ircrating.org's "Valid Rating Listings" page now
+embeds TopYacht's RORC listing app, whose "download complete listing" link is
+a plain CSV at DIRECT_CSV_URL (same columns as the old ClubListing files).
 
-    https://ircrating.org/wp-content/uploads/YYYY/MM/ClubListing_YYYYMMDD.csv
-
-This scraper finds that link in the page HTML and downloads the CSV. No
-browser automation required.
+Fallback: the ircrating.org page's own ClubListing_YYYYMMDD.csv link, which is
+how the listing was published until about May 2026.
 """
 
 import re
@@ -22,6 +18,9 @@ from irc_data.config import TCC_LISTINGS_DIR
 from irc_data.scrapers.base import RateLimiter, get_http_client
 
 rate_limiter = RateLimiter(min_delay=3.0, jitter=2.0)
+
+DIRECT_CSV_URL = "https://www.topyacht.com.au/rorc/data/ClubListing.csv"
+LISTING_HEADER_PREFIX = b"Boat Name,Sail No"
 
 # Page that contains the link to the latest ClubListing_YYYYMMDD.csv
 LISTING_PAGE_URL = "https://ircrating.org/irc-racing/online-tcc-listings/"
@@ -34,71 +33,60 @@ CSV_URL_RE = re.compile(
 )
 
 
-async def download_tcc_listing(output_dir: Path | None = None) -> Path | None:
-    """Download the latest TCC listing CSV from ircrating.org.
+def _looks_like_listing(body: bytes) -> bool:
+    return len(body) >= 1024 and body.lstrip(b"\xef\xbb\xbf").startswith(LISTING_HEADER_PREFIX)
 
-    Returns the path to the saved CSV, or None if the download failed.
-    """
+
+async def _get_csv(client, url: str) -> bytes | None:
+    try:
+        await rate_limiter.wait()
+        resp = await client.get(url)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"  Failed to fetch {url}: {e}")
+        return None
+    if not _looks_like_listing(resp.content):
+        print(f"  {url} did not return a TCC listing "
+              f"(size={len(resp.content)}, content-type={resp.headers.get('content-type')!r})")
+        return None
+    return resp.content
+
+
+async def _ircrating_page_csv_url(client) -> str | None:
+    try:
+        await rate_limiter.wait()
+        page = await client.get(LISTING_PAGE_URL)
+        page.raise_for_status()
+    except Exception as e:
+        print(f"  Failed to fetch listing page: {e}")
+        return None
+    matches = list(CSV_URL_RE.finditer(page.text))
+    if not matches:
+        print("  No ClubListing CSV URL found on the ircrating.org page.")
+        return None
+    return max(matches, key=lambda m: m.group(1)).group(0)
+
+
+async def download_tcc_listing(output_dir: Path | None = None) -> Path | None:
+    """Download the latest TCC listing CSV. Returns the saved path, or None on failure."""
     output_dir = output_dir or TCC_LISTINGS_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
-    today = date.today().isoformat()
-    dest = output_dir / f"tcc_listing_{today}.csv"
+    dest = output_dir / f"tcc_listing_{date.today().isoformat()}.csv"
 
     if dest.exists() and dest.stat().st_size > 0:
         print(f"  Already have today's listing: {dest}")
         return dest
 
     async with get_http_client() as client:
-        # 1. Fetch the listing page to discover the latest CSV URL.
-        print(f"Fetching {LISTING_PAGE_URL}...")
-        try:
-            await rate_limiter.wait()
-            page_resp = await client.get(LISTING_PAGE_URL)
-            page_resp.raise_for_status()
-        except Exception as e:
-            print(f"  Failed to fetch listing page: {e}")
+        print(f"Fetching {DIRECT_CSV_URL}...")
+        body = await _get_csv(client, DIRECT_CSV_URL)
+        if body is None:
+            print(f"Falling back to {LISTING_PAGE_URL}...")
+            url = await _ircrating_page_csv_url(client)
+            body = await _get_csv(client, url) if url else None
+        if body is None:
             return None
 
-        matches = CSV_URL_RE.findall(page_resp.text)
-        if not matches:
-            print(
-                "  No ClubListing CSV URL found on page. "
-                "The site layout may have changed again."
-            )
-            return None
-
-        # Pick the most recent date by lexical sort (YYYYMMDD sorts correctly).
-        latest_date = max(matches)
-        # Rebuild the full URL (we re-find it to get the YYYY/MM prefix).
-        full_urls = [
-            m.group(0)
-            for m in CSV_URL_RE.finditer(page_resp.text)
-            if m.group(1) == latest_date
-        ]
-        if not full_urls:
-            print("  Could not resolve full CSV URL.")
-            return None
-        csv_url = full_urls[0]
-        print(f"  Latest listing: {csv_url}")
-
-        # 2. Download the CSV.
-        try:
-            await rate_limiter.wait()
-            csv_resp = await client.get(csv_url)
-            csv_resp.raise_for_status()
-        except Exception as e:
-            print(f"  Failed to download CSV: {e}")
-            return None
-
-        # Basic sanity check: should be a CSV starting with a header line.
-        body = csv_resp.content
-        if len(body) < 1024 or b"," not in body[:200]:
-            print(
-                f"  Downloaded body looks wrong "
-                f"(size={len(body)}, content-type={csv_resp.headers.get('content-type')!r})"
-            )
-            return None
-
-        dest.write_bytes(body)
-        print(f"  Saved: {dest} ({len(body):,} bytes)")
-        return dest
+    dest.write_bytes(body)
+    print(f"  Saved: {dest} ({len(body):,} bytes)")
+    return dest
