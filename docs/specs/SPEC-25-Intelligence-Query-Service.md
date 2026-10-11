@@ -121,7 +121,99 @@ IN-01-03 and IN-01-05 do not start until then.
 
 ## 2. Query service
 
-Owned by IN-01-02 / IN-01-03 / IN-01-05 (this section: IN-01-02).
+Owned by IN-01-02. Implements the evidence side of §1: every fact that leaves the API
+through `GET /v1/intelligence/*` carries provenance, or is an explicit incomplete answer.
+
+### 2.1 Contract: IntelligenceAnswerV1
+
+Defined in `api/src/irc_data/api/schemas/intelligence.py` (IN-01-03 and IN-01-05 append to
+that file after IN-01-02).
+
+| Field | Type | Meaning |
+|---|---|---|
+| `query`, `version` | str | Registry name and version, e.g. `boat_profile` / `v1`. |
+| `data` | object | The wrapped service response, unchanged. `{}` when nothing could be read. |
+| `provenance` | `Provenance` | Always present, also on incomplete answers (§2.3). |
+| `incomplete` | bool | `true` iff `missing` is non-empty. |
+| `missing` | list[str] | Machine-readable reason codes (§2.4); `[]` when complete. |
+| `evidence` | list[`EvidenceRef`] | `{source, ref, label, value}` pointers to the rows/sections used. |
+| `confidence` | object \| null | Placeholder. `ConfidenceAssessmentV1` is defined and filled by §3 (IN-01-03). |
+
+`Provenance` = `{dataset_version, facts_sha, lineage: list[str], freshness_at, quality_status}`.
+`EvidenceRef` is reused from `schemas/analyst.py` (AI-01-03) once that file exists; until then
+`schemas/intelligence.py` defines a local stand-in with the same name.
+
+### 2.2 Query registry
+
+Named, versioned queries in `services/intelligence/queries.py`. Each wraps an existing service
+call and does not change its response. A query is addressed as `<name>.<version>`.
+
+| Query | Route | Wraps | Required input |
+|---|---|---|---|
+| `boat_profile.v1` | `GET /v1/intelligence/boats/{id}` | `routers/boats.get_boat` | `boat_id` |
+| `rating_book_search.v1` | `GET /v1/intelligence/search?q=` | `routers/search.fuzzy_search` | `q` |
+| `fleet_explorer.v1` | `GET /v1/intelligence/fleet/{design}` | `routers/designs.get_design_fleet` | `design` |
+| `report_facts.v1` | `GET /v1/intelligence/report-facts/{boat_id}` | `services/report/facts_bundle.build_report_facts` | `boat_id` |
+
+Also: `GET /v1/intelligence/queries` lists the registry and
+`GET /v1/intelligence/query/{name}.{version}?...` runs any registered query; an unregistered
+name or version is the only 404 the service returns. A new version of a query is a new
+registry entry; an existing version's output shape never changes.
+
+### 2.3 Provenance rules
+
+- `dataset_version`: `irc-canonical-YYYYMMDD` from the newest `boats.updated_at`. Identical for
+  every answer served from the same dataset state; `irc-canonical-empty` on an empty database.
+- `facts_sha`: sha256 of the canonical JSON (sorted keys, compact separators) of `data`. For
+  `report_facts.v1` it is the bundle's own `facts_sha256` (ReportFactsV1), so the two never diverge.
+- `lineage`: stable refs to what was read, e.g. `boats:id=17213`,
+  `tcc_snapshots:boat_id=17213,snapshot_date=2026-02-01`, `report_facts:section=s03_rating_anatomy`.
+  Always at least one ref, also when incomplete. `evidence.lineage_refs_from_report()` flattens a
+  `transform.lineage.LineageReport` (assertion -> extraction batch -> artifact) into the same
+  ref form for callers holding canonical assertions.
+- `freshness_at`: newest of the rows' `updated_at` and the rating snapshot dates used; `null`
+  only when no row was read.
+- `quality_status`: `incomplete` if `missing` is non-empty; else `degraded` if any
+  `publication_quarantine` row is `active` or `freshness_at` is more than 365 days old;
+  else `ok`. A database without the quarantine table is treated as no quarantine.
+
+### 2.4 Incomplete-data rules
+
+An incomplete answer is HTTP 200 with `incomplete=true`; it is never a best-effort verdict
+(§1.4). Partial `data` is still returned where it exists. Codes reuse §1.4 reasons where one exists.
+
+| Query | `missing` code | Condition |
+|---|---|---|
+| all | `boat_id` / `q` / `design` | required input absent or blank |
+| `boat_profile.v1`, `report_facts.v1` | `boat_not_found` | no such boat |
+| `boat_profile.v1` | `no_current_certificate` | no IRC snapshot and no ORC certificate (§1.4) |
+| `boat_profile.v1`, `report_facts.v1` | `no_design_class` | boat has no design (§1.4) |
+| `fleet_explorer.v1` | `design_not_found` | no boats in that design |
+| `fleet_explorer.v1` | `class_too_small` | fewer than `MIN_BOATS` (5) boats (§1.4) |
+| `fleet_explorer.v1` | `sort` | sort not one of `tcc`, `name`, `country` |
+| `report_facts.v1` | `section:<id>` / `engine:<id>` | that builder/engine returned `_error` |
+| `report_facts.v1` | `insufficient_races_for_rai` | RAI engine returned no result (§1.4) |
+
+A search with zero hits is a complete answer (`total: 0`), not an incomplete one.
+
+Not yet enforced in v1 (the codes stay reserved for a later version): `insufficient_seasons`,
+`degenerate_class_model`, `identity_unresolved`, `data_quarantined` (per boat),
+`unsupported_rating_system`, `out_of_scope_question`.
+
+### 2.5 Latency budget
+
+p95 <= 300 ms per request, measured in `tests/api/test_intelligence_answers.py` against a warm
+in-memory SQLite fixture (40 rounds x 4 routes). The wrapped PostgreSQL-only service calls are
+replaced by SQLite-backed stand-ins in that test, so it bounds the service's own overhead
+(provenance, hashing, serialisation), not the wrapped SQL. `report_facts.v1` is dominated by
+`build_report_facts` (all eleven section builders plus the engines) and is far slower on the full
+production database; this is the cost of the wrapped call, and a cached or pre-computed bundle
+is a follow-up, not part of this card.
+
+### 2.6 Consumers
+
+The Analyst (AI-01-05) switches to these queries as its tool surface later. Tools must pass
+`provenance` and `missing` through unmodified and must not state a number that is absent from `data`.
 
 ## 3. Confidence
 
