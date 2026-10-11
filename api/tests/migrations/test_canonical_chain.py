@@ -33,8 +33,9 @@ def test_single_head():
     # ``0034`` (admin customers zone); 0035 reconciles the OPS-01/OPS-02
     # infra + AUTH-01-03 objects that had been applied live outside any
     # migration that ever merged into develop. 0036 adds the Clerk sync
-    # (users.deleted_at, clerk_events; AUTH-01-01). The only head is ``0036``.
-    assert set(heads) == {"0036"}, f"unexpected migration heads: {heads}"
+    # (users.deleted_at, clerk_events; AUTH-01-01); 0037 adds entitlements
+    # (admin_entitlement_grants; PAY-01-01). The only head is ``0037``.
+    assert set(heads) == {"0037"}, f"unexpected migration heads: {heads}"
 
 
 def test_no_duplicate_revision_ids():
@@ -77,7 +78,7 @@ def test_chain_contains_canonical_order():
     # base must be first and the chain must converge on the single canonical
     # head (PAY-01-07 payments/auth revision).
     assert order[0] == "0001"
-    assert order[-1] == "0036", f"unexpected chain tail: {order[-1]}"
+    assert order[-1] == "0037", f"unexpected chain tail: {order[-1]}"
     # the previous branch point feeds the 0023 series and converges to head
     assert "aa0f8e0c178b" in order
     assert order.index("aa0f8e0c178b") < order.index("0023")
