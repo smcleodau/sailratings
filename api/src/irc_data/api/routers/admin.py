@@ -274,12 +274,12 @@ def _load_conversation_messages(engine: Engine, conversation_id: int) -> list[di
 
 async def _admin_stream(engine: Engine, message: str, conversation_id: int | None = None):
     """Stream admin chat response, executing read queries inline."""
-    from google import genai
-    from google.genai import types
+    from irc_data import llm
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        yield f"data: {json.dumps({'type': 'error', 'data': 'GEMINI_API_KEY not configured'})}\n\n"
+    try:
+        client = llm.client()
+    except llm.LLMNotConfigured as e:
+        yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
         return
 
     # Create or reuse conversation
@@ -309,55 +309,33 @@ async def _admin_stream(engine: Engine, message: str, conversation_id: int | Non
 
 User message: {message}"""
 
-    from irc_data.api.services.analytics_service import get_gemini_client
-    client = get_gemini_client(api_key)
-
-    # Use tools to let the Gemini model run SELECT queries and propose changes
+    # Tools let the model run SELECT queries and propose (not apply) changes.
     tools = [
-        types.Tool(
-            function_declarations=[
-                types.FunctionDeclaration(
-                    name="run_query",
-                    description="Run a read-only SQL SELECT query against the database. Only SELECT statements are allowed.",
-                    parameters=types.Schema(
-                        type="OBJECT",
-                        properties={
-                            "sql": types.Schema(
-                                type="STRING",
-                                description="A SELECT SQL query to run against the PostgreSQL database",
-                            ),
-                            "explanation": types.Schema(
-                                type="STRING",
-                                description="Brief explanation of what this query investigates",
-                            ),
-                        },
-                        required=["sql", "explanation"],
-                    ),
-                ),
-                types.FunctionDeclaration(
-                    name="propose_change",
-                    description="Propose a data change for the user to confirm. This does NOT execute the change — it presents it for approval.",
-                    parameters=types.Schema(
-                        type="OBJECT",
-                        properties={
-                            "sql": types.Schema(
-                                type="STRING",
-                                description="The UPDATE/INSERT SQL statement to propose",
-                            ),
-                            "explanation": types.Schema(
-                                type="STRING",
-                                description="Plain English explanation of what this change does and why",
-                            ),
-                            "affected_rows_estimate": types.Schema(
-                                type="STRING",
-                                description="Estimated number of rows affected",
-                            ),
-                        },
-                        required=["sql", "explanation"],
-                    ),
-                ),
-            ]
-        )
+        {
+            "name": "run_query",
+            "description": "Run a read-only SQL SELECT query against the database. Only SELECT statements are allowed.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "sql": {"type": "string", "description": "A SELECT SQL query to run against the PostgreSQL database"},
+                    "explanation": {"type": "string", "description": "Brief explanation of what this query investigates"},
+                },
+                "required": ["sql", "explanation"],
+            },
+        },
+        {
+            "name": "propose_change",
+            "description": "Propose a data change for the user to confirm. This does NOT execute the change — it presents it for approval.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "sql": {"type": "string", "description": "The UPDATE/INSERT SQL statement to propose"},
+                    "explanation": {"type": "string", "description": "Plain English explanation of what this change does and why"},
+                    "affected_rows_estimate": {"type": "string", "description": "Estimated number of rows affected"},
+                },
+                "required": ["sql", "explanation"],
+            },
+        },
     ]
 
     # Load prior conversation context
@@ -367,18 +345,11 @@ User message: {message}"""
     if prior_messages and prior_messages[-1]["role"] == "user":
         prior_messages = prior_messages[:-1]
 
-    messages = prior_messages + [{"role": "user", "content": context}]
-
-    # Convert messages to Gemini's types.Content objects
-    gemini_messages = []
-    for msg in messages:
-        role = "model" if msg["role"] == "assistant" else "user"
-        gemini_messages.append(
-            types.Content(
-                role=role,
-                parts=[types.Part.from_text(text=msg["content"])]
-            )
-        )
+    messages = [
+        {"role": m["role"], "content": m["content"]}
+        for m in prior_messages
+        if m.get("content")
+    ] + [{"role": "user", "content": context}]
 
     # Collect assistant response for persistence
     collected_text = []
@@ -386,117 +357,97 @@ User message: {message}"""
     collected_changes = []
 
     try:
-        # Agentic loop — let Gemini run queries and build up understanding
+        # Agentic loop — let the model run queries and build up understanding
         max_turns = 8
         for turn in range(max_turns):
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=gemini_messages,
-                config=types.GenerateContentConfig(
-                    system_instruction=ADMIN_SYSTEM_PROMPT,
-                    tools=tools,
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-                    max_output_tokens=2000,
-                )
-            )
+            response = llm.check(client.beta.messages.create(
+                **llm.request_params(feature="admin_chat", system=ADMIN_SYSTEM_PROMPT),
+                tools=tools,
+                messages=messages,
+            ))
 
-            # Process response
-            if response.text:
-                yield f"data: {json.dumps({'type': 'text', 'data': response.text})}\n\n"
-                collected_text.append(response.text)
+            text_out = llm.text_of(response)
+            if text_out:
+                yield f"data: {json.dumps({'type': 'text', 'data': text_out})}\n\n"
+                collected_text.append(text_out)
 
-            has_tool_use = False
-            function_calls = response.function_calls
-
-            if function_calls:
-                has_tool_use = True
-                # Append model's response (containing function call parts) to history
-                gemini_messages.append(response.candidates[0].content)
-
-                response_parts = []
-                for call in function_calls:
-                    tool_name = call.name
-                    tool_input = call.args
-
-                    if tool_name == "run_query":
-                        sql = tool_input.get("sql", "")
-                        explanation = tool_input.get("explanation", "")
-
-                        # Safety: only allow SELECT
-                        sql_upper = sql.strip().upper()
-                        columns: list[str] = []
-                        display_rows: list[list] = []
-                        total_rows = 0
-                        error: str | None = None
-
-                        if not sql_upper.startswith("SELECT") and not sql_upper.startswith("WITH"):
-                            error = "Only SELECT queries are allowed."
-                            result_text = f"Error: {error}"
-                        else:
-                            try:
-                                with engine.connect() as conn:
-                                    rows = conn.execute(text(sql)).fetchall()
-                                if rows:
-                                    columns = list(rows[0]._mapping.keys())
-                                    total_rows = len(rows)
-                                    for r in rows[:50]:
-                                        display_rows.append([_jsonable(v) for v in r])
-                                    result_lines = [" | ".join(columns)]
-                                    for r in display_rows:
-                                        result_lines.append(" | ".join("" if v is None else str(v) for v in r))
-                                    result_text = f"({total_rows} rows)\n" + "\n".join(result_lines)
-                                else:
-                                    result_text = "(0 rows)"
-                            except Exception as e:
-                                error = str(e)
-                                result_text = f"Query error: {e}"
-
-                        query_event = {
-                            "sql": sql,
-                            "explanation": explanation,
-                            "columns": columns,
-                            "rows": display_rows,
-                            "total_rows": total_rows,
-                            "truncated": total_rows > len(display_rows),
-                        }
-                        if error:
-                            query_event["error"] = error
-                        yield f"data: {json.dumps({'type': 'query', 'data': query_event})}\n\n"
-
-                        collected_queries.append(query_event)
-
-                        response_parts.append(
-                            types.Part.from_function_response(
-                                name=tool_name,
-                                response={"result": result_text}
-                            )
-                        )
-
-                    elif tool_name == "propose_change":
-                        yield f"data: {json.dumps({'type': 'proposed_change', 'data': tool_input})}\n\n"
-
-                        collected_changes.append({
-                            **tool_input,
-                            "status": "pending",
-                        })
-
-                        response_parts.append(
-                            types.Part.from_function_response(
-                                name=tool_name,
-                                response={"result": "Change proposed to user. Waiting for confirmation."}
-                            )
-                        )
-
-                # Append user function responses to history
-                gemini_messages.append(
-                    types.Content(
-                        role="user",
-                        parts=response_parts
-                    )
-                )
-
-            if not has_tool_use:
+            tool_uses = [b for b in response.content if b.type == "tool_use"]
+            if response.stop_reason != "tool_use" or not tool_uses:
                 break
+
+            # Full content (thinking + tool_use blocks) goes back unchanged.
+            messages.append({"role": "assistant", "content": response.content})
+
+            tool_results = []
+            for block in tool_uses:
+                tool_name = block.name
+                tool_input = block.input or {}
+
+                if tool_name == "run_query":
+                    sql = tool_input.get("sql", "")
+                    explanation = tool_input.get("explanation", "")
+
+                    # Safety: only allow SELECT
+                    sql_upper = sql.strip().upper()
+                    columns: list[str] = []
+                    display_rows: list[list] = []
+                    total_rows = 0
+                    error: str | None = None
+
+                    if not sql_upper.startswith("SELECT") and not sql_upper.startswith("WITH"):
+                        error = "Only SELECT queries are allowed."
+                        result_text = f"Error: {error}"
+                    else:
+                        try:
+                            with engine.connect() as conn:
+                                rows = conn.execute(text(sql)).fetchall()
+                            if rows:
+                                columns = list(rows[0]._mapping.keys())
+                                total_rows = len(rows)
+                                for r in rows[:50]:
+                                    display_rows.append([_jsonable(v) for v in r])
+                                result_lines = [" | ".join(columns)]
+                                for r in display_rows:
+                                    result_lines.append(" | ".join("" if v is None else str(v) for v in r))
+                                result_text = f"({total_rows} rows)\n" + "\n".join(result_lines)
+                            else:
+                                result_text = "(0 rows)"
+                        except Exception as e:
+                            error = str(e)
+                            result_text = f"Query error: {e}"
+
+                    query_event = {
+                        "sql": sql,
+                        "explanation": explanation,
+                        "columns": columns,
+                        "rows": display_rows,
+                        "total_rows": total_rows,
+                        "truncated": total_rows > len(display_rows),
+                    }
+                    if error:
+                        query_event["error"] = error
+                    yield f"data: {json.dumps({'type': 'query', 'data': query_event})}\n\n"
+
+                    collected_queries.append(query_event)
+
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_text})
+
+                elif tool_name == "propose_change":
+                    yield f"data: {json.dumps({'type': 'proposed_change', 'data': tool_input})}\n\n"
+
+                    collected_changes.append({
+                        **tool_input,
+                        "status": "pending",
+                    })
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id,
+                                         "content": "Change proposed to user. Waiting for confirmation."})
+
+                else:
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id,
+                                         "content": f"Unknown tool: {tool_name}", "is_error": True})
+
+            # All results for this turn go back in a single user message.
+            messages.append({"role": "user", "content": tool_results})
 
         # Save assistant response
         _save_message(

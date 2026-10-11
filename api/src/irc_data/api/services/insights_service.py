@@ -1,13 +1,12 @@
-"""AI insights service — assembles boat context and streams Gemini responses.
+"""AI insights service — assembles boat context and streams LLM responses.
 
 The core flow:
 1. Search for boat(s) matching the user query
 2. Assemble a comprehensive context document from all DB tables
-3. Stream the context to Gemini with the system prompt
+3. Stream the context to the model (irc_data.llm) with the system prompt
 4. Return SSE events to the frontend
 """
 
-import os
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -1059,19 +1058,20 @@ async def stream_insight(engine: Engine, boat_id: int, question: str | None = No
     - {"type": "text", "data": "chunk..."}   (LLM-generated report text)
     - {"type": "done", "data": {"boat_id": ...}}
 
-    Requires GEMINI_API_KEY environment variable.
+    Requires ANTHROPIC_API_KEY (see irc_data.llm for model configuration).
     """
-    from google import genai
-    from google.genai import types
     import asyncio
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        yield {"type": "error", "data": "GEMINI_API_KEY not configured"}
+    from irc_data import llm
+
+    try:
+        llm.client()
+    except llm.LLMNotConfigured as e:
+        yield {"type": "error", "data": str(e)}
         return
 
     # Pre-compute everything that involves sync DB work, so once events start
-    # flowing, only the Anthropic stream is outstanding.
+    # flowing, only the model stream is outstanding.
     context = build_boat_context(engine, boat_id, detail_level=detail_level)
     if not context:
         yield {"type": "error", "data": f"Boat {boat_id} not found"}
@@ -1116,63 +1116,49 @@ async def stream_insight(engine: Engine, boat_id: int, question: str | None = No
             "label": "Drafting the executive summary",
             "detail": "Reading your file",
         }}
-        await asyncio.sleep(0)  # force flush before sync Anthropic call
+        await asyncio.sleep(0)  # force flush before the sync model call
 
-    # Select system prompt based on detail level
-    if detail_level == "premium":
-        system_prompt = SYSTEM_PROMPT_PREMIUM
-        max_tokens = 2500
-    else:
-        system_prompt = SYSTEM_PROMPT_TEASER
-        max_tokens = 2000
+    # Select system prompt based on detail level. Length is set by the prompt;
+    # max_tokens is only a ceiling (it also covers adaptive thinking).
+    system_prompt = SYSTEM_PROMPT_PREMIUM if detail_level == "premium" else SYSTEM_PROMPT_TEASER
 
-    # Streaming content with Gemini and emitting a properly-shaped $ai_generation
-    # event ourselves so PostHog LLM Analytics picks it up.
-    client = genai.Client(api_key=api_key)
+    # Stream the model's text and emit a properly-shaped $ai_generation event
+    # ourselves so PostHog LLM Analytics picks it up.
     from irc_data.api.services.analytics_service import track
     import time as _time
     import uuid as _uuid
     _started = _time.time()
     _output_text_parts: list[str] = []
-    _model = "gemini-2.5-pro" if detail_level == "premium" else "gemini-2.5-flash"
+    _model = llm.model("insights")
     _trace_id = str(_uuid.uuid4())
     _input_messages = [{"role": "user", "content": user_message}]
-    _usage = None
+    _span = "insights.teaser_stream" if detail_level == "free" else "insights.premium_stream"
 
     try:
-        response_stream = client.models.generate_content_stream(
-            model=_model,
-            contents=user_message,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                max_output_tokens=max_tokens,
-            )
-        )
-        for chunk in response_stream:
-            text = chunk.text or ""
-            if text:
-                _output_text_parts.append(text)
-                yield {"type": "text", "data": text}
-            if chunk.usage_metadata:
-                _usage = chunk.usage_metadata
+        with llm.stream(system=system_prompt, user=user_message, feature="insights") as response_stream:
+            for text in response_stream.text_stream:
+                if text:
+                    _output_text_parts.append(text)
+                    yield {"type": "text", "data": text}
+            final = llm.check(response_stream.get_final_message())
 
         _output_text = "".join(_output_text_parts)
         track("$ai_generation", str(boat_id), {
-            "$ai_provider": "gemini",
-            "$ai_model": _model,
+            "$ai_provider": llm.PROVIDER,
+            "$ai_model": final.model,
             "$ai_input": _input_messages,
             "$ai_output_choices": [
                 {"role": "assistant", "content": _output_text}
             ],
-            "$ai_input_tokens": getattr(_usage, "prompt_token_count", None) if _usage else None,
-            "$ai_output_tokens": getattr(_usage, "candidates_token_count", None) if _usage else None,
+            "$ai_input_tokens": final.usage.input_tokens,
+            "$ai_output_tokens": final.usage.output_tokens,
             "$ai_latency": _time.time() - _started,
             "$ai_http_status": 200,
             "$ai_is_error": False,
             "$ai_trace_id": _trace_id,
-            "$ai_span_name": "insights.teaser_stream" if detail_level == "free" else "insights.premium_stream",
-            "$ai_base_url": "https://api.google.com/gemini",
-            "$ai_request_url": "https://generativelanguage.googleapis.com/v1beta/models",
+            "$ai_span_name": _span,
+            "$ai_base_url": llm.API_BASE_URL,
+            "$ai_request_url": f"{llm.API_BASE_URL}/v1/messages",
             "endpoint": "insights/ask",
             "detail_level": detail_level,
             "boat_id": boat_id,
@@ -1181,7 +1167,7 @@ async def stream_insight(engine: Engine, boat_id: int, question: str | None = No
 
     except Exception as e:
         track("$ai_generation", str(boat_id), {
-            "$ai_provider": "gemini",
+            "$ai_provider": llm.PROVIDER,
             "$ai_model": _model,
             "$ai_input": _input_messages,
             "$ai_output_choices": [
@@ -1192,7 +1178,7 @@ async def stream_insight(engine: Engine, boat_id: int, question: str | None = No
             "$ai_is_error": True,
             "$ai_error": str(e)[:500],
             "$ai_trace_id": _trace_id,
-            "$ai_span_name": "insights.teaser_stream" if detail_level == "free" else "insights.premium_stream",
+            "$ai_span_name": _span,
             "endpoint": "insights/ask",
             "detail_level": detail_level,
             "boat_id": boat_id,
