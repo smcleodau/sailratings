@@ -8,7 +8,7 @@ tests pin the two halves of that guarantee:
 2. The deprecated Firecrawl path (``scrape_news_source``) refuses to run
    unless the operator sets ``ALLOW_FIRECRAWL_NEWS=1``.
 
-No network, Firecrawl key, or Gemini key is required.
+No network, Firecrawl key, or LLM key is required.
 """
 
 from __future__ import annotations
@@ -130,7 +130,7 @@ def test_deprecated_firecrawl_path_raises_without_override(monkeypatch):
 
 def test_scrape_news_rss_uses_no_firecrawl(monkeypatch):
     """The RSS ingest must never call Firecrawl. We stub the network fetches
-    and Gemini extraction, and assert the Firecrawl client is never touched
+    and LLM extraction, and assert the Firecrawl client is never touched
     by failing hard if it is imported."""
     import sys
 

@@ -29,7 +29,7 @@ def register_news_and_events_commands(cli):
 
         Reads the approved sailing-news RSS/Atom feeds directly (plain httpx +
         stdlib XML parsing), fetches each new article's HTML, and extracts
-        boat mentions with Gemini. No Firecrawl credits are spent on news
+        boat mentions with the LLM. No Firecrawl credits are spent on news
         domains (OPS-02-06).
         """
         import asyncio
