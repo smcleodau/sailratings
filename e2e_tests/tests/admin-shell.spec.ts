@@ -23,6 +23,16 @@ const ADMIN_ROUTES = [
   '/admin/firecrawl',
   '/admin/stripe-events',
   '/admin/swarm',
+  // AD-01-17: routes added so every admin page is covered by the shell
+  // smoke test, not just the first batch shipped with AD-01-12.
+  '/admin/telemetry',
+  '/admin/chat',
+  '/admin/users',
+  '/admin/orders',
+  '/admin/billing',
+  '/admin/dupes',
+  '/admin/dupes/history',
+  '/admin/audit-log',
 ] as const;
 
 const SIDEBAR_SECTIONS = ['Today', 'Data quality', 'Operations', 'Customers', 'Agents'];
