@@ -36,9 +36,11 @@ SUBSCRIPTION_EVENT_TYPES = {
     "customer.subscription.resumed",
 }
 
-# Catalogue prices (SPEC-23 §4): the amount lives in Stripe, never here.
-# Prices are resolved by lookup_key ``report_<currency>``.
-REPORT_LOOKUP_KEY_PREFIX = "report_"
+# Catalogue price (SPEC-23 §4): the amount lives in Stripe, never here. One
+# report price (lookup_key ``report``) carries every currency as Stripe
+# currency_options (base GBP plus USD/AUD/NZD as set up in the Dashboard);
+# the Checkout Session's ``currency`` selects which amount is charged.
+REPORT_LOOKUP_KEY = "report"
 FALLBACK_CURRENCY = "usd"
 PRICE_CACHE_TTL_SECONDS = 60
 
@@ -47,50 +49,53 @@ _PRICE_CACHE: dict[str, tuple[float, Optional[dict]]] = {}
 
 
 def _lookup_catalogue_price(lookup_key: str) -> Optional[dict]:
-    """Return ``{id, unit_amount, currency}`` for an active price, else None.
+    """Return ``{id, amounts: {currency: unit_amount}}`` for an active price, else None.
 
-    Cached in-process for ``PRICE_CACHE_TTL_SECONDS`` (misses included, so a
-    request for an unpriced currency does not hit Stripe every time).
+    Cached in-process for ``PRICE_CACHE_TTL_SECONDS`` (misses included).
     """
     now = time.monotonic()
     cached = _PRICE_CACHE.get(lookup_key)
     if cached and cached[0] > now:
         return cached[1]
 
-    prices = stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1)
+    prices = stripe.Price.list(
+        lookup_keys=[lookup_key], active=True, limit=1,
+        expand=["data.currency_options"],
+    )
     data = list(_event_get(prices, "data", []) or [])
     resolved = None
     if data:
         price = data[0]
-        resolved = {
-            "id": price["id"],
-            "unit_amount": price["unit_amount"],
-            "currency": str(price["currency"]).lower(),
-        }
+        base = str(price["currency"]).lower()
+        amounts = {base: price["unit_amount"]}
+        options = _event_get(price, "currency_options", None) or {}
+        # StripeObject is not a Mapping (no .items()); to_dict() gives plain dicts.
+        options = options.to_dict() if hasattr(options, "to_dict") else options
+        for cur, opt in options.items():
+            amount = _event_get(opt, "unit_amount", None)
+            if amount is not None:
+                amounts[str(cur).lower()] = amount
+        resolved = {"id": price["id"], "amounts": amounts}
     _PRICE_CACHE[lookup_key] = (now + PRICE_CACHE_TTL_SECONDS, resolved)
     return resolved
 
 
-def _resolve_report_price(currency: str) -> tuple[dict, str, bool]:
+def _resolve_report_price(currency: str) -> tuple[dict, str, int, bool]:
     """Resolve the report price for ``currency``.
 
-    Returns ``(price, currency_used, fallback)``. EUR has no catalogue price
-    (SPEC-23 §4) so it falls back to ``report_usd`` and ``fallback`` is True.
-    Any other currency without a catalogue price raises HTTP 400.
+    Returns ``(price, currency_used, amount_cents, fallback)``. EUR has no
+    catalogue amount (SPEC-23 §4) so it is charged in USD with ``fallback``
+    True. Any other currency the price doesn't carry raises HTTP 400.
     """
     if not (len(currency) == 3 and currency.isalpha()):
         raise HTTPException(status_code=400, detail=f"Unsupported currency '{currency}'")
 
-    price = _lookup_catalogue_price(f"{REPORT_LOOKUP_KEY_PREFIX}{currency}")
+    price = _lookup_catalogue_price(REPORT_LOOKUP_KEY)
     if price:
-        return price, currency, False
-
-    if currency == "eur":
-        fallback = _lookup_catalogue_price(
-            f"{REPORT_LOOKUP_KEY_PREFIX}{FALLBACK_CURRENCY}"
-        )
-        if fallback:
-            return fallback, FALLBACK_CURRENCY, True
+        if currency in price["amounts"]:
+            return price, currency, price["amounts"][currency], False
+        if currency == "eur" and FALLBACK_CURRENCY in price["amounts"]:
+            return price, FALLBACK_CURRENCY, price["amounts"][FALLBACK_CURRENCY], True
 
     raise HTTPException(
         status_code=400,
@@ -201,13 +206,12 @@ def create_checkout_session(
                 checkout_url=report_url,
             )
 
-    # Resolve the catalogue price (lookup_key report_<currency>).
+    # Resolve the catalogue price (lookup_key ``report``, per-currency amount).
     try:
-        price, currency, currency_fallback = _resolve_report_price(requested_currency)
+        price, currency, amount_cents, currency_fallback = _resolve_report_price(requested_currency)
     except stripe.StripeError as e:
         logger.error(f"Stripe price lookup failed: {e}")
         raise HTTPException(status_code=502, detail="Payment price lookup failed")
-    amount_cents = price["unit_amount"]
     currency_message = (
         f"No {requested_currency.upper()} price is available; "
         f"priced in {currency.upper()} instead."
@@ -243,6 +247,7 @@ def create_checkout_session(
         session_params: dict = {
             "payment_method_types": ["card"],
             "line_items": [{"price": price["id"], "quantity": 1}],
+            "currency": currency,
             "payment_intent_data": {
                 "description": f"IRC Rating Report — {body.boat_name}",
             },

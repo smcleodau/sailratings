@@ -34,10 +34,20 @@ from .conftest import insert_order, insert_user
 
 # ── PAY-01-02 fixtures: fake Stripe catalogue + stripe_payment_status ────
 
+# Mirrors the real Stripe setup: one report price (base GBP) carrying the
+# other currencies as currency_options.
 CATALOGUE = {
-    "report_usd": {"id": "price_usd", "unit_amount": 9900, "currency": "usd"},
-    "report_gbp": {"id": "price_gbp", "unit_amount": 7900, "currency": "gbp"},
-    "report_aud": {"id": "price_aud", "unit_amount": 14900, "currency": "aud"},
+    "report": {
+        "id": "price_report",
+        "unit_amount": 6900,
+        "currency": "gbp",
+        "currency_options": {
+            "gbp": {"unit_amount": 6900},
+            "usd": {"unit_amount": 9900},
+            "aud": {"unit_amount": 9900},
+            "nzd": {"unit_amount": 9900},
+        },
+    },
 }
 
 
@@ -620,11 +630,10 @@ class TestCatalogueCheckout:
         return resp, captured, engine
 
     @pytest.mark.parametrize(
-        "currency,price_id,amount",
-        [("gbp", "price_gbp", 7900), ("usd", "price_usd", 9900),
-         ("aud", "price_aud", 14900)],
+        "currency,amount",
+        [("gbp", 6900), ("usd", 9900), ("aud", 9900), ("nzd", 9900)],
     )
-    def test_price_resolved_by_lookup_key(self, monkeypatch, currency, price_id, amount):
+    def test_price_resolved_by_lookup_key(self, monkeypatch, currency, amount):
         looked_up = []
 
         def spy(lookup_keys=None, **kwargs):
@@ -635,10 +644,13 @@ class TestCatalogueCheckout:
         resp, captured, engine = self._post(monkeypatch, currency.upper())
 
         assert resp.status_code == 200, resp.text
-        assert looked_up[0][0] == [f"report_{currency}"]
+        assert looked_up[0][0] == ["report"]
         assert looked_up[0][1]["active"] is True
-        # Catalogue price id, never ad-hoc price_data.
-        assert captured["line_items"] == [{"price": price_id, "quantity": 1}]
+        assert "data.currency_options" in looked_up[0][1]["expand"]
+        # Catalogue price id, never ad-hoc price_data; Stripe picks the
+        # amount from currency_options for the session currency.
+        assert captured["line_items"] == [{"price": "price_report", "quantity": 1}]
+        assert captured["currency"] == currency
         body = resp.json()
         assert body["currency"] == currency
         assert body["currency_fallback"] is False
@@ -651,11 +663,24 @@ class TestCatalogueCheckout:
         self._post(monkeypatch, currency)
         assert len(looked_up) == 1
 
+    def test_real_stripe_objects_resolve_currency_options(self, monkeypatch):
+        """stripe.Price.list returns StripeObjects, which aren't Mappings."""
+        real = checkout_router.stripe.StripeObject.construct_from(
+            {"data": [CATALOGUE["report"]]}, "sk_test"
+        )
+        monkeypatch.setattr(checkout_router.stripe.Price, "list", lambda **kw: real)
+        resp, captured, _ = self._post(monkeypatch, "aud")
+
+        assert resp.status_code == 200, resp.text
+        assert captured["currency"] == "aud"
+        assert resp.json()["currency"] == "aud"
+
     def test_eur_falls_back_to_usd_with_flag(self, monkeypatch):
         resp, captured, _ = self._post(monkeypatch, "eur")
 
         assert resp.status_code == 200, resp.text
-        assert captured["line_items"] == [{"price": "price_usd", "quantity": 1}]
+        assert captured["line_items"] == [{"price": "price_report", "quantity": 1}]
+        assert captured["currency"] == "usd"
         body = resp.json()
         assert body["currency"] == "usd"
         assert body["currency_fallback"] is True
