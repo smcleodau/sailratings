@@ -60,3 +60,32 @@ class IntelligenceAnswerV1(BaseModel):
     evidence: list[EvidenceRef] = Field(default_factory=list)
     # Placeholder: ConfidenceAssessmentV1 is defined and populated by IN-01-03.
     confidence: dict[str, Any] | None = None
+
+
+# ---------------------------------------------------------------------------
+# IN-01-03 - ConfidenceAssessmentV1 (SPEC-25 §3)
+# ---------------------------------------------------------------------------
+
+ConfidenceBand = Literal["high", "medium", "low"]
+
+
+class ConfidenceFactor(BaseModel):
+    """One weighted contribution to a confidence score."""
+
+    name: str
+    weight: float
+    value: float = Field(ge=0.0, le=1.0)
+    note: str
+
+
+class ConfidenceAssessmentV1(BaseModel):
+    """Confidence as a number with named limitations (never a model-chosen adjective).
+
+    ``score = sum(weight * value)`` over the five SPEC-25 §3 factors. Attached
+    to ``IntelligenceAnswerV1.confidence`` (serialised as a dict).
+    """
+
+    score: float = Field(ge=0.0, le=1.0)
+    band: ConfidenceBand
+    factors: list[ConfidenceFactor] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
