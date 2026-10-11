@@ -10,68 +10,28 @@ import {
   RefreshIcon,
 } from "@/components/admin/AdminIcons";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api/v1";
+import {
+  AdminApiError,
+} from "@/lib/adminApi";
+import {
+  HEADROOM_WARN_DAYS,
+  getFirecrawlBudget,
+  getFirecrawlByDomain,
+  getFirecrawlDiffs,
+  getFirecrawlRecent,
+  getFirecrawlSummary,
+  headroomDays,
+  type BudgetPayload,
+  type CallMode,
+  type CallStatus,
+  type DiffsPayload,
+  type DomainStat,
+  type RecentCall,
+  type SummaryPayload,
+} from "@/lib/adminApi.firecrawl";
 
-/* ────────────────────────────────────────────────────────────────── */
-/* Types                                                              */
-/* ────────────────────────────────────────────────────────────────── */
-
-type CallMode = "scrape" | "map";
-type CallStatus = "ok" | "empty" | "error";
-
-interface WindowStats {
-  window: string;
-  calls: number;
-  credits: number;
-  ok: number;
-  empty: number;
-  errored: number;
-  scrapes: number;
-  maps: number;
-  avg_ms: number;
-  domains: number;
-}
-
-interface DailyCapState {
-  daily_credit_cap: number | null;
-  used_today: number | null;
-  daily_capped: boolean;
-}
-
-interface SummaryPayload {
-  as_of: string;
-  remaining: { remaining_credits: number; plan_credits: number | null } | null;
-  windows: Record<string, WindowStats>;
-  daily?: DailyCapState;
-}
-
-interface RecentCall {
-  id: number;
-  called_at: string;
-  mode: CallMode;
-  url: string;
-  domain: string;
-  status: CallStatus;
-  credits: number | null;
-  duration_ms: number | null;
-  response_chars: number | null;
-  links_found: number | null;
-  error_message: string | null;
-  caller: string | null;
-}
-
-interface DomainStat {
-  domain: string;
-  calls: number;
-  credits: number;
-  ok: number;
-  empty: number;
-  errored: number;
-  success_rate: number;
-  avg_ms: number;
-  last_called: string | null;
-}
-
+/** Cap-reached colour (AD-01-22). Buoy (--sr-buoy) is used for low headroom. */
+const CAP_REACHED_COLOUR = "#F0806A";
 
 /* ────────────────────────────────────────────────────────────────── */
 /* Helpers                                                            */
@@ -100,6 +60,15 @@ function fmtMs(ms: number | null): string {
   if (ms == null) return "—";
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function hostOf(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
 }
 
 function pct(n: number): string {
@@ -189,11 +158,16 @@ export default function FirecrawlPage() {
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
   const [recent, setRecent] = useState<RecentCall[]>([]);
   const [domains, setDomains] = useState<DomainStat[]>([]);
+  const [budget, setBudget] = useState<BudgetPayload | null>(null);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [diffs, setDiffs] = useState<DiffsPayload | null>(null);
+  const [diffsError, setDiffsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<CallStatus | "all">("all");
   const [modeFilter, setModeFilter] = useState<CallMode | "all">("all");
+  const [domainFilter, setDomainFilter] = useState<string>("all");
 
   useEffect(() => {
     const t = localStorage.getItem("admin_token") || process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "sailfast2026";
@@ -208,38 +182,46 @@ export default function FirecrawlPage() {
     setLoading(true);
     setError(null);
     try {
-      const headers = { Authorization: `Bearer ${token}` };
-      const recentParams = new URLSearchParams({ limit: "150" });
-      if (statusFilter !== "all") recentParams.set("status", statusFilter);
-      if (modeFilter !== "all") recentParams.set("mode", modeFilter);
-
-      const [sumRes, recRes, domRes] = await Promise.all([
-        fetch(`${API_BASE}/admin/firecrawl/summary`, { headers }),
-        fetch(`${API_BASE}/admin/firecrawl/recent?${recentParams}`, { headers }),
-        fetch(`${API_BASE}/admin/firecrawl/by-domain?days=7`, { headers }),
-      ]);
-
-      for (const r of [sumRes, recRes, domRes]) {
-        if (!r.ok) {
-          if (r.status === 401 || r.status === 403) {
-            localStorage.removeItem("admin_token");
-            setToken(null);
-            throw new Error("Session expired. Sign in again.");
-          }
-          throw new Error(`Failed: ${r.status}`);
-        }
-      }
-
-      const [sumJson, recJson, domJson] = await Promise.all([
-        sumRes.json(),
-        recRes.json(),
-        domRes.json(),
+      // summary / recent / by-domain are the page's backbone: any failure
+      // fails the load. budget and diffs are independent panels — a failure
+      // there degrades just that panel (reported inline) and never blanks
+      // the rest of the page.
+      const [sumJson, recJson, domJson, budgetRes, diffsRes] = await Promise.all([
+        getFirecrawlSummary(),
+        getFirecrawlRecent({ limit: 150, status: statusFilter, mode: modeFilter }),
+        getFirecrawlByDomain(7),
+        getFirecrawlBudget().then(
+          (v) => ({ ok: true as const, v }),
+          (e: unknown) => ({ ok: false as const, e }),
+        ),
+        getFirecrawlDiffs({ limit: 25 }).then(
+          (v) => ({ ok: true as const, v }),
+          (e: unknown) => ({ ok: false as const, e }),
+        ),
       ]);
       setSummary(sumJson);
       setRecent(recJson.calls);
       setDomains(domJson.domains);
+      if (budgetRes.ok) {
+        setBudget(budgetRes.v);
+        setBudgetError(null);
+      } else {
+        setBudgetError(budgetRes.e instanceof Error ? budgetRes.e.message : "Failed to load budget");
+      }
+      if (diffsRes.ok) {
+        setDiffs(diffsRes.v);
+        setDiffsError(null);
+      } else {
+        setDiffsError(diffsRes.e instanceof Error ? diffsRes.e.message : "Failed to load diffs");
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      if (e instanceof AdminApiError && (e.status === 401 || e.status === 403)) {
+        // adminFetch already cleared the stale token — fall back to the gate.
+        setToken(null);
+        setError("Session expired. Sign in again.");
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to load");
+      }
     } finally {
       setLoading(false);
     }
@@ -294,24 +276,14 @@ export default function FirecrawlPage() {
   const w7 = summary?.windows["7d"];
   const w30 = summary?.windows["30d"];
 
-  const remaining = summary?.remaining?.remaining_credits;
-  const plan = summary?.remaining?.plan_credits;
-  const planUsedPct =
-    remaining != null && plan
-      ? Math.max(0, Math.min(1, 1 - remaining / plan))
-      : null;
-  const remainingTone: "good" | "warn" | "neutral" =
-    planUsedPct == null
-      ? "neutral"
-      : planUsedPct > 0.9
-      ? "warn"
-      : planUsedPct > 0.7
-      ? "neutral"
-      : "good";
+  const daysLeft = budget ? headroomDays(budget) : null;
+  const headroomLow = daysLeft != null && daysLeft < HEADROOM_WARN_DAYS;
 
-  // Project monthly burn from the 7-day window (×30/7) — only meaningful
-  // if we have meaningful traffic.
-  const monthlyBurn = w7 && w7.credits > 0 ? Math.round((w7.credits * 30) / 7) : null;
+  // Domain filter for the recent-calls log. /recent has no domain param
+  // (admin.py is not ours), so it narrows the loaded page client-side.
+  const recentDomains = Array.from(new Set(recent.map((c) => c.domain))).sort();
+  const visibleRecent =
+    domainFilter === "all" ? recent : recent.filter((c) => c.domain === domainFilter);
 
   /* ── Render ─────────────────────────────────────────────────────── */
 
@@ -354,128 +326,169 @@ export default function FirecrawlPage() {
           </div>
         )}
 
-        {/* Credit-balance banner — the authoritative number from Firecrawl */}
-        {summary?.remaining ? (
-          <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm p-4 mb-6">
-            <div className="flex items-baseline justify-between gap-4 flex-wrap mb-2">
+        {/* Credit panel — balance, daily cap, spend and runway (AD-01-22).
+            From /firecrawl/budget; supersedes the AD-01-08 balance + daily
+            banners, which this panel subsumes. */}
+        {budget ? (
+          <div
+            data-testid="credit-panel"
+            data-headroom-tone={headroomLow ? "low" : "ok"}
+            data-capped={budget.daily_capped ? "true" : "false"}
+            className={`border bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm p-4 mb-6 ${
+              budget.daily_capped
+                ? "border-[#F0806A]/50"
+                : "border-[var(--sr-link)]/12"
+            }`}
+          >
+            <div className="flex items-baseline justify-between gap-4 flex-wrap mb-3">
               <span className="admin-mono-font text-[10px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
-                Credit balance · Firecrawl
+                Credit budget · {budget.provider}
               </span>
               <span
-                className={`admin-mono-font text-[10px] uppercase tracking-[0.16em] ${
-                  remainingTone === "warn"
-                    ? "text-[var(--sr-action-pressed)]"
-                    : remainingTone === "good"
-                    ? "text-[var(--sr-status-success)]"
-                    : "text-[var(--sr-text-tertiary)]"
-                }`}
+                data-testid="credit-balance-source"
+                className="admin-mono-font text-[9px] uppercase tracking-[0.14em] text-[var(--sr-text-tertiary)]"
               >
-                {remaining?.toLocaleString()} remaining
-                {plan ? ` of ${plan.toLocaleString()}` : ""}
+                {budget.balance_source === "provider"
+                  ? "balance reported by Firecrawl"
+                  : "balance derived from ledger"}
               </span>
             </div>
-            {planUsedPct != null && (
-              <div className="h-1.5 bg-[var(--sr-surface-interactive)] rounded-[2px] overflow-hidden">
-                <div
-                  className={`h-full ${
-                    remainingTone === "warn"
-                      ? "bg-[var(--sr-action-pressed)]"
-                      : remainingTone === "good"
-                      ? "bg-[var(--sr-status-success)]"
-                      : "bg-[var(--sr-link)]/60"
-                  }`}
-                  style={{ width: `${planUsedPct * 100}%` }}
-                />
-              </div>
-            )}
-            {monthlyBurn != null && plan != null && (
-              <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] mt-2">
-                Projected monthly burn (from last 7d):{" "}
-                <span className="text-[var(--sr-text-primary)] tabular-nums">
-                  {monthlyBurn.toLocaleString()}
-                </span>{" "}
-                cr ·{" "}
-                <span
-                  className={
-                    monthlyBurn > plan ? "text-[var(--sr-action-pressed)]" : "text-[var(--sr-status-success)]"
-                  }
+
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+              <div>
+                <p className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
+                  Balance
+                </p>
+                <p
+                  data-testid="credit-balance"
+                  className="heading-display text-2xl mt-1 tabular-nums text-[var(--sr-text-primary)]"
                 >
-                  {monthlyBurn > plan
-                    ? `${Math.round((monthlyBurn / plan - 1) * 100)}% over plan`
-                    : `${Math.round((1 - monthlyBurn / plan) * 100)}% headroom`}
-                </span>
-              </p>
+                  {budget.balance_credits.toLocaleString()}
+                </p>
+                <p className="admin-mono-font text-[9px] text-[var(--sr-text-tertiary)] mt-1">
+                  of {budget.period_credits.toLocaleString()} cr plan
+                </p>
+              </div>
+
+              <div>
+                <p className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
+                  Daily cap
+                </p>
+                <p
+                  data-testid="credit-daily-cap"
+                  className="heading-display text-2xl mt-1 tabular-nums text-[var(--sr-text-primary)]"
+                >
+                  {budget.daily_credit_cap != null && budget.daily_credit_cap > 0
+                    ? budget.daily_credit_cap.toLocaleString()
+                    : "none"}
+                </p>
+                <p className="admin-mono-font text-[9px] text-[var(--sr-text-tertiary)] mt-1">
+                  hard stop · UTC day
+                </p>
+              </div>
+
+              <div>
+                <p className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
+                  Spent today
+                </p>
+                <p
+                  data-testid="credit-spent-today"
+                  className="heading-display text-2xl mt-1 tabular-nums"
+                  style={budget.daily_capped ? { color: CAP_REACHED_COLOUR } : undefined}
+                >
+                  {budget.used_today.toLocaleString()}
+                </p>
+                <p
+                  className="admin-mono-font text-[9px] mt-1"
+                  style={budget.daily_capped ? { color: CAP_REACHED_COLOUR } : undefined}
+                >
+                  {budget.daily_capped ? "cap reached" : "since 00:00 UTC"}
+                </p>
+              </div>
+
+              <div>
+                <p className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
+                  Projected burn
+                </p>
+                <p
+                  data-testid="credit-projected-burn"
+                  className="heading-display text-2xl mt-1 tabular-nums text-[var(--sr-text-primary)]"
+                >
+                  {budget.projected_monthly_burn.toLocaleString()}
+                </p>
+                <p className="admin-mono-font text-[9px] text-[var(--sr-text-tertiary)] mt-1">
+                  cr / 30d · from last 7d ({budget.burn_7d.toLocaleString()})
+                </p>
+              </div>
+
+              <div>
+                <p className="admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)]">
+                  Headroom
+                </p>
+                <p
+                  data-testid="credit-headroom"
+                  data-headroom-days={daysLeft == null ? "" : daysLeft.toFixed(1)}
+                  className={`heading-display text-2xl mt-1 tabular-nums ${
+                    headroomLow
+                      ? "headroom-low text-[var(--sr-buoy)]"
+                      : "headroom-ok text-[var(--sr-status-success)]"
+                  }`}
+                >
+                  {daysLeft == null ? "∞" : `${daysLeft.toFixed(1)} d`}
+                </p>
+                <p className="admin-mono-font text-[9px] text-[var(--sr-text-tertiary)] mt-1">
+                  {headroomLow
+                    ? `under ${HEADROOM_WARN_DAYS} days at current burn`
+                    : "at current burn"}
+                  {" · "}
+                  {budget.headroom_credits >= 0 ? "+" : "−"}
+                  {Math.abs(budget.headroom_credits).toLocaleString()} cr vs 30d
+                </p>
+              </div>
+            </div>
+
+            {budget.daily_credit_cap != null && budget.daily_credit_cap > 0 && (
+              <div className="mt-4">
+                <div className="h-1.5 bg-[var(--sr-surface-interactive)] rounded-[2px] overflow-hidden max-w-md">
+                  <div
+                    data-testid="credit-cap-bar"
+                    className={budget.daily_capped ? "h-full" : "h-full bg-[var(--sr-link)]/60"}
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (budget.used_today / budget.daily_credit_cap) * 100,
+                      )}%`,
+                      ...(budget.daily_capped ? { background: CAP_REACHED_COLOUR } : {}),
+                    }}
+                  />
+                </div>
+                {budget.daily_capped && (
+                  <p
+                    data-testid="credit-cap-reached"
+                    className="admin-mono-font text-[10px] mt-2 flex items-center gap-1.5"
+                    style={{ color: CAP_REACHED_COLOUR }}
+                  >
+                    <AlertTriangleIcon size={12} />
+                    Daily credit cap reached — Firecrawl calls are stopped
+                    (hard stop) until the UTC day rolls.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         ) : (
-          <div className="border border-[var(--sr-status-warning)]/30 bg-[var(--sr-status-warning)]/10 px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px]">
+          <div
+            data-testid="credit-panel-unavailable"
+            className="border border-[var(--sr-status-warning)]/30 bg-[var(--sr-status-warning)]/10 px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px]"
+          >
             <AlertTriangleIcon size={16} className="text-[var(--sr-status-warning)] flex-shrink-0 mt-0.5" />
             <p className="text-[13px] text-[var(--sr-status-warning)]">
-              Credit balance unavailable. CheckIcon that FIRECRAWL_API_KEY is set on
-              the API process.
+              {budgetError
+                ? `Credit budget unavailable: ${budgetError}`
+                : loading
+                ? "Loading credit budget…"
+                : "Credit budget unavailable."}
             </p>
-          </div>
-        )}
-
-        {/* Daily hard-stop banner (OPS-02-06 / AD-01-08) */}
-        {summary?.daily && summary.daily.daily_credit_cap != null && (
-          <div
-            className={`border px-4 py-3 mb-6 flex items-start gap-3 rounded-[4px] ${
-              summary.daily.daily_capped
-                ? "border-[var(--sr-action-pressed)]/40 bg-[var(--sr-action-pressed)]/5"
-                : "border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)]"
-            } shadow-sm`}
-          >
-            {summary.daily.daily_capped ? (
-              <AlertTriangleIcon
-                size={16}
-                className="text-[var(--sr-action-pressed)] flex-shrink-0 mt-0.5"
-              />
-            ) : (
-              <CheckCircleIcon
-                size={16}
-                className="text-[var(--sr-status-success)] flex-shrink-0 mt-0.5"
-              />
-            )}
-            <div className="flex-1">
-              <p
-                className={`text-[13px] font-medium ${
-                  summary.daily.daily_capped
-                    ? "text-[var(--sr-action-pressed)]"
-                    : "text-[var(--sr-text-primary)]"
-                }`}
-              >
-                {summary.daily.daily_capped
-                  ? "Daily credit cap reached — Firecrawl calls are stopped (hard stop)"
-                  : "Daily credit cap"}
-              </p>
-              <p className="admin-mono-font text-[10px] text-[var(--sr-text-label)] mt-1 tabular-nums">
-                {summary.daily.used_today ?? 0} / {summary.daily.daily_credit_cap} credits
-                used today (UTC)
-                {summary.daily.daily_capped
-                  ? " · refusing non-manual calls until the day rolls"
-                  : ""}
-              </p>
-              {summary.daily.daily_credit_cap != null &&
-                summary.daily.used_today != null &&
-                summary.daily.daily_credit_cap > 0 && (
-                  <div className="h-1.5 bg-[var(--sr-surface-interactive)] rounded-[2px] overflow-hidden mt-2 max-w-md">
-                    <div
-                      className={`h-full ${
-                        summary.daily.daily_capped
-                          ? "bg-[var(--sr-action-pressed)]"
-                          : "bg-[var(--sr-link)]/60"
-                      }`}
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          (summary.daily.used_today / summary.daily.daily_credit_cap) * 100
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                )}
-            </div>
           </div>
         )}
 
@@ -576,6 +589,110 @@ export default function FirecrawlPage() {
           </div>
         </div>
 
+        {/* Diffs panel — Firecrawl-vs-legacy comparisons (AD-01-22) */}
+        <div className="mb-8" data-testid="diffs-panel">
+          <div className="flex items-baseline justify-between mb-3">
+            <h2 className="heading-display text-base text-[var(--sr-text-primary)]">
+              Content diffs · Firecrawl vs legacy
+            </h2>
+            <span className="admin-mono-font text-[9px] text-[var(--sr-text-label)]">
+              {diffs ? `${diffs.diffs.length} recent` : ""}
+            </span>
+          </div>
+
+          {diffs && diffs.rollup.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3" data-testid="diffs-rollup">
+              {diffs.rollup.map((r) => (
+                <span
+                  key={r.source}
+                  data-testid={`diffs-rollup-${r.source}`}
+                  className="admin-mono-font text-[9px] uppercase tracking-[0.12em] px-2.5 py-1 border border-[var(--sr-link)]/12 rounded-[4px] bg-[var(--sr-surface-card)] text-[var(--sr-text-tertiary)]"
+                >
+                  {r.source} · {pct(r.avg_rate)} avg ·{" "}
+                  <span className="text-[var(--sr-status-success)]">{r.green}</span>/
+                  <span className="text-[var(--sr-buoy)]">{r.amber}</span>/
+                  <span className="text-[var(--sr-action-pressed)]">{r.red}</span>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="border border-[var(--sr-link)]/12 bg-[var(--sr-surface-card)] rounded-[4px] shadow-sm overflow-hidden">
+            <div className="grid grid-cols-[110px_1.2fr_1.6fr_90px_90px_80px] gap-3 px-4 py-3 bg-[var(--sr-surface-interactive)] border-b border-[var(--sr-link)]/12 admin-mono-font text-[9px] uppercase tracking-[0.16em] text-[var(--sr-text-label)] font-medium">
+              <span>Ran</span>
+              <span>Domain</span>
+              <span>Event</span>
+              <span className="text-right">Legacy / FC</span>
+              <span className="text-right">Match</span>
+              <span className="text-right">Missing</span>
+            </div>
+            {diffsError && (
+              <div className="px-4 py-4 text-[13px] text-[var(--sr-action-pressed)]">
+                Diffs unavailable: {diffsError}
+              </div>
+            )}
+            {!diffsError && diffs && diffs.diffs.length === 0 && (
+              <div
+                data-testid="diffs-empty"
+                className="px-4 py-6 text-[13px] text-[var(--sr-text-label)] italic text-center"
+              >
+                No content diffs recorded yet.
+              </div>
+            )}
+            {diffs?.diffs.map((d) => {
+              const rateCls =
+                d.match_rate >= 0.95
+                  ? "text-[var(--sr-status-success)]"
+                  : d.match_rate >= 0.85
+                  ? "text-[var(--sr-buoy)]"
+                  : "text-[var(--sr-action-pressed)]";
+              return (
+                <div
+                  key={d.id}
+                  data-testid={`diff-row-${d.id}`}
+                  className="grid grid-cols-[110px_1.2fr_1.6fr_90px_90px_80px] gap-3 px-4 py-2.5 items-center border-b border-[var(--sr-link)]/5 last:border-b-0 hover:bg-[var(--sr-surface-interactive)] transition-colors"
+                >
+                  <p
+                    className="admin-mono-font text-[10px] text-[var(--sr-text-label)] tabular-nums truncate"
+                    title={fmtDateTime(d.ran_at)}
+                  >
+                    {fmtAge(d.ran_at)}
+                  </p>
+                  <div className="min-w-0">
+                    <p className="text-[13px] text-[var(--sr-text-primary)] truncate">
+                      {hostOf(d.source_url) ?? d.source}
+                    </p>
+                    <p className="admin-mono-font text-[9px] text-[var(--sr-text-label)] truncate">
+                      {d.source}
+                    </p>
+                  </div>
+                  <p
+                    className="text-[11px] text-[var(--sr-text-tertiary)] truncate"
+                    title={d.event_name ?? undefined}
+                  >
+                    {d.event_name ?? "—"}
+                  </p>
+                  <p className="admin-mono-font text-[10px] text-[var(--sr-text-tertiary)] tabular-nums text-right">
+                    {d.legacy_rows ?? "—"} / {d.firecrawl_rows ?? "—"}
+                  </p>
+                  <p
+                    data-testid={`diff-rate-${d.id}`}
+                    className={`admin-mono-font text-[10px] tabular-nums text-right ${rateCls}`}
+                  >
+                    {pct(d.match_rate)}
+                  </p>
+                  <p
+                    className="admin-mono-font text-[10px] text-[var(--sr-text-label)] tabular-nums text-right"
+                    title={d.missing_names.join(", ")}
+                  >
+                    {d.missing_names.length}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Recent calls — log */}
         <div>
           <div className="flex items-baseline justify-between mb-3 gap-3 flex-wrap">
@@ -611,6 +728,21 @@ export default function FirecrawlPage() {
                   {m}
                 </button>
               ))}
+              <span className="text-[var(--sr-link)]/20 mx-1">·</span>
+              <select
+                data-testid="domain-filter"
+                aria-label="Filter by domain"
+                value={domainFilter}
+                onChange={(e) => setDomainFilter(e.target.value)}
+                className="admin-mono-font text-[9px] uppercase tracking-[0.14em] px-2.5 py-1 border border-[var(--sr-link)]/12 rounded-[4px] bg-[var(--sr-surface-card)] text-[var(--sr-text-label)] hover:text-[var(--sr-text-primary)] outline-none"
+              >
+                <option value="all">all domains</option>
+                {recentDomains.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -625,21 +757,25 @@ export default function FirecrawlPage() {
               <span className="text-right">Size / Links</span>
             </div>
 
-            {loading && recent.length === 0 && (
+            {loading && visibleRecent.length === 0 && (
               <div className="px-4 py-6 flex items-center gap-2 text-[var(--sr-text-label)] text-[13px]">
                 <SpinnerIcon size={14} className="animate-spin" /> Loading…
               </div>
             )}
 
-            {!loading && recent.length === 0 && (
-              <div className="px-4 py-8 text-[13px] text-[var(--sr-text-label)] italic text-center flex items-center justify-center gap-2">
+            {!loading && visibleRecent.length === 0 && (
+              <div
+                data-testid="recent-empty"
+                className="px-4 py-8 text-[13px] text-[var(--sr-text-label)] italic text-center flex items-center justify-center gap-2">
                 <ClockIcon size={14} /> No calls match the current filter.
               </div>
             )}
 
-            {recent.map((c) => (
+            {visibleRecent.map((c) => (
               <div
                 key={c.id}
+                data-testid="recent-row"
+                data-domain={c.domain}
                 className="grid grid-cols-[110px_70px_1fr_70px_80px_70px_90px] gap-3 px-4 py-2 items-center border-b border-[var(--sr-link)]/5 last:border-b-0 hover:bg-[var(--sr-surface-interactive)] transition-colors"
               >
                 <p
