@@ -23,7 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from irc_data.api.deps import CallerIdentity, get_db, get_optional_identity
-from irc_data.api.services import account_service
+from irc_data.api.services import account_service, entitlements
 from irc_data.api.services.users_service import get_or_create_user
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,18 @@ def _require_user(
     return row["id"], identity.clerk_user_id
 
 
+class EntitlementsResponse(BaseModel):
+    """``EntitlementV1`` as served to the client (derived server-side only)."""
+
+    tier: str
+    plan: str
+    plan_status: str
+    features: list[str] = Field(default_factory=list)
+    boat_cap: Optional[int] = None
+    owned_report_boat_ids: list[int] = Field(default_factory=list)
+    source: str
+
+
 class MeResponse(BaseModel):
     """The caller's local user row, mirrored from their Clerk identity."""
 
@@ -82,6 +94,7 @@ class MeResponse(BaseModel):
     plan: Optional[str] = None
     subscription_status: Optional[str] = None
     stripe_customer_id: Optional[str] = None
+    entitlements: Optional[EntitlementsResponse] = None
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -163,7 +176,11 @@ def read_current_user(
             {"id": row["id"]},
         ).mappings().first()
 
-    return MeResponse(**dict(detail))
+        ent = entitlements.get_entitlements(conn, row["id"])
+
+    return MeResponse(
+        **dict(detail), entitlements=EntitlementsResponse(**ent.to_dict())
+    )
 
 
 # ── AUTH-01-03: settings, export, deletion ───────────────────────────────
