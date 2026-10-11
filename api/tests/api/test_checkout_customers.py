@@ -32,6 +32,51 @@ from irc_data.api.services.users_service import (
 from .conftest import insert_order, insert_user
 
 
+# ── PAY-01-02 fixtures: fake Stripe catalogue + stripe_payment_status ────
+
+# Mirrors the real Stripe setup: one report price (base GBP) carrying the
+# other currencies as currency_options.
+CATALOGUE = {
+    "report": {
+        "id": "price_report",
+        "unit_amount": 6900,
+        "currency": "gbp",
+        "currency_options": {
+            "gbp": {"unit_amount": 6900},
+            "usd": {"unit_amount": 9900},
+            "aud": {"unit_amount": 9900},
+            "nzd": {"unit_amount": 9900},
+        },
+    },
+}
+
+
+def fake_price_list(lookup_keys=None, **_kwargs):
+    """Stand-in for ``stripe.Price.list`` backed by CATALOGUE."""
+    found = [CATALOGUE[k] for k in (lookup_keys or []) if k in CATALOGUE]
+    return {"data": found}
+
+
+@pytest.fixture(autouse=True)
+def stripe_catalogue(monkeypatch):
+    """Every test sees the three catalogue prices; cache starts empty."""
+    checkout_router._PRICE_CACHE.clear()
+    monkeypatch.setattr(checkout_router.stripe.Price, "list", fake_price_list)
+    yield
+    checkout_router._PRICE_CACHE.clear()
+
+
+@pytest.fixture(autouse=True)
+def payment_status_column(request):
+    """The shared sqlite ``orders`` stub predates 0027; add the column."""
+    if "sqlite_engine" in request.fixturenames:
+        engine = request.getfixturevalue("sqlite_engine")
+        with engine.begin() as conn:
+            conn.execute(
+                text("ALTER TABLE orders ADD COLUMN stripe_payment_status TEXT")
+            )
+
+
 # ── users_service.get_or_create_user ──────────────────────────────────────
 
 
@@ -448,7 +493,8 @@ class TestCreateSessionCustomerParams:
                         amount_cents INTEGER, currency TEXT,
                         stripe_session_id TEXT, stripe_payment_intent TEXT,
                         status TEXT, search_query TEXT, teaser_text TEXT,
-                        user_id INTEGER, stripe_customer_id TEXT
+                        user_id INTEGER, stripe_customer_id TEXT,
+                        stripe_payment_status TEXT
                     )
                     """
                 )
@@ -553,3 +599,153 @@ class TestCreateSessionCustomerParams:
         assert resp.status_code == 200, resp.text
         assert captured.get("customer_creation") == "always"
         assert "customer" not in captured
+
+
+# ── PAY-01-02: catalogue prices, already-owned, stripe_payment_status ────
+
+
+class TestCatalogueCheckout:
+    """Prices come from the Stripe catalogue by lookup_key, never from code."""
+
+    # Reuse the route-test harness (engine + client builders) from above.
+    _engine = staticmethod(TestCreateSessionCustomerParams()._engine)
+    _build_client = staticmethod(TestCreateSessionCustomerParams()._build_client)
+
+    def _post(self, monkeypatch, currency, identity=None, engine=None):
+        engine = engine or self._engine()
+        client = self._build_client(monkeypatch, identity, engine)
+        captured = {}
+
+        def fake_create(**kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(id="cs_cat", url="https://checkout.stripe.com/c")
+
+        with patch.object(
+            checkout_router.stripe.checkout.Session, "create", side_effect=fake_create
+        ), patch("irc_data.api.services.analytics_service.track"):
+            resp = client.post(
+                "/v1/checkout/create-session",
+                json={"boat_id": 1, "boat_name": "Test Boat", "currency": currency},
+            )
+        return resp, captured, engine
+
+    @pytest.mark.parametrize(
+        "currency,amount",
+        [("gbp", 6900), ("usd", 9900), ("aud", 9900), ("nzd", 9900)],
+    )
+    def test_price_resolved_by_lookup_key(self, monkeypatch, currency, amount):
+        looked_up = []
+
+        def spy(lookup_keys=None, **kwargs):
+            looked_up.append((lookup_keys, kwargs))
+            return fake_price_list(lookup_keys)
+
+        monkeypatch.setattr(checkout_router.stripe.Price, "list", spy)
+        resp, captured, engine = self._post(monkeypatch, currency.upper())
+
+        assert resp.status_code == 200, resp.text
+        assert looked_up[0][0] == ["report"]
+        assert looked_up[0][1]["active"] is True
+        assert "data.currency_options" in looked_up[0][1]["expand"]
+        # Catalogue price id, never ad-hoc price_data; Stripe picks the
+        # amount from currency_options for the session currency.
+        assert captured["line_items"] == [{"price": "price_report", "quantity": 1}]
+        assert captured["currency"] == currency
+        body = resp.json()
+        assert body["currency"] == currency
+        assert body["currency_fallback"] is False
+        assert body["already_owned"] is False
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT amount_cents, currency FROM orders")).mappings().first()
+        assert (row["amount_cents"], row["currency"]) == (amount, currency)
+
+        # Second checkout within 60 s is served from the in-process cache.
+        self._post(monkeypatch, currency)
+        assert len(looked_up) == 1
+
+    def test_real_stripe_objects_resolve_currency_options(self, monkeypatch):
+        """stripe.Price.list returns StripeObjects, which aren't Mappings."""
+        real = checkout_router.stripe.StripeObject.construct_from(
+            {"data": [CATALOGUE["report"]]}, "sk_test"
+        )
+        monkeypatch.setattr(checkout_router.stripe.Price, "list", lambda **kw: real)
+        resp, captured, _ = self._post(monkeypatch, "aud")
+
+        assert resp.status_code == 200, resp.text
+        assert captured["currency"] == "aud"
+        assert resp.json()["currency"] == "aud"
+
+    def test_eur_falls_back_to_usd_with_flag(self, monkeypatch):
+        resp, captured, _ = self._post(monkeypatch, "eur")
+
+        assert resp.status_code == 200, resp.text
+        assert captured["line_items"] == [{"price": "price_report", "quantity": 1}]
+        assert captured["currency"] == "usd"
+        body = resp.json()
+        assert body["currency"] == "usd"
+        assert body["currency_fallback"] is True
+        assert "EUR" in body["currency_message"] and "USD" in body["currency_message"]
+
+    def test_unknown_currency_is_400(self, monkeypatch):
+        resp, captured, engine = self._post(monkeypatch, "jpy")
+
+        assert resp.status_code == 400, resp.text
+        assert captured == {}  # no Stripe session
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT COUNT(*) FROM orders")).scalar() == 0
+
+    def test_already_owned_short_circuits_for_owner(self, monkeypatch):
+        engine = self._engine()
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO orders (order_token, boat_id, status, user_id) "
+                    "VALUES ('tok-owned', 1, 'paid', 7)"
+                )
+            )
+        identity = SimpleNamespace(clerk_user_id="user_1", email="a@b.com")
+        client = self._build_client(monkeypatch, identity, engine)
+
+        with patch.object(
+            checkout_router, "get_or_create_user",
+            return_value={"id": 7, "clerk_id": "user_1",
+                          "email": "a@b.com", "stripe_customer_id": "cus_1"},
+        ), patch.object(
+            checkout_router, "ensure_stripe_customer", return_value="cus_1"
+        ), patch.object(
+            checkout_router.stripe.checkout.Session, "create"
+        ) as create:
+            resp = client.post(
+                "/v1/checkout/create-session",
+                json={"boat_id": 1, "boat_name": "Test Boat", "currency": "usd"},
+            )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["already_owned"] is True
+        assert body["report_url"].endswith("/report/tok-owned")
+        # Legacy callers redirect to checkout_url: it points at the report.
+        assert body["checkout_url"] == body["report_url"]
+        assert body["order_token"] is None
+        create.assert_not_called()
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT COUNT(*) FROM orders")).scalar() == 1
+
+    def test_stripe_payment_status_written_on_completed(self, sqlite_engine):
+        insert_order(
+            sqlite_engine, "tok-1", session="cs_test_123", status="pending"
+        )
+        with patch("irc_data.api.routers.checkout._generate_and_deliver"):
+            checkout_router._handle_checkout_completed(
+                sqlite_engine,
+                _make_session_event(payment_status="paid"),
+                MagicMock(),
+            )
+
+        with sqlite_engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT status, stripe_payment_status FROM orders "
+                     "WHERE stripe_session_id = 'cs_test_123'")
+            ).mappings().first()
+        assert row["status"] == "paid"
+        assert row["stripe_payment_status"] == "paid"

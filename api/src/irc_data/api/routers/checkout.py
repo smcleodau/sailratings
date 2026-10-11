@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -35,20 +36,71 @@ SUBSCRIPTION_EVENT_TYPES = {
     "customer.subscription.resumed",
 }
 
-# Price table: currency → amount in cents
-PRICES = {
-    "usd": 9900,
-    "gbp": 7900,
-    "eur": 8900,
-    "aud": 14900,
-}
+# Catalogue price (SPEC-23 §4): the amount lives in Stripe, never here. One
+# report price (lookup_key ``report``) carries every currency as Stripe
+# currency_options (base GBP plus USD/AUD/NZD as set up in the Dashboard);
+# the Checkout Session's ``currency`` selects which amount is charged.
+REPORT_LOOKUP_KEY = "report"
+FALLBACK_CURRENCY = "usd"
+PRICE_CACHE_TTL_SECONDS = 60
 
-CURRENCY_SYMBOLS = {
-    "usd": "$99",
-    "gbp": "£79",
-    "eur": "€89",
-    "aud": "A$149",
-}
+# lookup_key -> (expires_at monotonic seconds, resolved price or None)
+_PRICE_CACHE: dict[str, tuple[float, Optional[dict]]] = {}
+
+
+def _lookup_catalogue_price(lookup_key: str) -> Optional[dict]:
+    """Return ``{id, amounts: {currency: unit_amount}}`` for an active price, else None.
+
+    Cached in-process for ``PRICE_CACHE_TTL_SECONDS`` (misses included).
+    """
+    now = time.monotonic()
+    cached = _PRICE_CACHE.get(lookup_key)
+    if cached and cached[0] > now:
+        return cached[1]
+
+    prices = stripe.Price.list(
+        lookup_keys=[lookup_key], active=True, limit=1,
+        expand=["data.currency_options"],
+    )
+    data = list(_event_get(prices, "data", []) or [])
+    resolved = None
+    if data:
+        price = data[0]
+        base = str(price["currency"]).lower()
+        amounts = {base: price["unit_amount"]}
+        options = _event_get(price, "currency_options", None) or {}
+        # StripeObject is not a Mapping (no .items()); to_dict() gives plain dicts.
+        options = options.to_dict() if hasattr(options, "to_dict") else options
+        for cur, opt in options.items():
+            amount = _event_get(opt, "unit_amount", None)
+            if amount is not None:
+                amounts[str(cur).lower()] = amount
+        resolved = {"id": price["id"], "amounts": amounts}
+    _PRICE_CACHE[lookup_key] = (now + PRICE_CACHE_TTL_SECONDS, resolved)
+    return resolved
+
+
+def _resolve_report_price(currency: str) -> tuple[dict, str, int, bool]:
+    """Resolve the report price for ``currency``.
+
+    Returns ``(price, currency_used, amount_cents, fallback)``. EUR has no
+    catalogue amount (SPEC-23 §4) so it is charged in USD with ``fallback``
+    True. Any other currency the price doesn't carry raises HTTP 400.
+    """
+    if not (len(currency) == 3 and currency.isalpha()):
+        raise HTTPException(status_code=400, detail=f"Unsupported currency '{currency}'")
+
+    price = _lookup_catalogue_price(REPORT_LOOKUP_KEY)
+    if price:
+        if currency in price["amounts"]:
+            return price, currency, price["amounts"][currency], False
+        if currency == "eur" and FALLBACK_CURRENCY in price["amounts"]:
+            return price, FALLBACK_CURRENCY, price["amounts"][FALLBACK_CURRENCY], True
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"No report price available for currency '{currency}'",
+    )
 
 
 class CreateSessionRequest(BaseModel):
@@ -60,8 +112,32 @@ class CreateSessionRequest(BaseModel):
 
 
 class CreateSessionResponse(BaseModel):
-    checkout_url: str
-    order_token: str
+    checkout_url: Optional[str] = None
+    order_token: Optional[str] = None
+    currency: Optional[str] = None
+    # True when the requested currency has no catalogue price and the
+    # session was priced in ``currency`` (USD) instead (EUR today).
+    currency_fallback: bool = False
+    currency_message: Optional[str] = None
+    # PAY-01-02: the signed-in caller already owns this boat's report.
+    already_owned: bool = False
+    report_url: Optional[str] = None
+
+
+def _find_paid_order_token(engine: Engine, user_id: int, boat_id: int) -> str | None:
+    """order_token of the user's most recent paid order for ``boat_id``."""
+    with engine.connect() as conn:
+        return conn.execute(
+            text(
+                """
+                SELECT order_token FROM orders
+                 WHERE user_id = :uid AND boat_id = :bid
+                   AND status IN ('paid', 'generated')
+                 ORDER BY id DESC LIMIT 1
+                """
+            ),
+            {"uid": user_id, "bid": boat_id},
+        ).scalar()
 
 
 @router.post("/create-session", response_model=CreateSessionResponse)
@@ -84,11 +160,7 @@ def create_checkout_session(
 
     stripe.api_key = secret_key
 
-    currency = body.currency.lower()
-    if currency not in PRICES:
-        currency = "usd"
-
-    amount_cents = PRICES[currency]
+    requested_currency = body.currency.lower()
     order_token = uuid.uuid4()
 
     # Verify boat exists
@@ -121,6 +193,32 @@ def create_checkout_session(
             user = None
             stripe_customer_id = None
 
+    # Already own this report? Tell the caller instead of charging twice.
+    if user:
+        owned_token = _find_paid_order_token(engine, user["id"], body.boat_id)
+        if owned_token:
+            report_url = f"{FRONTEND_URL}/report/{owned_token}"
+            return CreateSessionResponse(
+                already_owned=True,
+                report_url=report_url,
+                # Callers that predate already_owned (TeaserAnalysis) just
+                # redirect to checkout_url: land the owner on their report.
+                checkout_url=report_url,
+            )
+
+    # Resolve the catalogue price (lookup_key ``report``, per-currency amount).
+    try:
+        price, currency, amount_cents, currency_fallback = _resolve_report_price(requested_currency)
+    except stripe.StripeError as e:
+        logger.error(f"Stripe price lookup failed: {e}")
+        raise HTTPException(status_code=502, detail="Payment price lookup failed")
+    currency_message = (
+        f"No {requested_currency.upper()} price is available; "
+        f"priced in {currency.upper()} instead."
+        if currency_fallback
+        else None
+    )
+
     # Create pending order (linked to the user when signed in)
     with engine.begin() as conn:
         conn.execute(
@@ -148,23 +246,11 @@ def create_checkout_session(
     try:
         session_params: dict = {
             "payment_method_types": ["card"],
-            "line_items": [
-                {
-                    "price_data": {
-                        "currency": currency,
-                        "product_data": {
-                            "name": f"IRC Rating Report — {body.boat_name}",
-                            "description": (
-                                "Full IRC rating analysis: measurement sensitivity, "
-                                "optimisation recommendations, racing performance, "
-                                "fleet comparison, and formula trend analysis."
-                            ),
-                        },
-                        "unit_amount": amount_cents,
-                    },
-                    "quantity": 1,
-                }
-            ],
+            "line_items": [{"price": price["id"], "quantity": 1}],
+            "currency": currency,
+            "payment_intent_data": {
+                "description": f"IRC Rating Report — {body.boat_name}",
+            },
             "mode": "payment",
             "allow_promotion_codes": True,
             "success_url": f"{FRONTEND_URL}/report/{order_token}",
@@ -220,6 +306,9 @@ def create_checkout_session(
     return CreateSessionResponse(
         checkout_url=session.url,
         order_token=str(order_token),
+        currency=currency,
+        currency_fallback=currency_fallback,
+        currency_message=currency_message,
     )
 
 
@@ -608,6 +697,7 @@ def _handle_checkout_completed(
                         email = COALESCE(:email, email),
                         stripe_payment_intent = :pi,
                         stripe_customer_id = COALESCE(:customer, stripe_customer_id),
+                        stripe_payment_status = :payment_status,
                         user_id = COALESCE(:user_id, user_id)
                     WHERE stripe_session_id = :sid
                       AND status = 'pending'
@@ -617,6 +707,7 @@ def _handle_checkout_completed(
                     "now": datetime.now(timezone.utc),
                     "email": email,
                     "pi": payment_intent,
+                    "payment_status": payment_status,
                     "customer": stripe_customer_id,
                     "user_id": user_id,
                     "sid": session_id,
@@ -634,6 +725,7 @@ def _handle_checkout_completed(
                         email = COALESCE(:email, email),
                         stripe_payment_intent = :pi,
                         stripe_customer_id = COALESCE(:customer, stripe_customer_id),
+                        stripe_payment_status = :payment_status,
                         user_id = COALESCE(:user_id, user_id)
                     WHERE stripe_session_id = :sid
                       AND status = 'pending'
@@ -642,6 +734,7 @@ def _handle_checkout_completed(
                     "now": datetime.now(timezone.utc),
                     "email": email,
                     "pi": payment_intent,
+                    "payment_status": payment_status,
                     "customer": stripe_customer_id,
                     "user_id": user_id,
                     "sid": session_id,

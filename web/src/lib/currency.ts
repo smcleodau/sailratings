@@ -1,25 +1,25 @@
+/**
+ * Currency detection + display symbols only. The amount charged is never
+ * computed here: the API resolves it from the Stripe catalogue by lookup_key
+ * (report_gbp / report_usd / report_aud). `display` is a label for the button.
+ */
 interface CurrencyInfo {
   code: string;
   symbol: string;
-  amount: number;
   display: string;
 }
 
+// No EUR catalogue price exists (SPEC-23 §4): euro locales are charged the
+// USD price, so they fall through to DEFAULT_CURRENCY rather than showing a
+// euro label the checkout would not honour.
 const CURRENCY_MAP: Record<string, CurrencyInfo> = {
-  "en-GB": { code: "GBP", symbol: "\u00A3", amount: 79, display: "\u00A379" },
-  "en-AU": { code: "AUD", symbol: "A$", amount: 149, display: "A$149" },
-  "fr": { code: "EUR", symbol: "\u20AC", amount: 89, display: "\u20AC89" },
-  "de": { code: "EUR", symbol: "\u20AC", amount: 89, display: "\u20AC89" },
-  "es": { code: "EUR", symbol: "\u20AC", amount: 89, display: "\u20AC89" },
-  "it": { code: "EUR", symbol: "\u20AC", amount: 89, display: "\u20AC89" },
-  "nl": { code: "EUR", symbol: "\u20AC", amount: 89, display: "\u20AC89" },
-  "pt": { code: "EUR", symbol: "\u20AC", amount: 89, display: "\u20AC89" },
+  "en-GB": { code: "GBP", symbol: "\u00A3", display: "\u00A379" },
+  "en-AU": { code: "AUD", symbol: "A$", display: "A$149" },
 };
 
 const DEFAULT_CURRENCY: CurrencyInfo = {
   code: "USD",
   symbol: "$",
-  amount: 99,
   display: "$99",
 };
 

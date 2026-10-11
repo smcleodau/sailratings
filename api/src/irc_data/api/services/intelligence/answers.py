@@ -7,6 +7,7 @@ from sqlalchemy.engine import Engine
 
 from irc_data.api.schemas.intelligence import IntelligenceAnswerV1, Provenance
 from irc_data.api.services.intelligence import evidence as ev
+from irc_data.api.services.intelligence.confidence import assess_result
 from irc_data.api.services.intelligence.queries import QueryResult, resolve_query
 
 
@@ -37,6 +38,7 @@ def build_answer(engine: Engine, spec_key: str, result: QueryResult) -> Intellig
         incomplete=bool(result.missing),
         missing=list(result.missing),
         evidence=list(result.evidence),
+        confidence=assess_result(engine, result).model_dump(),
     )
 
 

@@ -217,7 +217,64 @@ The Analyst (AI-01-05) switches to these queries as its tool surface later. Tool
 
 ## 3. Confidence
 
-Owned by IN-01-02 / IN-01-03 / IN-01-05 (this section: IN-01-03).
+Owned by IN-01-03. Replaces the placeholder in §1.5 and §2.1. Status: **DRAFT — the weights
+(§3.1) and the golden-boat bands (§3.4) are proposals awaiting the Human Gate: Stuart approves
+them by commenting `approved` on IN-01-03.** Changing any number here is a new confidence version.
+
+Schema id: `ConfidenceAssessmentV1` in `api/src/irc_data/api/schemas/intelligence.py`:
+`{score: 0..1, band: high|medium|low, factors: [{name, weight, value, note}], limitations: [str]}`.
+Implemented by `services/intelligence/confidence.py::assess(inputs)`, a pure function: same
+inputs, same assessment. `answers.py` attaches it to **every** `IntelligenceAnswerV1.confidence`,
+including incomplete answers. Confidence is computed from data only, never from the narrative
+generator, and a factor that cannot be read scores 0 (never guessed).
+
+### 3.1 Factors and weights
+
+`score = Σ weight × value`, rounded to 6 decimals. Weights sum to 1.00.
+
+| Factor | Weight | Value (0..1) | Inputs |
+|---|---|---|---|
+| `coverage` | 0.25 | `min(seasons_with_results / 3, 1)` | distinct calendar years in `race_results` for the boat |
+| `source_agreement` | 0.20 | fraction of the boat's TCC readings (latest `cert_year` in `tcc_snapshots`) within 0.001 of the latest reading; one reading = 0.5 (cannot be cross-checked); none = 0 | `tcc_snapshots` |
+| `identity_certainty` | 0.20 | `1 − pending_dupe_cluster_membership` (1 if the boat has no `PENDING` row in `dupe_review_queue`, else 0) | `dupe_review_queue` |
+| `recency` | 0.20 | `max(0, 1 − days_since_latest_fact / 365)` | newest of snapshot date, race date, answer `freshness_at` |
+| `model_evidence` | 0.15 | `0.5 × N-score + 0.5 × R²-score`; no model = 0 | `engines.design_model` (else `fleet_wide_model`) |
+
+`model_evidence` thresholds come from `docs/model/METHODOLOGY.md` (class regression):
+N-score is 0 below 5 boats (`MIN_BOATS`), 0.5 for 5–14 (below `MIN_BOATS_FULL_CV`, "limited
+data"), 1 for 15 or more; R²-score is 1 when R² ≥ 0.3 (the Tier A floor), else 0. Cross-validated
+R² is used when the model reports one, because in-sample R² flatters small classes.
+
+Answers that are not about one boat (`rating_book_search`, `fleet_explorer`) have no seasons,
+TCC readings, identity status or model, so those factors score 0 and the limitations say so.
+Their confidence is therefore low by construction; that is intended, they are not verdicts.
+
+### 3.2 Bands
+
+`high` ≥ 0.75, `medium` ≥ 0.45, otherwise `low`. The boundaries are inclusive (0.45 is
+`medium`, 0.75 is `high`). Wording rules for each band are those of §1.5.
+
+### 3.3 Limitations
+
+Every factor with `value < 0.5` adds one entry to `limitations`, naming the factor, its value
+and the reason (e.g. `Stale data (recency=0.00): latest fact 700 day(s) old against 365`). A
+factor at exactly 0.5 adds none. `limitations == []` means no factor is below 0.5.
+
+### 3.4 Golden boats (holdout)
+
+`tests/api/test_confidence_assessment.py` pins three synthetic boats. Expected bands are the
+Human Gate; the scores are what the §3.1 formula gives.
+
+| Boat | Inputs | Score | Band (Stuart to confirm) |
+|---|---|---|---|
+| A: well-documented J/109 | 4 seasons; 3 TCC readings within 0.001; no pending cluster; 30 days; class model N=40, R²=0.72 | 0.9836 | **high** |
+| B: thin one-off | 2 seasons; 2 agreeing TCC readings; no pending cluster; 400 days; no model | 0.5667 | **medium** |
+| C: stale, pending duplicate | 1 season; 1 TCC reading; pending cluster; 700 days; model N=4, R²=0.2 | 0.1833 | **low** |
+
+### 3.5 Consumers
+
+`web/src/lib/intelligence.ts` mirrors the type; `web/src/components/intelligence/ConfidenceBadge.tsx`
+renders score, band and limitations. It is mounted on a page by IN-01-04.
 
 ## 4. Outcome events
 

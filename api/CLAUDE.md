@@ -56,7 +56,7 @@ src/irc_data/
 │   │   ├── search.py       # GET /search — fuzzy search via pg_trgm
 │   │   ├── boats.py        # GET /boats/{id} — detail + ratings
 │   │   ├── analytics.py    # 5 analysis engines (sensitivity, drift, RAI, optimizer, design compare)
-│   │   ├── insights.py     # POST /insights/ask — SSE streaming Claude analysis
+│   │   ├── insights.py     # POST /insights/ask — SSE streaming LLM analysis
 │   │   ├── checkout.py     # POST /checkout/create-session — Stripe
 │   │   ├── reports.py      # GET /reports/{token} — paid report + PDF download
 │   │   ├── events.py       # race events & results
@@ -66,7 +66,7 @@ src/irc_data/
 │   │   ├── pipeline.py     # ingestion pipeline status
 │   │   ├── surveys.py      # user feedback
 │   │   └── admin.py        # admin operations
-│   ├── services/           # insights_service (Claude streaming), report_service, pdf_service, email_service (Resend)
+│   ├── services/           # insights_service (LLM streaming), report_service, pdf_service, email_service (Resend)
 │   └── schemas/            # Pydantic request/response models
 ├── scrapers/               # 15+ source-specific scrapers
 │   ├── base.py             # RateLimiter, async HTTP client, retry logic
@@ -100,7 +100,7 @@ src/irc_data/
 3. **Matching** resolves boat identities across sources (same boat, different names/sail numbers)
 4. **DB** stores everything in PostgreSQL (14 tables + materialized views)
 5. **Analysis engines** compute statistics on demand from DB
-6. **API** serves results to the frontend, streams Claude AI insights via SSE
+6. **API** serves results to the frontend, streams LLM insights (via `irc_data/llm.py`) over SSE
 
 ### Key patterns
 
@@ -108,7 +108,12 @@ src/irc_data/
 - `get_db()` dependency injection provides the shared SQLAlchemy Engine to all routers
 - `DATABASE_URL` can be overridden via env var; Railway gives `postgresql://` which app.py auto-converts to `postgresql+psycopg://`
 - Scraper rate limiting: 2.0s default delay with jitter, 3 retries
-- Insights use two tiers: free (~150 words) and premium (~800-1000 words) via Claude API
+- Insights use two tiers: free (~150 words) and premium (~800-1000 words)
+- **Every LLM call goes through `irc_data/llm.py`** — nothing else builds a client or names a model. Provider is Anthropic (`ANTHROPIC_API_KEY`). Switch models with config, not code:
+  - `LLM_MODEL` — default model for all features (`claude-sonnet-5-5`)
+  - `LLM_MODEL_<FEATURE>` — per-feature override; features: `INSIGHTS`, `REPORT`, `REPORT_SERVICE`, `ADMIN_CHAT`, `EXTRACTOR`, `NEWS`
+  - `LLM_EFFORT` / `LLM_EFFORT_<FEATURE>` — `low|medium|high|xhigh|max` (default `medium`)
+  - `max_tokens` is a ceiling that also covers thinking; response length is set by each prompt
 - API docs at `/v1/docs` (Swagger) and `/v1/redoc`
 
 ### Database
