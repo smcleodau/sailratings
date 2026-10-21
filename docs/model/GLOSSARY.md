@@ -3,17 +3,17 @@
 Companion to [METHODOLOGY.md](METHODOLOGY.md) (`ModelMethodologyV1`, version 1.0.0,
 2026-10-10). Status: **DRAFT — awaiting Stuart's approval.**
 
-Sailing and rating terms are **defined once**, in `docs/ai/glossary.yaml` (card
+Sailing and rating terms are **defined once**, in `api/src/irc_data/ai/glossary.yaml` (card
 AI-01-01), and are cross-linked here **by exact term name** — this file does not
 restate those definitions, so the two cannot drift apart. Terms that only exist
 because of the model are defined in the second section; they are proposed for
 addition to `glossary.yaml` (that file is owned by AI-01-01 and is not edited here).
 
 `api/tests/report/test_methodology_doc.py` checks that every term in the first
-table exists in `docs/ai/glossary.yaml` by its `term` name, and that no term in the
+table exists in `api/src/irc_data/ai/glossary.yaml` by its `term` name, and that no term in the
 second section has since been added there (if one has, move it to the first table).
 
-## Terms defined in docs/ai/glossary.yaml
+## Terms defined in api/src/irc_data/ai/glossary.yaml
 
 | glossary.yaml term | Where the model uses it | Methodology section |
 |---|---|---|
@@ -52,7 +52,7 @@ second section has since been added there (if one has, move it to the first tabl
 | `MUW` | Tier A lever `muw`. | [Class regression](METHODOLOGY.md#class-regression) |
 | `MHW` | Tier A lever `mhw` (the strongest lever for the Sunfast 3300 golden boats). | [Class regression](METHODOLOGY.md#class-regression) |
 
-## Model terms not yet in docs/ai/glossary.yaml
+## Model terms not yet in api/src/irc_data/ai/glossary.yaml
 
 Proposed definitions. Each is the definition used in [METHODOLOGY.md](METHODOLOGY.md);
 if you change one, change it there and bump the methodology version.

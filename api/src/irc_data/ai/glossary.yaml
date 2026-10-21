@@ -1,7 +1,7 @@
 # SailRatings sailing glossary — shared by every LLM persona.
 # Loaded by api/src/irc_data/api/services/report/knowledge.py (load_glossary()).
 # Each term: term, definition, unit (null if none), aliases, source.
-# Source ids refer to the Sources lists in docs/ai/knowledge/*.md.
+# Source ids refer to the Sources lists in irc_data/ai/knowledge/*.md.
 # Review status: DRAFT — awaiting Stuart's review (Human Gate, card AI-01-01).
 terms:
   - term: TCC

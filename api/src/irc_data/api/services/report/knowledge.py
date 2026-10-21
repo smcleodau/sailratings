@@ -2,8 +2,8 @@
 
 The pack lives in the repo, not in prompt strings:
 
-    docs/ai/knowledge/NN-*.md   eight numbered sections
-    docs/ai/glossary.yaml       term / definition / unit / aliases / source
+    irc_data/ai/knowledge/NN-*.md   eight numbered sections
+    irc_data/ai/glossary.yaml       term / definition / unit / aliases / source
 
 Public API
 ----------
@@ -19,8 +19,8 @@ Public API
 Both are cached for the life of the process; call ``clear_cache()`` in tests
 or after editing the pack on disk.
 
-Location: the repo's ``docs/ai`` directory is found relative to this file
-(source checkout) or via the ``SAILRATINGS_AI_DOCS_DIR`` environment
+Location: ``irc_data/ai`` (shipped as package data, so it is present in any
+``pip install``), or the ``SAILRATINGS_AI_DOCS_DIR`` environment
 variable (deployments that do not ship the whole repo).
 """
 from __future__ import annotations
@@ -38,12 +38,12 @@ _SECTION_SEPARATOR = "\n\n---\n\n"
 
 
 def docs_dir() -> Path:
-    """Return the ``docs/ai`` directory."""
+    """Return the ``irc_data/ai`` directory (knowledge pack + glossary)."""
     override = os.environ.get(DOCS_ENV_VAR)
     if override:
         return Path(override)
     # .../repo/api/src/irc_data/api/services/report/knowledge.py -> repo
-    return Path(__file__).resolve().parents[6] / "docs" / "ai"
+    return Path(__file__).resolve().parents[3] / "ai"
 
 
 def knowledge_dir() -> Path:

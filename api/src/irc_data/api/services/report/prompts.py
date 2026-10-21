@@ -8,7 +8,7 @@ content describing what to write and pointing at the Facts payload.
 from irc_data.api.services.report.prompt_library import build_system_prompt
 
 # Alias kept so every section module keeps importing SYSTEM_PROMPT_V2. The text now
-# lives in repo-root prompts/ (base + guardrails + voice + personas/report_writer.md).
+# lives in irc_data/prompts/ (base + guardrails + voice + personas/report_writer.md).
 SYSTEM_PROMPT_V2 = build_system_prompt("report_writer")
 
 

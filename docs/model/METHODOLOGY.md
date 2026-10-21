@@ -874,6 +874,6 @@ must not alter any string or code that feeds the golden bundles).
    0.35 noise floor and a single-scenario calibration of the combination factor, not
    a statistical interval. Decide whether it may be labelled an "indicative range" in
    the UI or needs empirical calibration.
-7. **Glossary coverage.** `docs/ai/glossary.yaml` (AI-01-01) does not yet define RAI,
+7. **Glossary coverage.** `api/src/irc_data/ai/glossary.yaml` (AI-01-01) does not yet define RAI,
    standardised β, model tiers, smart boat, stable-certificate cohort or
    headroom; see [GLOSSARY.md](GLOSSARY.md) for the proposed definitions.

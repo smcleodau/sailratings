@@ -1,7 +1,7 @@
 """Prompt library (AI-01-02): snapshots + structural invariants.
 
 Each persona's built system prompt is stored under ``tests/report/snapshots``.
-Any change to prompts/*.md or the knowledge pack changes the built prompt and
+Any change to irc_data/prompts/*.md or the knowledge pack changes the built prompt and
 fails the matching snapshot until a human reviews the diff and regenerates:
 
     UPDATE_PROMPT_SNAPSHOTS=1 pytest tests/report/test_prompt_library.py -q

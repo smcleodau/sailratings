@@ -67,6 +67,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "irc_data.scrapers" = ["certs/*.pem"]
+"irc_data" = ["prompts/*.md", "prompts/*/*.md", "ai/glossary.yaml", "ai/knowledge/*.md"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"

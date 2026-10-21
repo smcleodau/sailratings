@@ -1,6 +1,6 @@
 """Prompt library loader (AI-01-02).
 
-System prompts live in the repo-root ``prompts/`` package as reviewed markdown,
+System prompts live in the ``irc_data/prompts/`` package data as reviewed markdown,
 not as Python string constants:
 
     prompts/base.md             domain-expert framing (references the knowledge pack)
@@ -18,8 +18,8 @@ The result is cached per ``(persona, variant)`` and carries a stable sha in a
 header comment, so a change in any source file (or in the knowledge pack) is
 visible in the snapshot tests under ``tests/report/snapshots``.
 
-Location: the ``prompts`` directory is found relative to this file (source
-checkout) or via the ``SAILRATINGS_PROMPTS_DIR`` environment variable.
+Location: ``irc_data/prompts`` (shipped as package data, so it is present in any
+``pip install``), or the ``SAILRATINGS_PROMPTS_DIR`` environment variable.
 """
 from __future__ import annotations
 
@@ -60,13 +60,13 @@ def prompts_dir() -> Path:
     override = os.environ.get(PROMPTS_ENV_VAR)
     if override:
         return Path(override)
-    # .../repo/api/src/irc_data/api/services/report/prompt_library.py -> repo
-    return Path(__file__).resolve().parents[6] / "prompts"
+    # irc_data/api/services/report/prompt_library.py -> irc_data/prompts
+    return Path(__file__).resolve().parents[3] / "prompts"
 
 
 def _read(path: Path) -> str:
     if not path.is_file():
-        raise FileNotFoundError(f"Prompt file missing: {path} (set {PROMPTS_ENV_VAR} if prompts/ is not next to the source tree)")
+        raise FileNotFoundError(f"Prompt file missing: {path} (irc_data/prompts package data missing? set {PROMPTS_ENV_VAR})")
     return path.read_text(encoding="utf-8").strip()
 
 

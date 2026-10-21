@@ -15,7 +15,7 @@ from sqlalchemy.engine import Engine
 
 from irc_data.api.services.report.prompt_library import build_system_prompt
 
-# System prompts now live in repo-root prompts/ (base + guardrails + voice + persona +
+# System prompts now live in irc_data/prompts/ (base + guardrails + voice + persona +
 # knowledge pack); these names are thin aliases for the two call sites below.
 SYSTEM_PROMPT_PREMIUM = build_system_prompt("analyst")
 SYSTEM_PROMPT_TEASER = build_system_prompt("analyst", variant="teaser")

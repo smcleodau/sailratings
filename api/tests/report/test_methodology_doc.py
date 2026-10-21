@@ -1,7 +1,7 @@
 """SM-01-01 — docs/model/METHODOLOGY.md and GLOSSARY.md are checked, not trusted.
 
 Reads the two documents, the three golden ``ReportFactsV1`` bundles
-(SM-01-08) and ``docs/ai/glossary.yaml`` (AI-01-01). No database, no network,
+(SM-01-08) and ``api/src/irc_data/ai/glossary.yaml`` (AI-01-01). No database, no network,
 no model code imported.
 
 Worked-example grammar (see METHODOLOGY.md, "How to read this document"):
@@ -32,7 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DOCS_MODEL = REPO_ROOT / "docs" / "model"
 METHODOLOGY = DOCS_MODEL / "METHODOLOGY.md"
 GLOSSARY = DOCS_MODEL / "GLOSSARY.md"
-GLOSSARY_YAML = REPO_ROOT / "docs" / "ai" / "glossary.yaml"
+GLOSSARY_YAML = REPO_ROOT / "api" / "src" / "irc_data" / "ai" / "glossary.yaml"
 GOLDEN_ROOT = Path(__file__).resolve().parent / "golden"
 ANALYSIS = REPO_ROOT / "api" / "src" / "irc_data" / "analysis"
 
@@ -342,7 +342,7 @@ def test_methodology_structure_and_thresholds_match_code():
 
 
 # --------------------------------------------------------------------------- #
-# 3. glossary cross-links to docs/ai/glossary.yaml by name
+# 3. glossary cross-links to api/src/irc_data/ai/glossary.yaml by name
 # --------------------------------------------------------------------------- #
 def test_glossary_cross_links_ai_glossary_by_name():
     terms = yaml.safe_load(GLOSSARY_YAML.read_text())["terms"]
@@ -353,8 +353,8 @@ def test_glossary_cross_links_ai_glossary_by_name():
 
     text = GLOSSARY.read_text()
     sections = _sections(text)
-    linked_section = sections["Terms defined in docs/ai/glossary.yaml"]
-    model_section = sections["Model terms not yet in docs/ai/glossary.yaml"]
+    linked_section = sections["Terms defined in api/src/irc_data/ai/glossary.yaml"]
+    model_section = sections["Model terms not yet in api/src/irc_data/ai/glossary.yaml"]
 
     # first table column: exact yaml term names
     linked = []
@@ -367,7 +367,7 @@ def test_glossary_cross_links_ai_glossary_by_name():
     assert len(linked) >= 20, f"only {len(linked)} cross-linked terms"
     assert len(set(linked)) == len(linked), "duplicate rows in the cross-link table"
     missing = [t for t in linked if t not in yaml_names]
-    assert not missing, f"terms not in docs/ai/glossary.yaml: {missing}"
+    assert not missing, f"terms not in api/src/irc_data/ai/glossary.yaml: {missing}"
 
     # core terms the methodology depends on must be cross-linked
     for core in ("TCC", "IRC", "ORC", "TWS", "Corrected time", "Elapsed time", "Time-on-time",
