@@ -1,0 +1,25 @@
+{
+  "description": "no value, only small integers",
+  "expect": "accept",
+  "facts": {
+    "tcc": 1.025,
+    "lwl_m": 9.6,
+    "displacement_kg": 3250,
+    "rating_delta": -0.0043,
+    "races": 47
+  },
+  "answer": {
+    "question": "Tell me about this boat",
+    "claims": [
+      {
+        "text": "Based on 12 races at 2 venues.",
+        "value": null,
+        "unit": null,
+        "evidence": []
+      }
+    ],
+    "caveats": [],
+    "confidence": {},
+    "insufficient_data": false
+  }
+}

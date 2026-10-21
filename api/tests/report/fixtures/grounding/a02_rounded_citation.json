@@ -1,0 +1,43 @@
+{
+  "description": "trailing-zero form and magnitude of negative",
+  "expect": "accept",
+  "facts": {
+    "tcc": 1.025,
+    "lwl_m": 9.6,
+    "displacement_kg": 3250,
+    "rating_delta": -0.0043,
+    "races": 47
+  },
+  "answer": {
+    "question": "Tell me about this boat",
+    "claims": [
+      {
+        "text": "LWL is 9.60 m.",
+        "value": 9.6,
+        "unit": "m",
+        "evidence": [
+          {
+            "kind": "cert_field",
+            "ref": "lwl_m",
+            "version": "2024"
+          }
+        ]
+      },
+      {
+        "text": "Displacement is 3250 kg.",
+        "value": 3250,
+        "unit": "kg",
+        "evidence": [
+          {
+            "kind": "cert_field",
+            "ref": "displacement_kg",
+            "version": "2024"
+          }
+        ]
+      }
+    ],
+    "caveats": [],
+    "confidence": {},
+    "insufficient_data": false
+  }
+}

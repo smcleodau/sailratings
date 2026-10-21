@@ -1,0 +1,31 @@
+{
+  "description": "displacement not in facts",
+  "expect": "reject",
+  "facts": {
+    "tcc": 1.025,
+    "lwl_m": 9.6,
+    "displacement_kg": 3250,
+    "rating_delta": -0.0043,
+    "races": 47
+  },
+  "answer": {
+    "question": "Tell me about this boat",
+    "claims": [
+      {
+        "text": "She weighs 3410 kg.",
+        "value": 3410,
+        "unit": "kg",
+        "evidence": [
+          {
+            "kind": "cert_field",
+            "ref": "displacement_kg",
+            "version": "2024"
+          }
+        ]
+      }
+    ],
+    "caveats": [],
+    "confidence": {},
+    "insufficient_data": false
+  }
+}
