@@ -9,7 +9,7 @@ Two ingestion paths, both Firecrawl-free:
 - ``scrape_news_rss(feeds, max_articles)`` — async path used by the
   ``irc-data scrape-news`` CLI. Parses each RSS/Atom feed with the stdlib
   XML parser (no new dependency), fetches each article's HTML directly with
-  httpx, converts it to plain text, and runs the Gemini boat-mention
+  httpx, converts it to plain text, and runs the LLM boat-mention
   extractor. Articles are deduplicated by URL in ``boat_news``.
 - ``capture_news_feeds(...)`` — the DP-00-04 raw-capture job in
   ``scrapers/raw_capture.py`` (run via ``irc-data scrape raw-capture
@@ -25,7 +25,6 @@ is set — a tripwire so the "news domains = 0 Firecrawl calls" budget holds.
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from typing import Any
 from urllib.parse import urlparse
@@ -76,52 +75,19 @@ class ArticleExtraction(BaseModel):
     mentioned_boats: list[MentionedBoat] = Field(default_factory=list)
 
 def extract_boat_mentions(url: str, markdown: str) -> dict[str, Any]:
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        return {"_error": "GEMINI_API_KEY not set"}
+    from irc_data import llm
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return {"_error": "ANTHROPIC_API_KEY not set"}
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-
         user_message = f"URL: {url}\n\nARTICLE MARKDOWN:\n\n{markdown[:30000]}"
-
-        schema = {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string"},
-                "mentioned_boats": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "boat_name": {"type": "string"},
-                            "sail_number": {"type": "string", "nullable": True},
-                            "snippet": {"type": "string"},
-                            "confidence": {"type": "number"}
-                        },
-                        "required": ["boat_name", "snippet", "confidence"]
-                    }
-                }
-            },
-            "required": ["title", "mentioned_boats"]
-        }
-
-        model = genai.GenerativeModel(
-            "gemini-2.5-flash",
-            generation_config={"response_mime_type": "application/json", "response_schema": schema},
-            system_instruction=NEWS_SYSTEM_PROMPT
-        )
-
-        resp = model.generate_content(user_message)
-
-        data = json.loads(resp.text)
-
-        # Validate against our Pydantic schema to ensure structure
-        validated_data = ArticleExtraction.model_validate(data).model_dump()
-        return validated_data
+        return llm.parse(
+            system=NEWS_SYSTEM_PROMPT, user=user_message,
+            output_format=ArticleExtraction, feature="news",
+        ).model_dump()
     except Exception as e:
-        return {"_error": f"Gemini call failed: {e}"}
+        return {"_error": f"LLM call failed: {e}"}
 
 def _domain_of(url: str) -> str:
     try:
@@ -251,7 +217,7 @@ async def scrape_news_rss(
     """Ingest sailing news via RSS feeds — the Firecrawl-free path.
 
     Parses each feed, fetches recent article pages directly, extracts boat
-    mentions with Gemini, and persists to ``boat_news`` / ``boat_news_mentions``.
+    mentions with the LLM, and persists to ``boat_news`` / ``boat_news_mentions``.
 
     Returns a stats dict: ``{"feeds", "articles_seen", "articles_new",
     "articles_processed", "mentions_matched"}``.

@@ -46,10 +46,3 @@ def track(
         client.capture(distinct_id=distinct_id, event=event, properties=properties or {})
     except Exception as e:
         logger.warning(f"posthog capture failed for {event}: {e}")
-
-
-def get_gemini_client(api_key: str):
-    """Return a Gemini client.
-    """
-    from google import genai
-    return genai.Client(api_key=api_key)

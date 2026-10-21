@@ -221,7 +221,7 @@ def _run_tcc(record: Mapping[str, Any]) -> Mapping[str, Any]:
     return {"records_written": after - before, "snapshot_rows_today": after, "downloaded": str(path)}
 
 
-def _last_successful_run_since(slug: str) -> "date | None":
+def _last_successful_run_since(slug: str, lookback_days: int = 1) -> "date | None":
     """Date to pass as ``since=``: the last successful run's finish, minus one day.
 
     Returns None (full scrape) when there's no prior success — including
@@ -256,7 +256,42 @@ def _last_successful_run_since(slug: str) -> "date | None":
             ),
             {"slug": slug},
         ).first()
-    return (row[0] - timedelta(days=1)).date() if row and row[0] else None
+    return (row[0] - timedelta(days=lookback_days)).date() if row and row[0] else None
+
+
+def drop_reused_race_copies(results, existing_dates: dict) -> tuple[list, int]:
+    """Drop results whose SailSys race_id is already stored under a different date.
+
+    A race_id is one sailed race; seeing it again under a new date means the
+    club reused last season's series and SailSys re-dated the old results
+    (SHCC, Oct 2026: ~159 copied rows with identical boats and places).
+    """
+    kept, dropped = [], 0
+    for r in results:
+        rid = str((r.raw_data or {}).get("race_id") or "")
+        dates = existing_dates.get(rid)
+        if rid and dates and r.event_date not in dates:
+            dropped += 1
+            continue
+        kept.append(r)
+    return kept, dropped
+
+
+def _existing_sailsys_race_dates(engine, race_ids) -> dict:
+    from sqlalchemy import text
+
+    ids = sorted({str(i) for i in race_ids if i})
+    if not ids:
+        return {}
+    out: dict = {}
+    with engine.connect() as conn:
+        for rid, d in conn.execute(
+            text("SELECT DISTINCT raw_data->>'race_id', event_date FROM race_results"
+                 " WHERE source = 'sailsys' AND raw_data->>'race_id' = ANY(:ids)"),
+            {"ids": ids},
+        ):
+            out.setdefault(rid, set()).add(d)
+    return out
 
 
 def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -276,8 +311,12 @@ def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
     # (it was just never wired up — see scrape_club_irc_results's own
     # `since` parameter docs: "Only scrape races after this date
     # (incremental mode)").
-    since = _last_successful_run_since("sailsys")
+    # 14-day lookback: results are often posted (or corrected) days after the
+    # race, and the filter is on race date. A 1-day window silently skipped
+    # anything posted late (RSYS Ladies of the Sea regatta, 3-4 Oct 2026).
+    since = _last_successful_run_since("sailsys", lookback_days=14)
     engine = get_engine()
+    copies_dropped = 0
     total = 0
     written = 0
     per_club: dict[str, int] = {}
@@ -295,6 +334,10 @@ def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
         # the CLI's own `scrape results --source sailsys --store` call
         # exactly (irc_data/cli.py).
         if results:
+            existing = _existing_sailsys_race_dates(engine, ((r.raw_data or {}).get("race_id") for r in results))
+            results, dropped = drop_reused_race_copies(results, existing)
+            copies_dropped += dropped
+        if results:
             stats = import_scraper_results(engine, results, source="sailsys", organizing_club=club_name)
             written += stats.get("imported", 0)
     return {
@@ -302,6 +345,7 @@ def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
         "records_found": total,
         "clubs": per_club,
         "since": str(since) if since else None,
+        "reused_race_copies_dropped": copies_dropped,
     }
 
 
@@ -324,7 +368,8 @@ def _run_topyacht(record: Mapping[str, Any]) -> Mapping[str, Any]:
     # time, because nothing here ever called import_scraper_results.
     from irc_data.scrapers.topyacht import scrape_events_directory
 
-    since = _last_successful_run_since("topyacht")
+    # Same late-posting problem as sailsys: race-date filter, so look back 14 days.
+    since = _last_successful_run_since("topyacht", lookback_days=14)
     engine = get_engine()
     results = asyncio.run(scrape_all_clubs(since=since)) or []
     # Most clubs now publish at paths the fixed club list can't guess (or on

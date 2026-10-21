@@ -7,6 +7,7 @@ Approval applies the change to `boats` (or `design_classes` for new
 class proposals) in a single transaction and marks the row `applied`.
 """
 
+import json
 import logging
 import os
 from typing import Optional
@@ -49,7 +50,7 @@ class CorrectionResponse(BaseModel):
     status: str
 
 
-@router.post("/boats/{boat_id}/corrections", response_model=CorrectionResponse)
+@router.post("/boats/{boat_id}/corrections", response_model=CorrectionResponse, status_code=201)
 def submit_correction(
     boat_id: int,
     body: CorrectionSubmission,
@@ -124,6 +125,12 @@ class CorrectionOut(BaseModel):
     review_notes: str | None = None
 
 
+def _iso(value) -> str | None:
+    if value is None:
+        return None
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
 @router.get("/admin/corrections")
 def list_corrections(
     status: str = "pending",
@@ -159,13 +166,29 @@ def list_corrections(
             "current_value": r.current_value,
             "proposed_value": r.proposed_value,
             "submitted_email": r.submitted_email,
-            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+            "submitted_at": _iso(r.submitted_at),
             "status": r.status,
-            "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+            "reviewed_at": _iso(r.reviewed_at),
             "review_notes": r.review_notes,
         }
         for r in rows
     ]
+
+
+def _target_column(field: str) -> str:
+    """The `boats` column a correction field writes to."""
+    return "design_canonical" if field == "new_design_class" else field
+
+
+def _read_boat_value(conn, boat_id: int, column: str) -> str | None:
+    if column not in {"designer", "builder", "year_built", "design_canonical"}:
+        return None
+    row = conn.execute(
+        text(f"SELECT {column} FROM boats WHERE id = :id"), {"id": boat_id}
+    ).first()
+    if row is None or row[0] is None:
+        return None
+    return str(row[0])
 
 
 class ApproveBody(BaseModel):
@@ -196,9 +219,17 @@ def approve_correction(
 
     proposed = c.proposed_value
     field = c.field_name
+    target_column = _target_column(field)
+    before_value: str | None = None
 
     try:
         with engine.begin() as conn:
+            # Capture the live value BEFORE overwriting it so revert can
+            # restore exactly what was there (not the possibly-stale
+            # current_value snapshot taken at submission time).
+            if c.boat_id is not None:
+                before_value = _read_boat_value(conn, c.boat_id, target_column)
+
             if field == "new_design_class":
                 conn.execute(
                     text("""
@@ -240,7 +271,11 @@ def approve_correction(
                 {"id": correction_id, "notes": body.review_notes},
             )
         who = caller.email if caller and caller.email else "admin"
-        log_admin_action(engine, who, "approve", "corrections", str(correction_id), after={"status": "applied", "notes": body.review_notes})
+        log_admin_action(
+            engine, who, "approve", "corrections", str(correction_id),
+            before={"boat_id": c.boat_id, "column": target_column, "value": before_value},
+            after={"status": "applied", "value": proposed, "notes": body.review_notes},
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -302,3 +337,105 @@ def reject_correction(
         pass
 
     return {"status": "rejected", "id": correction_id}
+
+
+class RevertBody(BaseModel):
+    review_notes: str | None = None
+
+
+def _audited_before_value(engine: Engine, correction_id: int) -> tuple[bool, str | None]:
+    """Return (found, value) from the latest 'approve' admin_edits row."""
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("""
+                    SELECT old_value FROM admin_edits
+                    WHERE table_name = 'corrections' AND pk_value = :pk
+                      AND column_name = 'approve'
+                    ORDER BY id DESC LIMIT 1
+                """),
+                {"pk": str(correction_id)},
+            ).first()
+        if row and row[0]:
+            payload = json.loads(row[0])
+            if isinstance(payload, dict) and "value" in payload:
+                return True, payload["value"]
+    except Exception as e:  # admin_edits missing / malformed - fall back
+        logger.warning("Could not read approve audit for correction %s: %s", correction_id, e)
+    return False, None
+
+
+@router.post("/admin/corrections/{correction_id}/revert")
+def revert_correction(
+    correction_id: int,
+    body: RevertBody = RevertBody(),
+    engine: Engine = Depends(get_db),
+    authorization: str = Header(None),
+    caller: CallerIdentity | None = Depends(get_optional_identity),
+):
+    """Undo an applied correction: restore the before value, mark reverted."""
+    _verify_admin(authorization)
+
+    with engine.connect() as conn:
+        c = conn.execute(
+            text("""
+                SELECT id, boat_id, field_name, current_value, proposed_value, status
+                FROM boat_corrections WHERE id = :id
+            """),
+            {"id": correction_id},
+        ).first()
+
+    if not c:
+        raise HTTPException(status_code=404, detail="Correction not found")
+    if c.status != "applied":
+        raise HTTPException(status_code=409, detail=f"Correction is {c.status}, not applied")
+
+    found, restore = _audited_before_value(engine, correction_id)
+    if not found:
+        restore = c.current_value
+    column = _target_column(c.field_name)
+
+    try:
+        with engine.begin() as conn:
+            live_value = None
+            if c.boat_id is not None:
+                live_value = _read_boat_value(conn, c.boat_id, column)
+                if column == "year_built":
+                    restore_param = int(restore) if restore is not None else None
+                else:
+                    restore_param = restore
+                conn.execute(
+                    text(f"UPDATE boats SET {column} = :v WHERE id = :id"),
+                    {"v": restore_param, "id": c.boat_id},
+                )
+            conn.execute(
+                text("""
+                    UPDATE boat_corrections
+                    SET status = 'reverted', reviewed_at = now(),
+                        review_notes = COALESCE(:notes, review_notes)
+                    WHERE id = :id
+                """),
+                {"id": correction_id, "notes": body.review_notes},
+            )
+    except Exception as e:
+        logger.error(f"Failed to revert correction {correction_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    who = caller.email if caller and caller.email else "admin"
+    log_admin_action(
+        engine, who, "revert", "corrections", str(correction_id),
+        before={"boat_id": c.boat_id, "column": column, "value": live_value, "status": "applied"},
+        after={"boat_id": c.boat_id, "column": column, "value": restore, "status": "reverted", "notes": body.review_notes},
+    )
+
+    try:
+        from irc_data.api.services.analytics_service import track
+        track("correction_reverted", str(c.boat_id or correction_id), {
+            "field_name": c.field_name,
+            "correction_id": correction_id,
+            "boat_id": c.boat_id,
+        })
+    except Exception:
+        pass
+
+    return {"status": "reverted", "id": correction_id, "restored_value": restore}

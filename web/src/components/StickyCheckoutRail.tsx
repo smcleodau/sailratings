@@ -4,13 +4,29 @@ import { useMemo, useState } from "react";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { detectCurrency } from "@/lib/currency";
 
+/**
+ * PAY-01-02: what create-session returns (200) when the signed-in caller
+ * already owns this boat's report. The handler returns it instead of
+ * redirecting to Stripe and the rail swaps the buy button for an open link.
+ */
+export interface AlreadyOwnedResult {
+  already_owned: true;
+  report_url: string;
+}
+
 interface StickyCheckoutRailProps {
   /** When false, the rail is hidden — used to delay reveal until §1 has streamed. */
   visible: boolean;
   /** Boat name interpolated into the primary button copy. */
   boatName: string;
-  /** Async handler invoked when the primary button is clicked. Should redirect to Stripe. */
-  onCheckout: () => Promise<void>;
+  /**
+   * Async handler invoked when the primary button is clicked. Should redirect
+   * to Stripe, or resolve with an AlreadyOwnedResult when the buyer already
+   * owns the report (no redirect, no second charge).
+   */
+  onCheckout: () => Promise<void | AlreadyOwnedResult>;
+  /** Report URL when ownership is already known; renders the owned state immediately. */
+  ownedReportUrl?: string;
   /** If set, the secondary "See a sample report" link points here. Hidden if unset. */
   samplePdfUrl?: string;
   /** Reassurance line shown to the right of the rail. Override the default if needed. */
@@ -21,18 +37,24 @@ export default function StickyCheckoutRail({
   visible,
   boatName,
   onCheckout,
+  ownedReportUrl,
   samplePdfUrl,
   reassurance = "PDF delivered the moment payment clears · One certificate, one report",
 }: StickyCheckoutRailProps) {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ownedUrl, setOwnedUrl] = useState<string | null>(ownedReportUrl ?? null);
   const currency = useMemo(() => detectCurrency(), []);
 
   const handleCheckout = async () => {
     setIsCheckingOut(true);
     setError(null);
     try {
-      await onCheckout();
+      const result = await onCheckout();
+      if (result && result.already_owned) {
+        setOwnedUrl(result.report_url);
+        setIsCheckingOut(false);
+      }
     } catch {
       setError("Something went wrong. Please try again.");
       setIsCheckingOut(false);
@@ -53,7 +75,7 @@ export default function StickyCheckoutRail({
             Full file for <span className="font-semibold">{boatName}</span> — eight sections, ranked recommendations.
           </p>
           <span className="data-mono text-cream/55 text-[10.5px] uppercase tracking-[0.14em] mt-1 hidden sm:block">
-            {reassurance}
+            {ownedUrl ? "Already in your account · No second charge" : reassurance}
           </span>
         </div>
         <div className="flex flex-col items-end gap-2 flex-shrink-0">
@@ -68,7 +90,18 @@ export default function StickyCheckoutRail({
                 Sample report
               </a>
             )}
+            {ownedUrl ? (
+              <a
+                href={ownedUrl}
+                data-testid="already-own-report"
+                className="group inline-flex items-center gap-3 bg-brass text-navy px-5 sm:px-6 py-3 text-[13px] font-body font-semibold uppercase tracking-[0.08em] hover:bg-cream active:translate-y-px transition-all"
+              >
+                You already own this report — open it
+                <ArrowRight size={14} strokeWidth={2.5} className="transition-transform group-hover:translate-x-1" />
+              </a>
+            ) : (
             <button
+              data-testid="buy-report"
               onClick={() => void handleCheckout()}
               disabled={isCheckingOut}
               className="group inline-flex items-center gap-3 bg-brass text-navy px-5 sm:px-6 py-3 text-[13px] font-body font-semibold uppercase tracking-[0.08em] hover:bg-cream active:translate-y-px transition-all disabled:opacity-60"
@@ -85,6 +118,7 @@ export default function StickyCheckoutRail({
                 </>
               )}
             </button>
+            )}
           </div>
           {error && (
             <span className="body-text text-[12px] text-brass">{error}</span>

@@ -372,6 +372,10 @@ async def run_reviewer_agent(worktree_path: str, task: dict) -> dict:
         activity.logger.error(f"Reviewer run failed: {e}")
         raise ApplicationError(f"Reviewer run failed: {e}")
 
+_E2E_GATE_WEB_PORT = int(os.environ.get("FACTORY_E2E_WEB_PORT", "4791"))
+_E2E_GATE_API_PORT = int(os.environ.get("FACTORY_E2E_API_PORT", "4792"))
+
+
 @activity.defn
 async def run_playwright_e2e_tests(worktree_path: str) -> bool:
     import fcntl
@@ -398,8 +402,15 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
                 raise ApplicationError("API at :4100 did not become healthy after 60 s; aborting E2E run")
             await asyncio.sleep(5)
 
-    # Serialise all E2E runs — only one can hold port 4201 at a time
-    lock_path = "/tmp/playwright-port-4201.lock"
+    # The gate runs on its own ports. Lane workers run the suite ad hoc on
+    # the config defaults (4201/4101) while they work; sharing those with the
+    # gate made parallel cards knock each other's servers over (and the old
+    # `fuser -k 4201` killed whichever agent's server was up), so four cards
+    # in flight on 2026-10-11 all failed E2E on ERR_CONNECTION_REFUSED.
+    web_port, api_port = _E2E_GATE_WEB_PORT, _E2E_GATE_API_PORT
+
+    # Serialise gate runs — they share the two ports above.
+    lock_path = f"/tmp/playwright-gate-{web_port}.lock"
     lock_file = open(lock_path, "w")
     activity.logger.info("Waiting for E2E port lock…")
     await asyncio.get_event_loop().run_in_executor(
@@ -408,9 +419,9 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
     activity.logger.info("Acquired E2E port lock")
     proc = None
     try:
-        # Kill any process holding port 4201 from a prior test run
+        # Kill anything left on the gate's ports by a prior gate run
         await asyncio.create_subprocess_shell(
-            "fuser -k 4201/tcp 2>/dev/null; true",
+            f"fuser -k {web_port}/tcp {api_port}/tcp 2>/dev/null; true",
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
         )
         # Remove any stale node_modules symlink — Turbopack rejects out-of-root symlinks
@@ -419,7 +430,8 @@ async def run_playwright_e2e_tests(worktree_path: str) -> bool:
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
         )
         env = os.environ.copy()
-        env["TEST_WEB_PORT"] = "4201"
+        env["PW_WEB_PORT"] = str(web_port)
+        env["PW_API_PORT"] = str(api_port)
         env["CI"] = "true"
         proc = await asyncio.create_subprocess_shell(
             "npm install && npx playwright install chromium && "

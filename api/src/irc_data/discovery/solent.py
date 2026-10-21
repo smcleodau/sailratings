@@ -29,7 +29,7 @@ What this module does
 
 4.  **Ingestion.**  ``ingest_solent_results()`` fetches the pages, extracts
     structured results (JOG: local HTML row parser; Sailwave files: the
-    existing ``sailwave`` parser; everything else: the Gemini
+    existing ``sailwave`` parser; everything else: the LLM
     ``extract_results`` pipeline) and imports them via
     ``import_scraper_results`` into ``race_results``.
 
@@ -351,7 +351,7 @@ class HalSailResultsSource(RaceResultSource):
     """HalSail-hosted club results (HRSC / Hamble Winter Series).
 
     HalSail pages are JS-rendered, so collection goes through the Firecrawl
-    + Gemini ``extract_results`` pipeline (``seed_crawl_and_ingest``) rather
+    + LLM ``extract_results`` pipeline (``seed_crawl_and_ingest``) rather
     than a bespoke parser.  This adapter exists so the register has a
     concrete ``adapter_class`` and so the schedule registry treats Hamble as
     a first-class source.

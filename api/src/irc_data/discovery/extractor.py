@@ -78,10 +78,9 @@ class EventExtraction(BaseModel):
     is_sailing_event: bool
     scoring_platform: Literal["sailsys", "topyacht", "sailwave", "yachtscoring", "pdf", "none", "unknown"]
     # Free-form platform identifiers (club_id / series_id / race_id / eid …).
-    # NOTE: the Gemini response_schema endpoint rejects any object schema that
-    # carries ``additionalProperties`` (which pydantic emits for a ``dict``
-    # field), so ``platform_ids`` is declared as a plain string here and
-    # parsed back into a dict in ``extract_event`` below.
+    # Declared as a JSON-object string rather than a ``dict`` so the
+    # structured-output schema stays a fixed-shape object (no open
+    # ``additionalProperties``); parsed back into a dict in ``extract_event``.
     platform_ids: str = Field(default="", description="Platform-specific identifiers as a JSON object string, e.g. '{\"club_id\": \"3\"}'. Empty string if none.")
     title: Optional[str] = None
     event_date: Optional[str] = Field(default=None, description="YYYY-MM-DD or null")
@@ -96,41 +95,26 @@ def extract_event(url: str, markdown: str) -> dict[str, Any]:
     On any error, returns a best-effort fallback so the caller can still
     persist a row marked as failed.
     """
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        return _failed("GEMINI_API_KEY not set", url)
+    from irc_data import llm
 
-    try:
-        from google import genai
-        from google.genai import types
-    except ImportError as e:
-        return _failed(f"google-genai SDK missing: {e}", url)
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return _failed("ANTHROPIC_API_KEY not set", url)
 
     if not markdown or len(markdown.strip()) < 80:
         return _failed("page content too short to extract", url)
 
     try:
-        client = genai.Client(api_key=api_key)
-
         user_message = (
             f"URL: {url}\n\n"
             f"PAGE MARKDOWN (truncated to 12k chars):\n\n"
             f"{markdown[:12000]}"
         )
 
-        resp = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=user_message,
-            config=types.GenerateContentConfig(
-                system_instruction=EXTRACTION_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                response_schema=EventExtraction,
-                max_output_tokens=1500,
-            )
-        )
-
-        data = EventExtraction.model_validate_json(resp.text).model_dump()
-        # platform_ids comes back as a JSON-object *string* (Gemini-compat);
+        data = llm.parse(
+            system=EXTRACTION_SYSTEM_PROMPT, user=user_message,
+            output_format=EventExtraction, feature="extractor",
+        ).model_dump()
+        # platform_ids is declared as a JSON-object *string* in the schema;
         # parse it back into a dict for the event_discovery platform_ids col.
         raw_ids = data.get("platform_ids")
         if isinstance(raw_ids, str):
@@ -143,7 +127,7 @@ def extract_event(url: str, markdown: str) -> dict[str, Any]:
         data["url"] = url
         return data
     except Exception as e:
-        return _failed(f"Gemini call failed: {e}", url)
+        return _failed(f"LLM call failed: {e}", url)
 
 
 # Confidence floor for auto-import. Extractions below this are routed to
@@ -309,23 +293,16 @@ class RaceResultsExtraction(BaseModel):
 
 
 def _extract_single(url: str, markdown: str) -> dict[str, Any]:
-    """One Gemini call for a single-class or single-chunk markdown block."""
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        return _failed_results("GEMINI_API_KEY not set", url)
+    """One LLM call for a single-class or single-chunk markdown block."""
+    from irc_data import llm
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return _failed_results("ANTHROPIC_API_KEY not set", url)
 
     if not markdown or len(markdown.strip()) < 80:
         return _failed_results("page content too short", url)
 
     try:
-        from google import genai
-        from google.genai import types
-    except ImportError as e:
-        return _failed_results(f"google-genai SDK missing: {e}", url)
-
-    try:
-        client = genai.Client(api_key=api_key)
-
         # 30k char budget — enough for ~150 boats with all columns.
         user_message = (
             f"URL: {url}\n\n"
@@ -333,29 +310,21 @@ def _extract_single(url: str, markdown: str) -> dict[str, Any]:
             f"{markdown[:30000]}"
         )
 
-        resp = client.models.generate_content(
-            model="gemini-2.5-pro",
-            contents=user_message,
-            config=types.GenerateContentConfig(
-                system_instruction=RESULTS_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                response_schema=RaceResultsExtraction,
-                max_output_tokens=8000,
-            )
-        )
-
-        data = RaceResultsExtraction.model_validate_json(resp.text).model_dump()
+        data = llm.parse(
+            system=RESULTS_SYSTEM_PROMPT, user=user_message,
+            output_format=RaceResultsExtraction, feature="extractor",
+        ).model_dump()
         data["url"] = url
         data["_error"] = None
         return data
     except Exception as e:
-        return _failed_results(f"Gemini call failed: {e}", url)
+        return _failed_results(f"LLM call failed: {e}", url)
 
 
 def extract_results(url: str, markdown: str) -> dict[str, Any]:
     """Extract a structured list of race results from a results page.
 
-    For simple single-class pages, makes one Gemini call. For large
+    For simple single-class pages, makes one LLM call. For large
     multi-class pages (≥10k chars, ≥2 class headers, ≥40 table rows),
     splits the markdown at class-header boundaries and calls _extract_single
     once per chunk, then merges the results.

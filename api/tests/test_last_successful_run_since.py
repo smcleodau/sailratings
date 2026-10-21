@@ -43,3 +43,8 @@ def test_ignores_failed_runs_and_per_club_import_rows(engine):
     _log(engine, datetime(2026, 10, 9, tzinfo=timezone.utc), status="failed")
     _log(engine, datetime(2026, 10, 10, tzinfo=timezone.utc), trigger=None)
     assert _last_successful_run_since(SLUG) == date(2026, 10, 4)
+
+
+def test_lookback_days_widens_the_window(engine):
+    _log(engine, datetime(2026, 10, 21, 9, tzinfo=timezone.utc))
+    assert _last_successful_run_since(SLUG, lookback_days=14) == date(2026, 10, 7)

@@ -66,10 +66,8 @@ def generate_report_content(engine: Engine, order_id: int) -> None:
 
 
 def _generate_ai_analysis(engine: Engine, boat_id: int) -> str:
-    """Call Gemini with premium context to generate the full report text."""
-    from google import genai
-    from google.genai import types
-
+    """Generate the full report text from the premium boat context."""
+    from irc_data import llm
     from irc_data.api.services.insights_service import (
         SYSTEM_PROMPT_PREMIUM,
         build_boat_context,
@@ -79,40 +77,30 @@ def _generate_ai_analysis(engine: Engine, boat_id: int) -> str:
     if not context:
         return "Error: boat context could not be assembled."
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        logger.error("GEMINI_API_KEY not configured")
-        return "Error: AI service not configured."
-
     try:
-        client = genai.Client(api_key=api_key)
-
-        response = client.models.generate_content(
-            model="gemini-2.5-pro",
-            contents=context,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT_PREMIUM,
-                max_output_tokens=2500,
-            )
-        )
+        response = llm.respond(system=SYSTEM_PROMPT_PREMIUM, user=context, feature="report_service")
+        text_out = llm.text_of(response)
 
         from irc_data.api.services.analytics_service import track
         track("$ai_generation", str(boat_id), {
-            "$ai_provider": "gemini",
-            "$ai_model": "gemini-2.5-pro",
+            "$ai_provider": llm.PROVIDER,
+            "$ai_model": response.model,
             "$ai_input": [{"role": "user", "content": context}],
             "$ai_output_choices": [
-                {"role": "assistant", "content": response.text}
+                {"role": "assistant", "content": text_out}
             ],
-            "$ai_input_tokens": getattr(response.usage_metadata, "prompt_token_count", None),
-            "$ai_output_tokens": getattr(response.usage_metadata, "candidates_token_count", None),
+            "$ai_input_tokens": response.usage.input_tokens,
+            "$ai_output_tokens": response.usage.output_tokens,
             "endpoint": "report_service.generate_report_content",
             "boat_id": boat_id,
         })
 
-        return response.text or ""
+        return text_out
+    except llm.LLMNotConfigured as e:
+        logger.error(str(e))
+        return "Error: AI service not configured."
     except Exception as e:
-        logger.error(f"Gemini report generation failed: {e}")
+        logger.error(f"Report generation failed: {e}")
         return f"Error generating report: {e}"
 
 

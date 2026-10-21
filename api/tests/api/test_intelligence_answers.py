@@ -19,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 
 from irc_data.api.app import app
 from irc_data.api.deps import get_db
-from irc_data.api.schemas.intelligence import IntelligenceAnswerV1
+from irc_data.api.schemas.intelligence import ConfidenceAssessmentV1, IntelligenceAnswerV1
 from irc_data.api.services.intelligence import REGISTRY, evidence as ev, queries
 from irc_data.api.services.report.facts_bundle import SECTION_ORDER
 
@@ -169,7 +169,8 @@ def test_shape_validates(client, key):
     assert answer.data
     assert answer.incomplete is False and answer.missing == []
     assert answer.provenance.quality_status == "ok"
-    assert answer.confidence is None  # placeholder for IN-01-03
+    confidence = ConfidenceAssessmentV1.model_validate(answer.confidence)
+    assert confidence.band in {"high", "medium", "low"}
 
 
 @pytest.mark.parametrize("key", QUERY_KEYS)
