@@ -1,0 +1,31 @@
+{
+  "description": "benign text, fabricated value",
+  "expect": "reject",
+  "facts": {
+    "tcc": 1.025,
+    "lwl_m": 9.6,
+    "displacement_kg": 3250,
+    "rating_delta": -0.0043,
+    "races": 47
+  },
+  "answer": {
+    "question": "Tell me about this boat",
+    "claims": [
+      {
+        "text": "Her rating is competitive.",
+        "value": 1.0999,
+        "unit": "tcc",
+        "evidence": [
+          {
+            "kind": "cert_field",
+            "ref": "tcc",
+            "version": "2024"
+          }
+        ]
+      }
+    ],
+    "caveats": [],
+    "confidence": {},
+    "insufficient_data": false
+  }
+}

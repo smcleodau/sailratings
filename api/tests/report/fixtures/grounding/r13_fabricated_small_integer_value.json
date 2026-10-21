@@ -1,0 +1,31 @@
+{
+  "description": "value 7 not in facts",
+  "expect": "reject",
+  "facts": {
+    "tcc": 1.025,
+    "lwl_m": 9.6,
+    "displacement_kg": 3250,
+    "rating_delta": -0.0043,
+    "races": 47
+  },
+  "answer": {
+    "question": "Tell me about this boat",
+    "claims": [
+      {
+        "text": "She has seven wins.",
+        "value": 7,
+        "unit": "wins",
+        "evidence": [
+          {
+            "kind": "results_set",
+            "ref": "wins",
+            "version": "2024"
+          }
+        ]
+      }
+    ],
+    "caveats": [],
+    "confidence": {},
+    "insufficient_data": false
+  }
+}

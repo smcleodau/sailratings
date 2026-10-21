@@ -1,0 +1,25 @@
+{
+  "description": "grounded value but empty evidence",
+  "expect": "reject",
+  "facts": {
+    "tcc": 1.025,
+    "lwl_m": 9.6,
+    "displacement_kg": 3250,
+    "rating_delta": -0.0043,
+    "races": 47
+  },
+  "answer": {
+    "question": "Tell me about this boat",
+    "claims": [
+      {
+        "text": "TCC is 1.025.",
+        "value": 1.025,
+        "unit": "tcc",
+        "evidence": []
+      }
+    ],
+    "caveats": [],
+    "confidence": {},
+    "insufficient_data": false
+  }
+}
