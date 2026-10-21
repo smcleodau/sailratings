@@ -108,8 +108,11 @@ SOURCES: list[SourceConfig] = [
         label="TopYacht (AU/regattas)",
         cadence_human="daily 02:30 UTC",
         run_within=timedelta(hours=26),
-        # Weekly club racing, same reasoning as sailsys.
-        data_within=timedelta(days=8),
+        # No data_within: IRC on TopYacht is a handful of regattas a year
+        # (HIRW/ABRW in Aug, FOS in Jan), so any budget short of months fires
+        # between them (240 h on 2026-10-21 with nothing missed: a backfill
+        # since 25 Sep over all 245 directory events found 0 IRC results).
+        # run_within still pages if the daily run fails or stops.
     ),
     SourceConfig(
         source="sailracehq",
