@@ -368,7 +368,8 @@ def _run_topyacht(record: Mapping[str, Any]) -> Mapping[str, Any]:
     # time, because nothing here ever called import_scraper_results.
     from irc_data.scrapers.topyacht import scrape_events_directory
 
-    since = _last_successful_run_since("topyacht")
+    # Same late-posting problem as sailsys: race-date filter, so look back 14 days.
+    since = _last_successful_run_since("topyacht", lookback_days=14)
     engine = get_engine()
     results = asyncio.run(scrape_all_clubs(since=since)) or []
     # Most clubs now publish at paths the fixed club list can't guess (or on

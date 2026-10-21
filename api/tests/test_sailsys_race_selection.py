@@ -34,3 +34,21 @@ def test_drops_results_whose_race_id_is_stored_under_another_date():
     kept, dropped = drop_reused_race_copies(results, existing)
     assert [r.raw_data["race_id"] for r in kept] == [46237, 50000]
     assert dropped == 1
+
+
+def test_hidden_series_returns_no_races_instead_of_raising():
+    import asyncio
+    import httpx
+    from irc_data.scrapers import sailsys
+
+    def handler(req):
+        return httpx.Response(400, json={"data": None, "result": "error", "httpCode": 400,
+                                         "errorMessage": "This series is not displaying entrants or results."})
+
+    sailsys.rate_limiter.min_delay = sailsys.rate_limiter.jitter = 0
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            return await sailsys.get_series_races(c, 3435)
+
+    assert asyncio.run(run()) == []

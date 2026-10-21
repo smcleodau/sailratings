@@ -205,6 +205,10 @@ async def get_series_races(client: httpx.AsyncClient, series_id: int) -> list[di
     url = f"{SAILSYS_API}/series/{series_id}/display/races"
     await rate_limiter.wait()
     resp = await client.get(url)
+    # Clubs can hide a series; SailSys answers 400 "not displaying entrants
+    # or results". Nothing to fetch, not an error.
+    if resp.status_code == 400 and "not displaying" in resp.text:
+        return []
     resp.raise_for_status()
     data = resp.json()
 
