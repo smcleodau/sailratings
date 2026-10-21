@@ -396,6 +396,26 @@ def _club_name_for_id(club_id: int) -> str:
     return f"Club_{club_id}"
 
 
+def select_races_to_scrape(races, since, today, completed_statuses=COMPLETED_RACE_STATUSES):
+    """Races worth fetching: scored, dated on/before today, and after ``since``.
+
+    Future-dated races are skipped: a club that reuses last season's series
+    (SHCC "Women's Keelboat 2025-26", Oct 2026) gets next season's dates on
+    races that still carry last season's results.
+    """
+    picked = []
+    for r in races:
+        if r.get("status") not in completed_statuses:
+            continue
+        race_date = _parse_race_date(r.get("date"))
+        if race_date and race_date > today:
+            continue
+        if since and not (race_date and race_date > since):
+            continue
+        picked.append(r)
+    return picked
+
+
 async def scrape_club_irc_results_detailed(
     club_id: int = 3,
     max_series: int | None = None,
@@ -432,21 +452,7 @@ async def scrape_club_irc_results_detailed(
                 print(f"    Error getting races: {e}")
                 continue
 
-            # Only process races that have been sailed and scored.
-            # See COMPLETED_RACE_STATUSES at top of module.
-            completed_races = [r for r in races if r.get("status") in COMPLETED_RACE_STATUSES]
-
-            # Incremental mode: skip races before the cutoff date
-            if since:
-                filtered = []
-                for r in completed_races:
-                    race_date = _parse_race_date(r.get("date"))
-                    if race_date and race_date > since:
-                        filtered.append(r)
-                skipped = len(completed_races) - len(filtered)
-                completed_races = filtered
-                if skipped:
-                    print(f"    Skipped {skipped} races before {since}")
+            completed_races = select_races_to_scrape(races, since=since, today=date.today())
 
             print(f"    {len(completed_races)} completed races to process (of {len(races)} total)")
 
