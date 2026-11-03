@@ -300,7 +300,7 @@ def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
 
     from irc_data.db.connection import get_engine
     from irc_data.scrapers.result_import import import_scraper_results
-    from irc_data.scrapers.sailsys import CLUBS, scrape_club_irc_results
+    from irc_data.scrapers.sailsys import CLUBS, refresh_series_index, scrape_club_irc_results
 
     # Every run before this fix did a full, unbounded, all-history scrape
     # of every club — fine as a one-off backfill, not for a 30-minute
@@ -320,8 +320,15 @@ def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
     total = 0
     written = 0
     per_club: dict[str, int] = {}
+    # Clubs leave new-season series out of their grouping list for weeks
+    # (CYCA/MHYC/RSYS 2026-27, Nov 2026: zero results for a month), so walk
+    # SailSys's sequential series IDs once per run and hand each club the
+    # series that belong to it. Never fatal: errors land in the stats.
+    index, sweep = asyncio.run(refresh_series_index())
     for club_name, club_id in CLUBS.items():
-        results = asyncio.run(scrape_club_irc_results(club_id=club_id, since=since))
+        results = asyncio.run(scrape_club_irc_results(
+            club_id=club_id, since=since, extra_series=index.series_for_club(club_id, since),
+        ))
         per_club[club_name] = len(results or [])
         total += per_club[club_name]
         # This call was simply missing (9 Oct 2026) — "records_written": 0
@@ -346,6 +353,7 @@ def _run_sailsys(record: Mapping[str, Any]) -> Mapping[str, Any]:
         "clubs": per_club,
         "since": str(since) if since else None,
         "reused_race_copies_dropped": copies_dropped,
+        "series_sweep": sweep.summary(),
     }
 
 

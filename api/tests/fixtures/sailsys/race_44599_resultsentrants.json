@@ -1,0 +1,143 @@
+{
+ "data": {
+  "id": 44599,
+  "dateTime": "2026-10-24T00:00:00.000",
+  "name": "Race  1",
+  "status": 4,
+  "competitors": [
+   {
+    "parent": {
+     "name": "Division 1"
+    },
+    "items": [
+     {
+      "finishTimeLocal": "15:02:38",
+      "elapsedTime": "02:32:38",
+      "boat": {
+       "id": 702,
+       "name": "Shibumi",
+       "sailNumber": "8330",
+       "make": "Northshore",
+       "model": "369",
+       "club": "MHYC",
+       "country": "AU",
+       "threeLetterIsoCode": "AUS",
+       "bowNumber": null
+      },
+      "skipper": {
+       "profile": {
+        "fullName": "Bryan Moore"
+       }
+      },
+      "handicap": {
+       "currentHandicaps": [
+        {
+         "definition": {
+          "id": 5,
+          "shortName": "PHS"
+         },
+         "value": 0.9941
+        }
+       ]
+      },
+      "calculations": [
+       {
+        "handicapDefinitionId": 5,
+        "handicapCreatedFrom": 0.9941,
+        "correctedTime": null,
+        "placings": [
+         {
+          "subSeriesId": null,
+          "isCasualEntry": false,
+          "place": 6,
+          "placingText": "6",
+          "points": null,
+          "averagePoints": false
+         }
+        ]
+       },
+       {
+        "handicapDefinitionId": null,
+        "handicapCreatedFrom": null,
+        "correctedTime": null,
+        "placings": [
+         {
+          "subSeriesId": null,
+          "isCasualEntry": false,
+          "place": 7,
+          "placingText": "7",
+          "points": null,
+          "averagePoints": false
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "finishTimeLocal": "14:55:30",
+      "elapsedTime": "02:24:30",
+      "boat": {
+       "id": 6477,
+       "name": "Cool Runnings",
+       "sailNumber": "B067",
+       "make": "Far East",
+       "model": "28R",
+       "club": "MHYC",
+       "country": "AU",
+       "threeLetterIsoCode": "AUS",
+       "bowNumber": null
+      },
+      "skipper": {
+       "profile": {
+        "fullName": "Kevin Bloor"
+       }
+      },
+      "handicap": {
+       "currentHandicaps": [
+        {
+         "definition": {
+          "id": 5,
+          "shortName": "PHS"
+         },
+         "value": 1.0024
+        }
+       ]
+      },
+      "calculations": [
+       {
+        "handicapDefinitionId": 5,
+        "handicapCreatedFrom": 1.0024,
+        "correctedTime": null,
+        "placings": [
+         {
+          "subSeriesId": null,
+          "isCasualEntry": false,
+          "place": 4,
+          "placingText": "4",
+          "points": null,
+          "averagePoints": false
+         }
+        ]
+       },
+       {
+        "handicapDefinitionId": null,
+        "handicapCreatedFrom": null,
+        "correctedTime": null,
+        "placings": [
+         {
+          "subSeriesId": null,
+          "isCasualEntry": false,
+          "place": 6,
+          "placingText": "6",
+          "points": null,
+          "averagePoints": false
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}
