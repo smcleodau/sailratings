@@ -28,6 +28,9 @@ rorc_limiter = RateLimiter(min_delay=2.0, jitter=1.0)
 # Years with static HTML results (before SailRaceHQ migration)
 RORC_YEARS = list(range(2007, 2023))
 
+# Result-file links on the year index pages (old and current URL layout).
+RESULT_LINK_RE = re.compile(r"/(?:files/)?raceresults/\d{4}/[^/]+\.html?$")
+
 
 def _safe_decimal(val: str | None) -> Decimal | None:
     if not val:
@@ -234,7 +237,10 @@ class RORCSource(RaceResultSource):
                         continue
 
                     soup = BeautifulSoup(resp.text, "html.parser")
-                    links = soup.find_all("a", href=re.compile(r"/files/raceresults/"))
+                    # Index pages used to link /files/raceresults/{YYYY}/...;
+                    # they now link /raceresults/{YYYY}/... (same files), and
+                    # the old pattern matched nothing — 0 events every run.
+                    links = soup.find_all("a", href=RESULT_LINK_RE)
 
                     for link in links:
                         href = link.get("href", "")
