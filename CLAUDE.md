@@ -12,8 +12,8 @@ Monorepo with two subprojects:
 - **`web/`** — Next.js 16 frontend.
   See [`web/CLAUDE.md`](web/CLAUDE.md).
 
-Both subprojects use `develop` as the working branch. Production deploys
-from `main` on Railway.
+Both subprojects use `develop` as the working branch. Production runs
+from `main` on this box (see Deployment workflow).
 
 ## Environment
 
