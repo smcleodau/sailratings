@@ -428,10 +428,23 @@ def _get_browser_context():
     return pw, browser, context
 
 
+class CloudflareBlocked(RuntimeError):
+    """The Cloudflare bot check did not clear (page still "Just a moment...")."""
+
+
 def _pass_cloudflare(page, url: str, wait_seconds: float = 10.0) -> None:
-    """Navigate to URL and wait for Cloudflare challenge to resolve."""
+    """Navigate to URL and wait for Cloudflare challenge to resolve.
+
+    Raises :class:`CloudflareBlocked` if the challenge page is still showing:
+    since late 2026 the check no longer clears for headless Chromium, and the
+    scraper used to carry on, find no events and report a clean 0.
+    """
     page.goto(url, wait_until="domcontentloaded", timeout=30000)
     time.sleep(wait_seconds)
+    if "just a moment" in (page.title() or "").lower():
+        raise CloudflareBlocked(
+            f"SailRaceHQ: Cloudflare bot challenge did not clear for {url}"
+        )
 
 
 def _navigate(page, url: str, wait_seconds: float = 6.0) -> None:
