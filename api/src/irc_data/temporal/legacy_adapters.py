@@ -556,7 +556,10 @@ def _run_rorc(record: Mapping[str, Any]) -> Mapping[str, Any]:
     """
     from irc_data.scrapers.rorc import RORCSource
 
-    return _run_event_source(record, slug="rorc", source="rorc", make_source=RORCSource)
+    # class_name (the boat type, as the archived rows hold it) is part of the
+    # result identity: without it every re-scrape duplicated the archive.
+    return _run_event_source(record, slug="rorc", source="rorc", make_source=RORCSource,
+                             include_class_name=True)
 
 
 def _run_sydneyhobart(record: Mapping[str, Any]) -> Mapping[str, Any]:

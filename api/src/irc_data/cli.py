@@ -883,7 +883,7 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
         if store and all_results:
             from irc_data.scrapers.result_import import store_normalized_results
 
-            stats = store_normalized_results(engine, all_results, source="rorc", include_class_name=False)
+            stats = store_normalized_results(engine, all_results, source="rorc", include_class_name=True)
             for err in stats["error_details"][:3]:
                 console.print(f"    [yellow]Error: {err}[/yellow]")
             console.print(f"\n[green]RORC: {stats['imported']} results stored ({stats['written']} new, {stats['matched']} matched to boats)[/green]")

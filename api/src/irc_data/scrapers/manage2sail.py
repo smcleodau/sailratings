@@ -63,6 +63,12 @@ SEED_CLUB_IDS: dict[str, str] = {
     "d10c827c-6ea4-40a4-9b8f-1205f897c6a5": "Jachtclub Scheveningen (NED)",
     "309c067e-82d1-420a-9c14-6a7c08d6912d": "Nordseewoche (GER)",
     "f3d82944-2087-45ff-97af-80f2b94c0a31": "Kaagweek (NED)",
+    # Found for the history backfill (Nov 2026); each organised events with
+    # IRC scorings: North Sea Regatta before Jachtclub Scheveningen took it
+    # over, Stellendam Regatta (ORC/IRC classes), IRC Europeans 2023 (Cannes).
+    "ad64e058-f697-41a6-b197-3e3a2185b18f": "Stichting North Sea Regatta (NED)",
+    "1f1848b6-ba79-47c7-b75d-97c1fd898a45": "Stichting Stellendam Regatta (NED)",
+    "e0f4f68a-baad-493b-b552-2705cf3331cc": "Yacht Club de Cannes (FRA)",
 }
 
 #: Class names that are certainly not rating-scored (one-design / dinghy /
