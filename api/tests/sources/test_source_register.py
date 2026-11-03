@@ -449,10 +449,16 @@ class TestNotionTierPreservation:
                 f"{name}: notion_license {rec.notion_license!r} != Notion {license_!r}"
             )
 
+    #: Sources whose adapter went live after the Notion import (2026-11-03).
+    _ACTIVATED_SINCE_NOTION = {"Sailwave", "HalSail"}
+
     def test_adapter_status_carried_over_from_notion_current_status(self):
         by_name = {s.display_name: s for s in SEED_SOURCES}
         for name, (_tier, status, _lic, _method) in self._NOTION_REGISTER.items():
             rec = by_name[name]
+            if name in self._ACTIVATED_SINCE_NOTION:
+                assert rec.adapter_status == "active", name
+                continue
             assert rec.adapter_status == NOTION_STATUS_TO_ADAPTER_STATUS[status], (
                 f"{name}: adapter_status {rec.adapter_status!r} != "
                 f"{NOTION_STATUS_TO_ADAPTER_STATUS[status]!r} (Notion {status!r})"
@@ -497,12 +503,13 @@ class TestNotionTierDistribution:
     def test_adapter_status_distribution(self):
         from collections import Counter
 
-        # Canonical register in this checkout: 5 active (the 4 Notion-active
-        # plus rhkyc), 3 prototyped, remaining unexplored/planned.
+        # Canonical register in this checkout: 7 active (the 4 Notion-active
+        # plus rhkyc, and sailwave + halsail since 2026-11-03), 2 prototyped,
+        # remaining unexplored/planned.
         dist = Counter(s.adapter_status for s in CANONICAL_SEED_SOURCES)
-        assert dist["active"] == 5       # SailSys, TopYacht, IRC TCC, ORC, RHKYC
-        assert dist["prototyped"] == 3   # Sailing News, Sailwave, IRC Certs
-        assert dist["unexplored"] == 23
+        assert dist["active"] == 7       # SailSys, TopYacht, IRC TCC, ORC, RHKYC, Sailwave, HalSail
+        assert dist["prototyped"] == 2   # Sailing News, IRC Certs
+        assert dist["unexplored"] == 22
         assert sum(dist.values()) == _CANONICAL_COUNT
 
     def test_tier_distribution(self):
@@ -516,23 +523,23 @@ class TestNotionTierDistribution:
 
     def test_active_sources_are_exactly_notion_active(self):
         active = {s.slug for s in CANONICAL_SEED_SOURCES if s.adapter_status == "active"}
-        assert active == {"sailsys", "topyacht", "irc-tcc", "orc", "rhkyc"}
+        assert active == {"sailsys", "topyacht", "irc-tcc", "orc", "rhkyc", "sailwave", "halsail"}
 
     def test_prototyped_sources_are_exactly_notion_prototyped(self):
         proto = {s.slug for s in SEED_SOURCES if s.adapter_status == "prototyped"}
-        assert proto == {"sailing-news", "sailwave", "irc-certs"}
+        assert proto == {"sailing-news", "irc-certs"}
 
     def test_unexplored_with_no_adapter_are_unknown_legal_status(self):
         """Notion entries with no adapter and no ruling must be 'unknown' so
         that content collection is blocked (discovery metadata only).
 
-        17 of the canonical entries have no platform adapter: the
+        16 of the canonical entries have no platform adapter: the
         unknown-rights sources plus the two ``hold`` sources (ClubSpot,
-        Kwindoo) plus ``wayback-irc``.  (Canonical register only — OPS-02-14's
+        Kwindoo) plus ``wayback-irc`` (HalSail gained one on 2026-11-03).  (Canonical register only — OPS-02-14's
         Solent sources all carry an adapter_class.)
         """
         no_adapter = [s for s in CANONICAL_SEED_SOURCES if s.adapter_class is None]
-        assert len(no_adapter) == 17
+        assert len(no_adapter) == 16
         for s in no_adapter:
             # wayback-irc is a planned platform addition (not Notion
             # "Unexplored") and is approved for Wayback API reads.

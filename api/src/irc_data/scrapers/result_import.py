@@ -339,12 +339,47 @@ def count_source_rows(engine: Engine, source: str) -> int:
         )
 
 
+def _interval(value) -> "timedelta | None":
+    """``"1:02:03"`` / ``"1.02:03:04"`` (days) -> timedelta; blank/zero -> None."""
+    import re
+    from datetime import timedelta
+
+    if not value or not isinstance(value, str):
+        return None
+    m = re.fullmatch(r"(?:(\d+)[.d ]\s*)?(\d+):(\d{1,2}):(\d{1,2})", value.strip())
+    if not m:
+        return None
+    days, h, mi, sec = (int(x) if x else 0 for x in m.groups())
+    td = timedelta(days=days, hours=h, minutes=mi, seconds=sec)
+    return td or None
+
+
+def _detail_fields(r, raw: dict) -> dict:
+    """Per-race columns for ``store_normalized_results(detail=True)``."""
+    race_date = raw.get("race_date")
+    if isinstance(race_date, str):
+        race_date = _parse_date(race_date)
+    return {
+        "race_number": r.race_number,
+        "race_date_specific": race_date,
+        "class_name": r.class_name,
+        "division": raw.get("division"),
+        "class_place": r.class_place,
+        "class_fleet_size": r.class_fleet_size,
+        "tcc_at_race": r.rating_value if r.rating_type == "irc_tcc" else None,
+        "elapsed_time": _interval(r.elapsed_time),
+        "corrected_time": _interval(r.corrected_time),
+        "time_behind_winner": _interval(r.time_behind_winner),
+    }
+
+
 def store_normalized_results(
     engine: Engine,
     results: list,
     source: str,
     include_class_name: bool = False,
     log: bool = True,
+    detail: bool = False,
 ) -> dict:
     """Persist ``NormalizedResult`` rows the way ``scrape results --store`` always has.
 
@@ -361,6 +396,12 @@ def store_normalized_results(
 
     ``log=False`` skips the ``ingestion_log`` row, for callers that store in
     batches and log the run once themselves.
+
+    ``detail=True`` also stores the per-race fields the per-race scrapers
+    (sailwave, halsail) publish: ``race_number``, ``race_date_specific``
+    (from ``raw_data["race_date"]``), ``class_name``, ``division``,
+    ``class_place``/``class_fleet_size``, ``tcc_at_race`` and the elapsed /
+    corrected times (``H:MM:SS`` strings converted to intervals).
     """
     stats = {"total": len(results), "imported": 0, "written": 0, "matched": 0,
              "errors": 0, "error_details": []}
@@ -369,12 +410,18 @@ def store_normalized_results(
 
     before = count_source_rows(engine, source)
     log_id = log_ingestion_start(engine, source) if log else None
+    boat_cache: dict[tuple, int | None] = {}
     for r in results:
-        boat_id = None
-        if r.sail_number:
-            boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
-        if not boat_id:
-            boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
+        # Per-race sources repeat each boat once per race; match it once.
+        key = (r.sail_number, r.boat_name, r.rating_value)
+        if key not in boat_cache:
+            boat_id = None
+            if r.sail_number:
+                boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
+            if not boat_id:
+                boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
+            boat_cache[key] = boat_id
+        boat_id = boat_cache[key]
         if boat_id:
             stats["matched"] += 1
 
@@ -386,6 +433,8 @@ def store_normalized_results(
             raw["sail_number"] = r.sail_number
 
         extra = {"class_name": r.class_name} if include_class_name else {}
+        if detail:
+            extra.update(_detail_fields(r, raw))
         try:
             upsert_race_result(
                 engine, boat_id=boat_id,

@@ -711,7 +711,8 @@ def wayback_tcc(ctx, start_year, end_year, out_dir, max_per_pattern):
 @scrape.command(name="results")
 @click.option(
     "--source",
-    type=click.Choice(["sailsys", "cyca", "sailracehq", "sailwave", "topyacht", "rorc", "isora", "cowesweek", "rhkyc", "sydneyhobart", "manage2sail"]),
+    type=click.Choice(["sailsys", "cyca", "sailracehq", "sailwave", "topyacht", "rorc", "isora", "cowesweek", "rhkyc", "sydneyhobart", "manage2sail",
+                       "warsash-spring-series", "halsail", "hamble-winter-series"]),
     default="sailsys",
     help="Race results source",
 )
@@ -745,6 +746,21 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
             return
         out = manage2sail.run(since=since)
         console.print(f"[green]Manage2Sail: {out}[/green]")
+        return
+
+    if source in ("sailwave", "warsash-spring-series", "halsail", "hamble-winter-series"):
+        # Same runners the scheduled adapters use; --year limits to races /
+        # uploads from 1 Jan of that year, otherwise a full backfill.
+        from irc_data.temporal import legacy_adapters as la
+
+        runner = {
+            "sailwave": la._run_sailwave,
+            "warsash-spring-series": la._run_warsash,
+            "halsail": la._run_halsail,
+            "hamble-winter-series": la._run_hamble,
+        }[source]
+        out = runner({"since": f"{year}-01-01" if year else "1990-01-01"})
+        console.print(f"[green]{source}: {out}[/green]")
         return
 
     if source == "sailsys":

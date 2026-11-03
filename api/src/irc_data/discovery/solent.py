@@ -350,33 +350,45 @@ class JOGSource(RaceResultSource):
 class HalSailResultsSource(RaceResultSource):
     """HalSail-hosted club results (HRSC / Hamble Winter Series).
 
-    HalSail pages are JS-rendered, so collection goes through the Firecrawl
-    + LLM ``extract_results`` pipeline (``seed_crawl_and_ingest``) rather
-    than a bespoke parser.  This adapter exists so the register has a
-    concrete ``adapter_class`` and so the schedule registry treats Hamble as
-    a first-class source.
+    HalSail was approved with conditions on 2026-11-03; collection lives in
+    :mod:`irc_data.scrapers.halsail` (headless render of the club-linked
+    public page, IRC classes only). The scheduled runner is
+    ``legacy_adapters._run_hamble``; this class keeps the RaceResultSource
+    shape for callers of the discovery module.
     """
 
-    def __init__(self, seed_url: str = "https://www.hamblewinterseries.com"):
+    def __init__(self, seed_url: str = "https://www.halsail.com/Result/Club/3560"):
         self._seed_url = seed_url
 
     def source_name(self) -> str:
         return SOURCE_HAMBLE
 
     async def discover_events(self, since: date | None = None) -> list[EventRef]:  # noqa: ARG002
-        """HalSail discovery is provider-backed — see ``discover_solent_sources``."""
         return [
             EventRef(
                 source=SOURCE_HAMBLE,
                 event_name="Hamble Winter Series",
                 event_url=self._seed_url,
-                organizing_club="HRSC",
+                organizing_club="Hamble River Sailing Club",
             )
         ]
 
-    async def scrape_event(self, ref: EventRef) -> list[NormalizedResult]:  # noqa: ARG002
-        """HalSail pages need JS rendering; use the discovery pipeline."""
-        return []
+    async def scrape_event(self, ref: EventRef) -> list[NormalizedResult]:
+        import asyncio
+
+        from irc_data.scrapers import halsail
+
+        def _scrape():
+            browser = halsail.HalSailBrowser()
+            try:
+                seed = halsail.HalSailSeed(ref.event_url, ref.organizing_club or "", source=SOURCE_HAMBLE,
+                                           series="Hamble Winter Series")
+                return halsail.scrape_seed(browser, seed, since=ref.event_date)["rows"]
+            finally:
+                browser.close()
+
+        # Sync Playwright cannot run inside an event loop: use a thread.
+        return await asyncio.get_running_loop().run_in_executor(None, _scrape)
 
 
 # ---------------------------------------------------------------------------
@@ -685,79 +697,26 @@ def ingest_jog_season(
 def ingest_warsash_sailwave(
     engine: Engine,
     *,
-    seed_url: str = "https://warsashsc.org.uk/springseries/black-group-results/",
-    extra_seed_urls: Sequence[str] = (),
-    max_files: int | None = None,
+    since: date | None = None,
 ) -> dict[str, Any]:
-    """Ingest Warsash Spring Series results via their public Sailwave files.
+    """Ingest Warsash Spring Series / Championships IRC results (Sailwave).
 
-    The Warsash results pages link to static Sailwave HTML files on
-    ``sailwave.com/results/warsashsc``.  We fetch each with plain HTTP and
-    parse it with the existing Sailwave parser (``sailwave`` is an approved
-    source), writing rows under the ``warsash-spring-series`` source so the
-    Solent coverage is attributable.
+    Delegates to :func:`irc_data.scrapers.sailwave.run` with the Warsash
+    seeds (the same path as the scheduled ``warsash-spring-series`` runner):
+    per-race IRC rows with real race dates. The September 2026 version of
+    this function stored series-summary standings with a placeholder date
+    of 1 March; those 54 rows remain (race_name NULL) alongside the
+    per-race rows.
     """
     _assert_collectable(engine, SOURCE_WARSASH)
 
-    import httpx
+    from irc_data.scrapers import sailwave
+    from irc_data.scrapers.sailwave_seeds import seeds_for
 
-    from irc_data.scrapers.sailwave import parse_sailwave_html
-
-    sailwave_urls: list[str] = []
-    for seed in (seed_url, *extra_seed_urls):
-        try:
-            resp = httpx.get(
-                seed,
-                timeout=30,
-                follow_redirects=True,
-                headers={"User-Agent": "SailRatings/1.0 (+https://sailratings.com)"},
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.warning("warsash seed fetch failed (%s): %s", seed, e)
-            continue
-        if resp.status_code != 200:
-            continue
-        for href in re.findall(r'href="(https://sailwave\.com/[^"]+\.htm)"', resp.text):
-            if href not in sailwave_urls:
-                sailwave_urls.append(href)
-
-    if max_files:
-        sailwave_urls = sailwave_urls[:max_files]
-
-    total = {"files": 0, "imported": 0, "matched": 0}
-    for url in sailwave_urls:
-        try:
-            resp = httpx.get(
-                url,
-                timeout=30,
-                follow_redirects=True,
-                headers={"User-Agent": "SailRatings/1.0 (+https://sailratings.com)"},
-            )
-            if resp.status_code != 200:
-                continue
-        except Exception as e:  # noqa: BLE001
-            logger.warning("sailwave fetch failed (%s): %s", url, e)
-            continue
-        results = parse_sailwave_html(
-            resp.text, source_url=url, organizing_club="Warsash Sailing Club"
-        )
-        if not results:
-            continue
-        # Sailwave series pages don't carry a per-race date; the Warsash
-        # season is named for its year ("… Warsash Sailing Club 2026").
-        # Backfill a season date so the coverage query can count the season.
-        year_m = re.search(r"(20\d\d)", url) or re.search(
-            r"(20\d\d)", results[0].event_name or ""
-        )
-        season_year = int(year_m.group(1)) if year_m else None
-        for r in results:
-            if r.event_date is None and season_year:
-                r.event_date = date(season_year, 3, 1)  # spring series ~ March
-        stats = _import_normalized(engine, results, SOURCE_WARSASH)
-        total["files"] += 1
-        total["imported"] += stats["imported"]
-        total["matched"] += stats["matched"]
-    return total
+    stats = sailwave.run(source=SOURCE_WARSASH, seeds=seeds_for(SOURCE_WARSASH),
+                         since=since, engine=engine)
+    return {"files": stats["files_with_irc"], "imported": stats.get("upserted", 0),
+            "matched": stats.get("boats_matched_rows", 0), "written": stats["records_written"]}
 
 
 __all__ = [

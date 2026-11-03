@@ -493,8 +493,8 @@ _TIER3: list[DataSourceRecordV1] = [
         format="html",
         identifiers=_ident("Event", "EventEntry", "RaceResult"),
         priority=3,
-        adapter_class="irc_data.scrapers.sailwave.SailwaveScraper",
-        adapter_status=NOTION_STATUS_TO_ADAPTER_STATUS["Prototyped"],
+        adapter_class="irc_data.scrapers.sailwave.SailwaveSource",
+        adapter_status="active",
         legal_status="approved",
         robots_status="allowed",
         licensing="public_domain",
@@ -502,7 +502,9 @@ _TIER3: list[DataSourceRecordV1] = [
         cadence_class="daily_results",
         staleness_budget_hours=48.0,
         notes="Notion: Prototyped / Public Domain / Web Scraping / Weekly. "
-              "Results files publicly linked from club sites.",
+              "Results files publicly linked from club sites. 2026-11-03: IRC "
+              "results adapter: legacy runner _run_sailwave (scrapers/sailwave.py, "
+              "UK/Irish seed list in scrapers/sailwave_seeds.py).",
     ),
     # -- Unexplored ----------------------------------------------------------
     DataSourceRecordV1(
@@ -824,12 +826,20 @@ _TIER3: list[DataSourceRecordV1] = [
         format="html",
         identifiers=_ident("Event", "EventEntry", "RaceResult"),
         priority=4,
-        adapter_status=NOTION_STATUS_TO_ADAPTER_STATUS["Unexplored"],
-        legal_status="unknown",
-        robots_status="unchecked",
+        adapter_class="irc_data.scrapers.halsail.HalSailSource",
+        adapter_status="active",
+        legal_status="approved",
+        terms_status="reviewed",
+        robots_status="allowed",
         licensing="public_domain",
         notes="Notion: Unexplored / Public Domain / Web Scraping / Daily. "
-              "No adapter yet; rights not yet reviewed — discovery only.",
+              "2026-11-03: Stuart approved with conditions: public club-linked "
+              "/Result/Club|Class|Event pages only; >=2s + identifying UA; never "
+              "/Result/PrintRace or /Result/PrintOverall (robots); no /HalApi "
+              "without an issued key; no undocumented JSON endpoints (pages are "
+              "rendered headless); /Result/PdfRaceByBoat allowed; store "
+              "source_url. Adapter: legacy runner _run_halsail "
+              "(scrapers/halsail.py, seeds in scrapers/halsail_seeds.py).",
     ),
 ]
 
@@ -905,9 +915,9 @@ _TIER4: list[DataSourceRecordV1] = [
 #   * ``jog`` / ``warsash-spring-series`` / ``hamble-winter-series`` publish
 #     their full race results publicly (no login), so they are ``approved``
 #     for content collection.
-#   * ``halsail`` stays ``unknown`` (HalSail is a scoring-platform host used
-#     by HRSC / Hamble; the club results pages it serves are registered via
-#     the concrete ``hamble-winter-series`` entry and discovered per-event).
+#   * ``halsail`` (the scoring-platform host used by HRSC / Hamble) was
+#     approved with conditions on 2026-11-03 (see its notes); the Hamble
+#     rows are stored under ``hamble-winter-series``.
 # ---------------------------------------------------------------------------
 _SOLENT: list[DataSourceRecordV1] = [
     DataSourceRecordV1(
@@ -951,8 +961,8 @@ _SOLENT: list[DataSourceRecordV1] = [
         format="html",
         identifiers=_ident("Event", "EventEntry", "RaceResult"),
         priority=3,
-        adapter_class="irc_data.scrapers.sailwave.SailwaveScraper",
-        adapter_status=NOTION_STATUS_TO_ADAPTER_STATUS["Unexplored"],
+        adapter_class="irc_data.scrapers.sailwave.SailwaveSource",
+        adapter_status="active",
         legal_status="approved",
         robots_status="allowed",
         licensing="public_domain",
@@ -961,8 +971,9 @@ _SOLENT: list[DataSourceRecordV1] = [
         staleness_budget_hours=192.0,
         notes="OPS-02-14 Solent coverage. Warsash SC Spring Series / Spring "
               "Championships (Solent, Hamble). Results published as public "
-              "Sailwave files on sailwave.com/results/warsashsc — imported "
-              "via the sailwave source + per-source expander.",
+              "Sailwave files on sailwave.com/results/warsashsc (2025+) and "
+              "warsashsc.org.uk (2021 HTML; 2022-2024 PDF only). Adapter: legacy "
+              "runner _run_warsash (scrapers/sailwave.py).",
     ),
     DataSourceRecordV1(
         slug="hamble-winter-series",
@@ -978,8 +989,8 @@ _SOLENT: list[DataSourceRecordV1] = [
         format="html",
         identifiers=_ident("Event", "EventEntry", "RaceResult"),
         priority=3,
-        adapter_class="irc_data.discovery.solent.HalSailResultsSource",
-        adapter_status=NOTION_STATUS_TO_ADAPTER_STATUS["Unexplored"],
+        adapter_class="irc_data.scrapers.halsail.HalSailSource",
+        adapter_status="active",
         legal_status="approved",
         robots_status="allowed",
         licensing="public_domain",
@@ -988,8 +999,10 @@ _SOLENT: list[DataSourceRecordV1] = [
         staleness_budget_hours=192.0,
         notes="OPS-02-14 Solent coverage. HRSC Hamble Winter Series results "
               "are published publicly via HalSail (halsail.com/Result/Club/"
-              "3560 and per-event /Result/Event/<id>). JS-rendered — collected "
-              "through the discovery pipeline (Firecrawl).",
+              "3560, linked from hamblewinterseries.com). JS-rendered; "
+              "adapter: legacy runner _run_hamble (scrapers/halsail.py, headless "
+              "render under the halsail conditions). Only the current season "
+              "is reachable from the club-linked page.",
     ),
 ]
 

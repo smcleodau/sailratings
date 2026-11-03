@@ -1,324 +1,474 @@
-"""Generic Sailwave HTML results parser.
+"""Sailwave HTML results: IRC-only, one row per boat per race.
 
-Sailwave is the most common race results publishing format used by yacht
-clubs worldwide.  The software generates static HTML files with a
-well-defined table structure that varies slightly between versions but
-follows consistent patterns:
+Sailwave is the scoring program most UK and Irish clubs use. Its published
+HTML has a stable structure:
 
-  - CSS classes: .summarytable, .summaryrace, .place1/.place2/.place3,
-    .even, .odd, .rank1/.rank2/.rank3
-  - Column headers in <th> elements within a <tr> inside the results table
-  - Data rows alternate between 'even' and 'odd' classes
-  - Two main page types:
-    1. Series summary: per-race point columns plus Total/Nett
-    2. Individual race: Start, Finish, Elapsed, Corrected, Points columns
+* ``<h1>`` event name, ``<h2>`` venue/club, and a ``<h3 class="seriestitle">``
+  such as "Results are provisional as of 20:43 on April 21, 2026" (the
+  only place the year of the race dates usually appears).
+* Series summaries: ``<h3 class="summarytitle">IRC 1</h3>``, a caption like
+  "Sailed: 12, Discards: 1, To count: 11, Rating system: IRC, Entries: 16",
+  and ``<table class="summarytable">`` with one column per race
+  ("R1<br/>April 18") holding that race's points ("(13.0 DNS)").
+* Race tables: ``<h3 class="racetitle">R1 - IRC 1 - April 18</h3>`` and
+  ``<table class="racetable">`` with Rank, SailNo, Boat, Class (the boat's
+  design), Helm, Rating, Start, Finish, Elapsed, Corrected, Points. Times may
+  use dots ("0.48.00") or colons.
 
-This module provides:
-  - parse_sailwave_html()  — parse a single Sailwave HTML file
-  - discover_sailwave_links() — find Sailwave result URLs from an index page
+Only IRC is kept. A fleet counts as IRC when its summary caption says
+"Rating system: IRC", its rating column is headed IRC/TCC, or its fleet name
+carries an IRC token without another handicap system's (ECHO, PY, NHC, ...).
+UK series often score ECHO, PY and one-design fleets from the same start, so
+a rating in the 0.8-1.2 range alone is never taken as IRC. Every stored row
+must carry a plausible TCC (0.5-2.0); Sailwave's 2.000 placeholder for boats
+without a certificate is dropped, as are DNC rows.
+
+Race tables give place, elapsed and corrected time. A race that appears only
+in a summary becomes per-race rows from its points column (place from the
+points, no times), flagged ``row_origin='summary'``; the runner drops those
+when a race table for the same race exists.
+
+Discovery (``SailwaveSeed``) covers three shapes, all public pages:
+
+* a sailwave.com/results/<club>/ folder listing (upload timestamps make
+  ``since`` cheap),
+* a club page linking to Sailwave files,
+* a single file URL.
+
+Seeds live in :mod:`irc_data.scrapers.sailwave_seeds`.
 """
 
+from __future__ import annotations
+
+import logging
 import re
-from datetime import date, datetime
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from urllib.parse import urljoin
+from email.utils import parsedate_to_datetime
+from typing import Any
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, Tag
 
-from irc_data.scrapers.result_base import NormalizedResult
+from irc_data.scrapers.result_base import EventRef, NormalizedResult, RaceResultSource
 
+logger = logging.getLogger(__name__)
+
+SOURCE = "sailwave"
 
 # ---------------------------------------------------------------------------
-# Utility helpers
+# Cell helpers
 # ---------------------------------------------------------------------------
 
-def _safe_decimal(val: str | None) -> Decimal | None:
-    """Parse a string to Decimal, returning None on failure."""
+STATUS_CODES = (
+    "DNC", "DNS", "DNF", "RET", "DSQ", "DNE", "DGM", "OCS", "BFD", "UFD", "NSC",
+    "ZFP", "SCP", "RDG", "RAF", "DPI", "TLE", "STP", "NCS",
+)
+_STATUS_RE = re.compile(r"\b(" + "|".join(STATUS_CODES) + r")\b", re.IGNORECASE)
+#: codes for which a points value is not a finishing place
+_NON_FINISH = {"DNC", "DNS", "DNF", "RET", "DSQ", "DNE", "DGM", "OCS", "BFD", "UFD",
+               "NSC", "RAF", "TLE", "NCS"}
+
+_OTHER_SYSTEMS_RE = re.compile(
+    r"(?<![A-Z])(ECHO|PY|NHC|PHRF|YTC|CHS|VPRS|ORC|ORCI|ORCC|HPR|SCHS|"
+    r"PERSONAL|LEVEL|ONE.?DESIGN|PURSUIT|POC|RCHS|MOCRA|SB20|J/?70|J/?80|SONAR)(?![A-Z])",
+    re.IGNORECASE,
+)
+_IRC_RE = re.compile(r"(?<![A-Z])IRC", re.IGNORECASE)
+
+
+def _clean(text: str | None) -> str:
+    if text is None:
+        return ""
+    return re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
+
+
+def _cell(td: Tag | None) -> str:
+    return _clean(td.get_text(" ")) if td is not None else ""
+
+
+def parse_tcc(val: str | None) -> Decimal | None:
+    """A plausible IRC TCC (0.5 <= x < 2.0); Sailwave uses 2.000 as a placeholder."""
     if not val:
         return None
-    val = val.strip().replace("\xa0", "").replace(",", "")
-    if not val or val in ("&nbsp;", "-"):
-        return None
     try:
-        return Decimal(val)
+        d = Decimal(_clean(val).replace(",", "."))
     except (InvalidOperation, ValueError):
         return None
+    return d if Decimal("0.5") <= d < Decimal("2.0") else None
 
 
-def _safe_int(val: str | None) -> int | None:
-    """Parse a string to int, stripping ordinal suffixes like '1st', '2nd'."""
-    if not val:
+def parse_duration(val: str | None) -> str | None:
+    """'0.48.00' / '1:02:03' / '1:02:03:04' (d:h:m:s) / '48:00' -> 'H:MM:SS'."""
+    v = _clean(val)
+    if not v or _STATUS_RE.search(v):
         return None
-    val = val.strip()
-    cleaned = re.sub(r"(st|nd|rd|th)\b", "", val, flags=re.IGNORECASE).strip()
-    cleaned = re.sub(r"[^\d]", "", cleaned)
-    if not cleaned:
+    parts = re.split(r"[.:]", v)
+    if not all(p.isdigit() for p in parts):
         return None
+    nums = [int(p) for p in parts]
+    if len(nums) == 4:
+        d, h, m, s = nums
+        h += d * 24
+    elif len(nums) == 3:
+        h, m, s = nums
+    elif len(nums) == 2:
+        h, (m, s) = 0, nums
+    else:
+        return None
+    if m >= 60 or s >= 60 or (h == m == s == 0):
+        return None
+    return f"{h}:{m:02d}:{s:02d}"
+
+
+def find_status(*texts: str | None) -> str | None:
+    for t in texts:
+        if t:
+            m = _STATUS_RE.search(t)
+            if m:
+                return m.group(1).upper()
+    return None
+
+
+def _int_place(val: str | None) -> int | None:
+    m = re.match(r"^\s*(\d+)", _clean(val))
+    return int(m.group(1)) if m else None
+
+
+# ---------------------------------------------------------------------------
+# Dates
+# ---------------------------------------------------------------------------
+
+_MONTHS = ("january february march april may june july august september "
+           "october november december").split()
+_WEEKDAY_RE = re.compile(r"\b(mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[a-z]*\b\.?,?", re.I)
+
+
+def _month(tok: str) -> int | None:
+    tok = tok.lower().rstrip(".")
+    for i, m in enumerate(_MONTHS, 1):
+        if len(tok) >= 3 and m.startswith(tok):
+            return i
+    return None
+
+
+def parse_race_date(text: str | None, ref: date | None, *, roll_back: bool = True) -> date | None:
+    """Parse the date forms Sailwave headers use.
+
+    ``ref`` (the "results as of" date, or a year end) supplies the year for
+    yearless dates such as "April 18"; a date that would fall more than a
+    week after ``ref`` is taken to be the previous year (winter series), or
+    rejected (None) with ``roll_back=False`` (an event named for one year).
+    """
+    t = _clean(text)
+    if not t:
+        return None
+    t = _WEEKDAY_RE.sub(" ", t)
+    t = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", t, flags=re.I)
+    t = _clean(t)
+    # ISO
+    m = re.search(r"\b(20\d\d)-(\d{1,2})-(\d{1,2})\b", t)
+    if m:
+        return _mk(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    # d/m/y (UK)
+    m = re.search(r"\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})\b", t)
+    if m:
+        y = int(m.group(3))
+        y = y + 2000 if y < 100 else y
+        return _mk(y, int(m.group(2)), int(m.group(1)))
+    # d Month [y] / Month d[,] [y]
+    m = re.search(r"\b(\d{1,2})[\s-]+([A-Za-z]{3,})\.?(?:[\s,-]+(\d{2,4}))?\b", t)
+    order = "dm"
+    if not m or not _month(m.group(2)):
+        m = re.search(r"\b([A-Za-z]{3,})\.?[\s-]+(\d{1,2})(?:[\s,-]+(\d{4}))?\b", t)
+        order = "md"
+    if not m:
+        return None
+    if order == "dm":
+        day, mon = int(m.group(1)), _month(m.group(2))
+    else:
+        mon, day = _month(m.group(1)), int(m.group(2))
+    if not mon:
+        return None
+    if m.group(3):
+        y = int(m.group(3))
+        return _mk(y + 2000 if y < 100 else y, mon, day)
+    if ref is None:
+        return None
+    d = _mk(ref.year, mon, day)
+    if d and d > ref + timedelta(days=7):
+        d = _mk(ref.year - 1, mon, day) if roll_back else None
+    return d
+
+
+def _mk(y: int, m: int, d: int) -> date | None:
     try:
-        return int(cleaned)
+        return date(y, m, d)
     except ValueError:
         return None
 
 
-def _parse_time(val: str | None) -> str | None:
-    """Normalize a time string (HH:MM:SS or D:HH:MM:SS) to HH:MM:SS."""
-    if not val:
-        return None
-    val = val.strip().replace("\xa0", "")
-    if not val or val in ("&nbsp;", "-"):
-        return None
-
-    # D:HH:MM:SS or DD:HH:MM:SS
-    m = re.match(r"(\d+):(\d{1,2}):(\d{2}):(\d{2})", val)
-    if m:
-        days, hours, mins, secs = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
-        total_hours = days * 24 + hours
-        return f"{total_hours}:{mins:02d}:{secs:02d}"
-
-    # HH:MM:SS
-    m = re.match(r"(\d+):(\d{2}):(\d{2})", val)
-    if m:
-        return val.strip()
-
-    # MM:SS (short races)
-    m = re.match(r"(\d{1,2}):(\d{2})$", val)
-    if m:
-        return f"0:{m.group(1).zfill(2)}:{m.group(2)}"
-
-    return None
-
-
-def _detect_status(text: str | None) -> str:
-    """Detect finish status from cell text (DNF, DNS, DSQ, OCS, RET, DNC)."""
-    if not text:
-        return "finished"
-    text = text.strip().upper()
-    for code in ("DNC", "DNF", "DNS", "DSQ", "OCS", "RET", "NSC", "ZFP", "UFD", "BFD", "RDG"):
-        if code in text:
-            return code
-    return "finished"
-
-
-def _is_status_code(text: str) -> bool:
-    """Check if a cell value is a status code rather than a numeric result."""
-    return bool(re.match(
-        r"^(DNC|DNF|DNS|DSQ|OCS|RET|NSC|ZFP|UFD|BFD|RDG|SCP|DPI)$",
-        text.strip().upper(),
-    ))
-
-
 # ---------------------------------------------------------------------------
-# Column header mapping
+# Page model
 # ---------------------------------------------------------------------------
 
-# Map normalized header text to canonical field names
-_HEADER_MAP = {
-    # Position
-    "rank": "rank",
-    "pos": "rank",
-    "position": "rank",
-    "place": "rank",
-    # Fleet / class / division
-    "fleet": "fleet",
-    "class": "class",
-    "division": "class",
-    "div": "class",
-    "group": "class",
-    # Boat
-    "boat": "boat_name",
-    "yacht": "boat_name",
-    "boat name": "boat_name",
-    "yacht name": "boat_name",
-    "name": "boat_name",
-    # Sail number
-    "sail no.": "sail_number",
-    "sail no": "sail_number",
-    "sailno": "sail_number",
-    "sail number": "sail_number",
-    "sail": "sail_number",
-    # Type / design
-    "type": "boat_type",
-    "boat type": "boat_type",
-    "design": "boat_type",
-    "class/type": "boat_type",
-    # Club
+_HEADER_FIELDS = {
+    "rank": "rank", "pos": "rank", "position": "rank", "place": "rank", "posn": "rank",
+    "fleet": "fleet", "division": "fleet", "div": "fleet", "group": "fleet",
+    "boat": "boat", "boat name": "boat", "boatname": "boat", "yacht": "boat",
+    "yacht name": "boat", "name": "boat",
+    "sailno": "sail", "sail no": "sail", "sail no.": "sail", "sail number": "sail",
+    "sail": "sail", "sail #": "sail", "bow/sail": "sail",
+    "class": "design", "type": "design", "boat type": "design", "design": "design",
+    "boat class": "design", "make/model": "design",
+    "helm": "helm", "helmname": "helm", "helm name": "helm", "skipper": "helm",
+    "owner": "helm", "skipper/owner": "helm", "helm/owner": "helm",
     "club": "club",
-    # Skipper / owner
-    "skipper/owner": "skipper",
-    "skipper": "skipper",
-    "helmname": "skipper",
-    "helm": "skipper",
-    "owner": "skipper",
-    "helm name": "skipper",
-    # Crew
-    "crewname": "crew",
-    "crew": "crew",
-    "crew name": "crew",
-    # Rating
-    "rating": "rating",
-    "rating {at start}": "rating",
-    "irc": "rating",
-    "tcc": "rating",
-    "irc tcc": "rating",
-    "irc rating": "rating",
-    "py": "rating",
-    "handicap": "rating",
-    "tcf": "rating",
-    "cbh": "rating",
-    # Times
-    "start": "start_time",
-    "finish": "finish_time",
-    "elapsed": "elapsed",
-    "elapsed time": "elapsed",
-    "corrected": "corrected",
-    "corrected time": "corrected",
-    # Performance
-    "bce": "bce",
-    "bcr": "bcr",
-    "ave speed": "avg_speed",
-    "average speed": "avg_speed",
-    # Points
-    "points": "points",
-    "total": "total",
-    "nett": "nett",
-    "net": "nett",
+    "rating": "rating", "handicap": "rating", "hcap": "rating", "tcf": "rating",
+    "tcc": "rating_irc", "irc": "rating_irc", "irc tcc": "rating_irc",
+    "irc rating": "rating_irc", "irc tcf": "rating_irc", "irc hcap": "rating_irc",
+    "echo": "rating_other", "py": "rating_other", "nhc": "rating_other",
+    "echo rating": "rating_other", "echo hcap": "rating_other",
+    "start": "start", "finish": "finish", "finish time": "finish",
+    "elapsed": "elapsed", "elapsed time": "elapsed", "elapsed2": "elapsed",
+    "corrected": "corrected", "corrected time": "corrected", "corr": "corrected",
+    "corrected2": "corrected",
+    "points": "points", "pts": "points",
+    "total": "total", "nett": "nett", "net": "nett",
 }
 
+_RACE_COL_RE = re.compile(r"^(R|Race)\s*(\d+)\b", re.IGNORECASE)
 
-def _map_header(header_text: str) -> str | None:
-    """Map a Sailwave header cell text to a canonical field name."""
-    h = header_text.strip().lower()
-    # Remove content in curly braces like "Rating {At start}"
-    h = re.sub(r"\{[^}]*\}", "", h).strip()
-    # Direct lookup
-    if h in _HEADER_MAP:
-        return _HEADER_MAP[h]
-    # Partial match for race columns like "Race01CW1", "R1", "R2"
-    if re.match(r"^r(ace)?\s*\d", h, re.IGNORECASE):
-        return None  # skip per-race point columns in series tables
+
+def _header_field(text: str) -> str | None:
+    h = re.sub(r"\{[^}]*\}", "", _clean(text).lower()).strip()
+    return _HEADER_FIELDS.get(h)
+
+
+@dataclass
+class RaceColumn:
+    index: int
+    label: str
+    number: int | None
+    date_text: str
+
+
+@dataclass
+class SailwaveTable:
+    kind: str                      # "race" | "summary"
+    fleet: str                     # from the h3 title ("IRC 1", "IRC 1 Champs")
+    title: str
+    caption: str
+    headers: list[str]
+    fields: dict[str, int]         # canonical field -> column index
+    rows: list[list[str]]
+    race_label: str | None = None  # race tables
+    race_number: int | None = None
+    race_date_text: str | None = None
+    race_columns: list[RaceColumn] = field(default_factory=list)  # summary tables
+
+    @property
+    def rating_system(self) -> str | None:
+        m = re.search(r"Rating system:\s*([A-Za-z0-9 /]+?)(?:,|$)", self.caption)
+        return _clean(m.group(1)).upper() if m else None
+
+
+@dataclass
+class SailwavePage:
+    title: str
+    event: str
+    venue: str
+    as_of: date | None
+    version: str | None
+    tables: list[SailwaveTable]
+
+    @property
+    def roll_back(self) -> bool:
+        """Yearless dates after the as-of date roll back a year only when the
+        event is not named for a single year (winter series "2026-27")."""
+        years = set(re.findall(r"(?<!\d)(20\d\d)(?!\d)", f"{self.event} {self.title}"))
+        return not (self.as_of and years == {str(self.as_of.year)})
+
+    def date_for(self, text: str | None, url: str = "") -> date | None:
+        return parse_race_date(text, self.reference_date(url), roll_back=self.roll_back)
+
+    def reference_date(self, url: str = "") -> date | None:
+        if self.as_of:
+            return self.as_of
+        for text in (self.event, self.title, url):
+            m = re.search(r"(?<!\d)(20\d\d)(?!\d)", text or "")
+            if m:
+                return date(int(m.group(1)), 12, 31)
+        m = re.search(r"(?<![\d])(\d\d)(?![\d])", urlsplit(url).path.rsplit("/", 1)[-1]) if url else None
+        if m and 15 <= int(m.group(1)) <= 40:
+            return date(2000 + int(m.group(1)), 12, 31)
+        return None
+
+
+def _title_before(table: Tag) -> Tag | None:
+    prev = table
+    for _ in range(12):
+        prev = prev.find_previous(["h3", "h2", "h1"])
+        if prev is None:
+            return None
+        cls = " ".join(prev.get("class") or [])
+        if prev.name == "h3" and ("seriestitle" in cls or "codestitle" in cls):
+            continue
+        return prev
     return None
 
 
-# ---------------------------------------------------------------------------
-# Metadata extraction
-# ---------------------------------------------------------------------------
+def _caption_after(title: Tag | None, table: Tag) -> str:
+    cap = table.find("caption")
+    if cap is not None:
+        return _cell(cap)
+    if title is None:
+        return ""
+    sib = title.find_next_sibling()
+    while sib is not None and sib is not table:
+        if sib.name == "div" and "caption" in " ".join(sib.get("class") or []):
+            return _cell(sib)
+        if sib.name == "table":
+            break
+        sib = sib.find_next_sibling()
+    return ""
 
-def _extract_metadata(soup: BeautifulSoup) -> dict:
-    """Extract event metadata from the Sailwave HTML page header area."""
-    meta = {}
 
-    # Look for title
-    title_tag = soup.find("title")
-    if title_tag:
-        meta["title"] = title_tag.get_text(strip=True)
+def _split_race_title(text: str) -> tuple[str, str, str]:
+    """'R1 - IRC 1 Champs - April 18' -> ('R1', 'IRC 1 Champs', 'April 18')."""
+    parts = [p.strip() for p in re.split(r"\s+-\s+", _clean(text)) if p.strip()]
+    if not parts:
+        return "", "", ""
+    label = parts[0]
+    rest = parts[1:]
+    date_text = ""
+    if rest and parse_race_date(rest[-1], date(2000, 12, 31)):
+        date_text = rest.pop()
+    return label, " - ".join(rest), date_text
 
-    # Sailwave pages typically have event info in the first few elements
-    # before the main table.  Look for text patterns.
-    body = soup.find("body")
-    if not body:
-        return meta
 
-    # Sailwave version from footer
-    footer_text = soup.get_text()
-    m = re.search(r"Sailwave Scoring Software\s+([\d.]+)", footer_text)
-    if m:
-        meta["sailwave_version"] = m.group(1)
-
-    # Scoring system info: "Sailed: N, Discards: N, ..."
-    m = re.search(
-        r"Sailed:\s*(\d+).*?Discards:\s*(\d+).*?To count:\s*(\d+)",
-        footer_text,
-    )
-    if m:
-        meta["sailed"] = int(m.group(1))
-        meta["discards"] = int(m.group(2))
-        meta["to_count"] = int(m.group(3))
-
-    # Rating system
-    m = re.search(r"Rating system:\s*(\w+)", footer_text)
-    if m:
-        meta["rating_system"] = m.group(1)
-
-    # Entries
-    m = re.search(r"Entries:\s*(\d+)", footer_text)
-    if m:
-        meta["entries"] = int(m.group(1))
-
-    # Date - look for common date patterns in the page
-    for pattern in [
-        r"(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})",
-        r"(\d{1,2}/\d{1,2}/\d{4})",
-        r"(\d{4}-\d{2}-\d{2})",
-    ]:
-        m = re.search(pattern, footer_text, re.IGNORECASE)
+def parse_page(html: str) -> SailwavePage:
+    soup = BeautifulSoup(html, "html.parser")
+    title = _cell(soup.find("title"))
+    h1 = soup.find("h1")
+    h2 = soup.find("h2")
+    as_of = None
+    st = soup.find("h3", class_="seriestitle")
+    if st is not None:
+        m = re.search(r"as of\s+[\d:.]+\s+on\s+(.+)$", _cell(st), re.I)
         if m:
-            date_str = m.group(1)
-            for fmt in ["%d %B %Y", "%d/%m/%Y", "%Y-%m-%d", "%d %b %Y"]:
-                try:
-                    meta["event_date"] = datetime.strptime(date_str, fmt).date()
-                    break
-                except ValueError:
-                    continue
-            if "event_date" in meta:
-                break
+            as_of = parse_race_date(m.group(1), None)
+    text = soup.get_text(" ")
+    vm = re.search(r"Sailwave Scoring Software\s+([\d.]+)", text)
 
-    return meta
-
-
-# ---------------------------------------------------------------------------
-# Table detection
-# ---------------------------------------------------------------------------
-
-def _find_results_tables(soup: BeautifulSoup) -> list[Tag]:
-    """Find result tables in Sailwave HTML.
-
-    Sailwave uses several patterns:
-    1. Tables with class 'summarytable'
-    2. Tables containing <th> headers with boat/rank columns
-    3. Tables with enough rows and recognisable column headers
-    """
-    tables = []
-
-    # Strategy 1: class="summarytable"
-    for t in soup.find_all("table", class_="summarytable"):
-        tables.append(t)
-
-    if tables:
-        return tables
-
-    # Strategy 2: tables with <th> elements that map to known headers
+    tables: list[SailwaveTable] = []
     for t in soup.find_all("table"):
-        ths = t.find_all("th")
-        if not ths:
+        cls = " ".join(t.get("class") or [])
+        if "codestable" in cls:
             continue
-        header_texts = [th.get_text(strip=True).lower() for th in ths]
-        mapped = [h for h in header_texts if _map_header(h) is not None]
-        if len(mapped) >= 3 and any(_map_header(h) == "boat_name" for h in header_texts):
-            tables.append(t)
-
-    if tables:
-        return tables
-
-    # Strategy 3: any table with > 3 rows where first row looks like headers
-    for t in soup.find_all("table"):
-        rows = t.find_all("tr")
-        if len(rows) < 3:
+        header_row = None
+        thead = t.find("thead")
+        if thead is not None:
+            header_row = thead.find("tr")
+        if header_row is None:
+            header_row = t.find("tr", class_="titlerow") or t.find("tr")
+        if header_row is None:
             continue
-        first_row = rows[0]
-        cells = first_row.find_all(["th", "td"])
-        if not cells:
+        hcells = header_row.find_all(["th", "td"])
+        headers_parts = [[_clean(s) for s in c.stripped_strings] for c in hcells]
+        headers = [" ".join(p) for p in headers_parts]
+        fields: dict[str, int] = {}
+        race_cols: list[RaceColumn] = []
+        for i, parts in enumerate(headers_parts):
+            first = parts[0] if parts else ""
+            f = _header_field(first) or _header_field(" ".join(parts))
+            if f and f not in fields:
+                fields[f] = i
+                continue
+            m = _RACE_COL_RE.match(first)
+            if m and not f:
+                race_cols.append(RaceColumn(i, first, int(m.group(2)), " ".join(parts[1:])))
+        if "boat" not in fields and "sail" not in fields:
             continue
-        header_texts = [c.get_text(strip=True).lower() for c in cells]
-        mapped = [h for h in header_texts if _map_header(h) is not None]
-        if len(mapped) >= 3:
-            tables.append(t)
+        kind = None
+        if "racetable" in cls or "elapsed" in fields or "corrected" in fields or "finish" in fields:
+            kind = "race"
+        elif "summarytable" in cls or race_cols or "nett" in fields:
+            kind = "summary"
+        if kind is None:
+            continue
+        title_tag = _title_before(t)
+        title_text = _cell(title_tag) if title_tag is not None else ""
+        caption = _caption_after(title_tag, t)
+        rows = []
+        for tr in t.find_all("tr"):
+            if tr is header_row or tr.find("th") is not None:
+                continue
+            tds = tr.find_all("td")
+            if len(tds) < 3:
+                continue
+            rows.append([_cell(td) for td in tds])
+        tab = SailwaveTable(kind=kind, fleet="", title=title_text, caption=caption,
+                            headers=headers, fields=fields, rows=rows, race_columns=race_cols)
+        if kind == "race":
+            label, fleet, date_text = _split_race_title(title_text)
+            tab.race_label = label or None
+            m = re.search(r"(\d+)", label or "")
+            tab.race_number = int(m.group(1)) if m else None
+            tab.race_date_text = date_text or None
+            tab.fleet = fleet
+        else:
+            tab.fleet = title_text
+        tables.append(tab)
 
-    return tables
+    return SailwavePage(
+        title=title,
+        event=_cell(h1) or title,
+        venue=_cell(h2),
+        as_of=as_of,
+        version=vm.group(1) if vm else None,
+        tables=tables,
+    )
 
 
 # ---------------------------------------------------------------------------
-# Main parser
+# IRC classification
 # ---------------------------------------------------------------------------
+
+
+def fleet_is_irc(fleet: str, rating_system: str | None, rating_header: str | None,
+                 *, assume_irc: bool = False) -> bool:
+    if rating_header == "rating_other":
+        return False
+    if rating_system:
+        if rating_system.startswith("IRC"):
+            return True
+        if _OTHER_SYSTEMS_RE.search(rating_system) or re.search(r"PORTSMOUTH|YARDSTICK", rating_system):
+            return False
+        # Generic Sailwave systems ("TCF", "Rating", "Handicap"): decide by name.
+    if rating_header == "rating_irc":
+        return True
+    name = _clean(fleet)
+    if _IRC_RE.search(name):
+        stripped = _IRC_RE.sub(" ", name)
+        return not _OTHER_SYSTEMS_RE.search(stripped)
+    if _OTHER_SYSTEMS_RE.search(name):
+        return False
+    return assume_irc
+
+
+def _rating_col(tab: SailwaveTable) -> tuple[int | None, str | None]:
+    for key in ("rating_irc", "rating", "rating_other"):
+        if key in tab.fields:
+            return tab.fields[key], key
+    return None, None
+
+
+# ---------------------------------------------------------------------------
+# Rows
+# ---------------------------------------------------------------------------
+
 
 def parse_sailwave_html(
     html: str,
@@ -326,300 +476,693 @@ def parse_sailwave_html(
     event_name: str = "",
     organizing_club: str | None = None,
     event_type: str | None = None,
-    event_date: date | None = None,
+    event_date: date | None = None,  # kept for API compatibility; race dates win
+    *,
+    event_series: str | None = None,
+    assume_irc: bool = False,
+    include_summary: bool = True,
+    race_dates: dict | None = None,
 ) -> list[NormalizedResult]:
-    """Parse a Sailwave-generated HTML file into NormalizedResult objects.
+    """IRC per-race rows from one Sailwave HTML page (see module docstring).
 
-    Handles both series summary tables (with per-race point columns) and
-    individual race result tables (with elapsed/corrected times).
-
-    Args:
-        html: Raw HTML content of the Sailwave results page.
-        source_url: URL the HTML was fetched from.
-        event_name: Name to use if not extractable from the page.
-        organizing_club: Club name to attach to results.
-        event_type: Event type (offshore, coastal, etc.).
-        event_date: Date override; extracted from page if not provided.
-
-    Returns:
-        List of NormalizedResult objects.
+    ``race_dates`` ({(fleet_key, race_no): date}, built by
+    :func:`page_race_dates` over the other files of the event) dates race
+    tables whose title carries no date; races still undated are skipped.
     """
-    soup = BeautifulSoup(html, "html.parser")
-    meta = _extract_metadata(soup)
-    results: list[NormalizedResult] = []
+    page = parse_page(html)
+    ref = (page, race_dates if race_dates is not None else merge_race_dates([page_race_dates(page, source_url)]))
+    name = event_name or page.event or "Sailwave event"
+    club = organizing_club or page.venue or None
 
-    # Determine event name
-    page_title = meta.get("title", "")
-    if not event_name and page_title:
-        event_name = page_title
-    if not event_name:
-        event_name = "Unknown Sailwave Event"
+    # Rating system per fleet, from the summary captions (race tables have none).
+    systems: dict[str, str] = {}
+    for tab in page.tables:
+        if tab.kind == "summary" and tab.rating_system:
+            systems[_fleet_key(tab.fleet)] = tab.rating_system
 
-    # Determine date
-    if not event_date:
-        event_date = meta.get("event_date")
+    out: list[NormalizedResult] = []
+    raced: set[tuple[str, int | None]] = set()
+    for tab in (t for t in page.tables if t.kind == "race"):
+        rows = _race_rows(tab, page, ref, systems, source_url, name, club, event_type,
+                          event_series, assume_irc)
+        out.extend(rows)
+        for r in rows:
+            raced.add((_fleet_key(r.class_name or ""), r.race_number))
+    if include_summary:
+        for tab in (t for t in page.tables if t.kind == "summary"):
+            for r in _summary_rows(tab, page, ref, systems, source_url, name, club,
+                                   event_type, event_series, assume_irc):
+                if (_fleet_key(r.class_name or ""), r.race_number) not in raced:
+                    out.append(r)
+    return out
 
-    # Determine rating system
-    rating_system = meta.get("rating_system", "").upper()
-    is_irc = "IRC" in rating_system or "IRC" in event_name.upper()
 
-    tables = _find_results_tables(soup)
-    if not tables:
-        return results
+def _fleet_key(fleet: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", fleet.lower())
 
-    for table in tables:
-        rows = table.find_all("tr")
-        if len(rows) < 2:
+
+def _row_fleet(tab: SailwaveTable, cells: list[str]) -> str:
+    """The row's scoring fleet: the table title, unless one table holds
+    several fleets (a Fleet/Division column with differing values)."""
+    idx = tab.fields.get("fleet")
+    if idx is not None and idx < len(cells) and cells[idx]:
+        values = {r[idx] for r in tab.rows if idx < len(r) and r[idx]}
+        if len(values) > 1 or not tab.fleet:
+            return cells[idx]
+    return tab.fleet
+
+
+def _irc_row(tab: SailwaveTable, cells: list[str], systems: dict, rating_key: str | None,
+             assume_irc: bool) -> str | None:
+    """Fleet name when this row is scored under IRC, else None.
+
+    Both the table's own title (the scoring unit) and the row's fleet must
+    be IRC: a "P40 Extract" sub-scoring of boats from the IRC 1 fleet is
+    re-ranked within the P40s and is not an IRC fleet result.
+    """
+    fleet = _row_fleet(tab, cells)
+    if tab.fleet and not fleet_is_irc(
+        tab.fleet, tab.rating_system or systems.get(_fleet_key(tab.fleet)), rating_key,
+        assume_irc=assume_irc,
+    ):
+        return None
+    idx = tab.fields.get("fleet")
+    row_fleet = cells[idx] if idx is not None and idx < len(cells) else ""
+    if row_fleet and row_fleet != tab.fleet and not fleet_is_irc(
+        row_fleet, systems.get(_fleet_key(row_fleet)), rating_key, assume_irc=assume_irc or bool(tab.fleet),
+    ):
+        return None
+    return fleet
+
+
+def _get(cells: list[str], idx: int | None) -> str:
+    return cells[idx] if idx is not None and idx < len(cells) else ""
+
+
+def page_race_dates(page: SailwavePage, url: str = "") -> dict:
+    """Race dates a page states: summary column headers and dated race titles."""
+    out: dict = {}
+    for tab in page.tables:
+        if tab.kind == "summary":
+            for rc in tab.race_columns:
+                d = page.date_for(rc.date_text, url)
+                if d and rc.number is not None:
+                    out[(_fleet_key(tab.fleet), rc.number)] = d
+        elif tab.race_number is not None:
+            d = page.date_for(tab.race_date_text, url)
+            if d:
+                out[(_fleet_key(tab.fleet), tab.race_number)] = d
+    return out
+
+
+def merge_race_dates(maps) -> dict:
+    """Combine per-page maps keyed by (fleet, race number).
+
+    There is deliberately no fleet-less fallback: sub-scorings ("P40
+    extract") renumber races, so race 7 of another table says nothing about
+    race 7 of an IRC fleet. A race with no date for its own fleet is skipped.
+    """
+    merged: dict = {}
+    for m in maps:
+        for key, d in m.items():
+            merged.setdefault(key, d)
+    return merged
+
+
+def _date_lookup(dates: dict, fleet: str, number: int | None):
+    if number is None:
+        return None
+    return dates.get((_fleet_key(fleet), number))
+
+
+def _race_rows(tab, page, ref, systems, url, name, club, event_type, series, assume_irc):
+    rating_idx, rating_key = _rating_col(tab)
+    page, dates = ref
+    race_date = page.date_for(tab.race_date_text, url) or _date_lookup(dates, tab.fleet, tab.race_number)
+    if race_date is None or rating_idx is None:
+        return []
+    f = tab.fields
+    staged = []
+    for cells in tab.rows:
+        fleet = _irc_row(tab, cells, systems, rating_key, assume_irc)
+        if fleet is None:
             continue
-
-        # Parse header row
-        header_row = rows[0]
-        header_cells = header_row.find_all(["th", "td"])
-        raw_headers = [c.get_text(strip=True) for c in header_cells]
-        mapped_headers = [_map_header(h) for h in raw_headers]
-
-        # Build column index
-        col = {}
-        race_columns = []  # indices of per-race point columns (series tables)
-        for i, (raw, mapped) in enumerate(zip(raw_headers, mapped_headers)):
-            if mapped:
-                # If duplicate, keep the first occurrence
-                if mapped not in col:
-                    col[mapped] = i
-            else:
-                # Check if this is a per-race column (series summary)
-                if re.match(r"^R(ace)?\s*\d", raw, re.IGNORECASE):
-                    race_columns.append(i)
-
-        # Must have boat_name to be useful
-        if "boat_name" not in col:
+        boat = _get(cells, f.get("boat"))
+        sail = _get(cells, f.get("sail"))
+        if not boat and not sail:
             continue
+        status = find_status(_get(cells, f.get("elapsed")), _get(cells, f.get("corrected")),
+                             _get(cells, f.get("finish")), _get(cells, f.get("points")),
+                             _get(cells, f.get("rank")))
+        if status == "DNC":
+            continue
+        tcc = parse_tcc(_get(cells, rating_idx))
+        if tcc is None:
+            continue
+        elapsed = parse_duration(_get(cells, f.get("elapsed")))
+        corrected = parse_duration(_get(cells, f.get("corrected")))
+        finished = status is None or status not in _NON_FINISH
+        place = _int_place(_get(cells, f.get("rank"))) if finished else None
+        staged.append((fleet, cells, boat, sail, status, tcc, elapsed, corrected, place))
+    sizes: dict[str, int] = {}
+    for s in staged:
+        sizes[s[0]] = sizes.get(s[0], 0) + 1
+    out = []
+    for fleet, cells, boat, sail, status, tcc, elapsed, corrected, place in staged:
+        raw = {
+            "boat_name": boat or sail,
+            "sail_number": sail or None,
+            "design": _get(cells, f.get("design")) or None,
+            "helm": _get(cells, f.get("helm")) or None,
+            "club": _get(cells, f.get("club")) or None,
+            "points": _get(cells, f.get("points")) or None,
+            "race_date": race_date.isoformat(),
+            "race_title": tab.title,
+            "row_origin": "race_table",
+            "rating_system": "IRC",
+        }
+        if status:
+            raw["status"] = status
+        if page.version:
+            raw["sailwave_version"] = page.version
+        out.append(NormalizedResult(
+            boat_name=boat or sail,
+            sail_number=sail or None,
+            event_name=name,
+            event_date=race_date,
+            event_series=series,
+            organizing_club=club,
+            event_type=event_type,
+            race_name=tab.race_label,
+            race_number=tab.race_number,
+            place=place,
+            fleet_size=sizes[fleet],
+            class_name=fleet or None,
+            class_place=place,
+            class_fleet_size=sizes[fleet],
+            status=_status_value(status),
+            rating_type="irc_tcc",
+            rating_value=tcc,
+            elapsed_time=elapsed,
+            corrected_time=corrected,
+            source_url=url,
+            raw_data={k: v for k, v in raw.items() if v is not None},
+        ))
+    return out
 
-        is_series_table = bool(race_columns) or ("total" in col and "nett" in col)
-        is_race_table = "elapsed" in col or "corrected" in col
 
-        # Determine fleet size from data rows
-        data_rows = rows[1:]
-        fleet_size = len(data_rows)
+def _status_value(code: str | None) -> str:
+    if code is None or code not in _NON_FINISH:
+        return "finished"
+    return code
 
-        # Track class fleet sizes
-        class_counts: dict[str, int] = {}
 
-        # First pass: count boats per class
-        for row in data_rows:
-            cells = row.find_all("td")
-            if not cells or len(cells) < 2:
+def _summary_rows(tab, page, ref, systems, url, name, club, event_type, series, assume_irc):
+    rating_idx, rating_key = _rating_col(tab)
+    if rating_idx is None or not tab.race_columns:
+        return []
+    f = tab.fields
+    # Points are only a finishing place under low-point scoring with 1 point
+    # for a win; bonus-point systems (0.75 / 0 for first) are skipped.
+    firsts = set()
+    for cells in tab.rows:
+        for rc in tab.race_columns:
+            v = _get(cells, rc.index)
+            m = re.match(r"^\(?\s*(\d+(?:\.\d+)?)", v)
+            if m and not find_status(v):
+                firsts.add(Decimal(m.group(1)))
+    if firsts and min(firsts) < 1:
+        return []
+    out = []
+    page, dates = ref
+    for rc in tab.race_columns:
+        race_date = page.date_for(rc.date_text, url) or _date_lookup(dates, tab.fleet, rc.number)
+        if race_date is None:
+            continue
+        staged = []
+        for cells in tab.rows:
+            fleet = _irc_row(tab, cells, systems, rating_key, assume_irc)
+            if fleet is None:
                 continue
-            fleet_idx = col.get("fleet")
-            class_idx = col.get("class")
-            class_name = None
-            if fleet_idx is not None and fleet_idx < len(cells):
-                class_name = cells[fleet_idx].get_text(strip=True)
-            if not class_name and class_idx is not None and class_idx < len(cells):
-                class_name = cells[class_idx].get_text(strip=True)
-            if class_name:
-                class_counts[class_name] = class_counts.get(class_name, 0) + 1
-
-        # Track class place counters for series tables (rank may be within class)
-        class_place_counters: dict[str, int] = {}
-
-        # Second pass: parse results
-        for row in data_rows:
-            cells = row.find_all("td")
-            if not cells:
+            boat = _get(cells, f.get("boat"))
+            sail = _get(cells, f.get("sail"))
+            v = _get(cells, rc.index)
+            if not v or (not boat and not sail):
                 continue
-            if len(cells) < 3:
+            status = find_status(v)
+            if status == "DNC":
                 continue
-
-            def cell_text(key: str) -> str | None:
-                idx = col.get(key)
-                if idx is not None and idx < len(cells):
-                    t = cells[idx].get_text(strip=True)
-                    return t if t else None
-                return None
-
-            boat_name = cell_text("boat_name")
-            if not boat_name:
+            tcc = parse_tcc(_get(cells, rating_idx))
+            if tcc is None:
                 continue
-
-            sail_number = cell_text("sail_number")
-            class_name = cell_text("fleet") or cell_text("class")
-            boat_type = cell_text("boat_type")
-            skipper = cell_text("skipper")
-            club = cell_text("club")
-            rating_str = cell_text("rating")
-            rank_str = cell_text("rank")
-            elapsed_str = cell_text("elapsed")
-            corrected_str = cell_text("corrected")
-            points_str = cell_text("points") or cell_text("nett")
-
-            # Parse rating
-            rating = _safe_decimal(rating_str)
-
-            # Determine rating type
-            rating_type = None
-            if rating is not None:
-                if is_irc or (rating and Decimal("0.7") <= rating <= Decimal("1.5")):
-                    rating_type = "irc_tcc"
-                elif rating and rating > Decimal("100"):
-                    rating_type = "py"  # Portsmouth Yardstick
-                else:
-                    rating_type = "other"
-
-            # Parse position
-            place = _safe_int(rank_str)
-
-            # Detect status from points column or other indicators
-            status = "finished"
-            if points_str and _is_status_code(points_str):
-                status = points_str.strip().upper()
-                points_str = None
-            elif corrected_str and _is_status_code(corrected_str):
-                status = corrected_str.strip().upper()
-                corrected_str = None
-            elif elapsed_str and _is_status_code(elapsed_str):
-                status = elapsed_str.strip().upper()
-                elapsed_str = None
-
-            # For series tables, check nett column for DNC/DNF etc.
-            nett_str = cell_text("nett")
-            if nett_str and _is_status_code(nett_str):
-                status = nett_str.strip().upper()
-
-            # Parse times
-            elapsed = _parse_time(elapsed_str)
-            corrected = _parse_time(corrected_str)
-
-            # Class fleet info
-            class_fleet_size = class_counts.get(class_name) if class_name else None
-
-            # Build raw_data
+            m = re.match(r"^\(?\s*(\d+(?:\.\d+)?)", v)
+            if not m:
+                continue
+            # Points equal the finishing place only for a clean finish;
+            # penalties (ZFP/SCP/DPI) and redress (RDG) points do not.
+            place = int(Decimal(m.group(1))) if status is None else None
+            staged.append((fleet, cells, boat, sail, status, tcc, place, v))
+        sizes: dict[str, int] = {}
+        for s in staged:
+            sizes[s[0]] = sizes.get(s[0], 0) + 1
+        for fleet, cells, boat, sail, status, tcc, place, v in staged:
             raw = {
-                "boat_type": boat_type,
-                "skipper": skipper,
-                "club": club,
-                "rating_str": rating_str,
-                "headers": raw_headers,
+                "boat_name": boat or sail,
+                "sail_number": sail or None,
+                "design": _get(cells, f.get("design")) or None,
+                "helm": _get(cells, f.get("helm")) or None,
+                "club": _get(cells, f.get("club")) or None,
+                "points": v,
+                "discarded": v.startswith("(") or None,
+                "race_date": race_date.isoformat(),
+                "race_title": f"{rc.label} - {fleet} - {rc.date_text}",
+                "row_origin": "summary",
+                "rating_system": "IRC",
+                "series_place": _int_place(_get(cells, f.get("rank"))),
+                "series_nett": _get(cells, f.get("nett")) or None,
             }
-            if points_str:
-                raw["points"] = points_str
-            if is_series_table:
-                raw["table_type"] = "series_summary"
-            if is_race_table:
-                raw["table_type"] = "individual_race"
-
-            # Add avg speed if present
-            avg_speed = cell_text("avg_speed")
-            if avg_speed:
-                raw["avg_speed"] = avg_speed
-
-            # Sailwave metadata
-            if meta.get("sailwave_version"):
-                raw["sailwave_version"] = meta["sailwave_version"]
-
-            results.append(NormalizedResult(
-                boat_name=boat_name,
-                sail_number=sail_number,
-                event_name=event_name,
-                event_date=event_date,
-                organizing_club=organizing_club or club,
+            if status:
+                raw["status"] = status
+            out.append(NormalizedResult(
+                boat_name=boat or sail,
+                sail_number=sail or None,
+                event_name=name,
+                event_date=race_date,
+                event_series=series,
+                organizing_club=club,
                 event_type=event_type,
-                class_name=class_name,
+                race_name=rc.label,
+                race_number=rc.number,
                 place=place,
-                fleet_size=fleet_size,
-                class_fleet_size=class_fleet_size,
-                status=status,
-                rating_type=rating_type,
-                rating_value=rating,
-                elapsed_time=elapsed,
-                corrected_time=corrected,
-                source_url=source_url,
-                raw_data=raw,
+                fleet_size=sizes[fleet],
+                class_name=fleet or None,
+                class_place=place,
+                class_fleet_size=sizes[fleet],
+                status=_status_value(status),
+                rating_type="irc_tcc",
+                rating_value=tcc,
+                source_url=url,
+                raw_data={k: v2 for k, v2 in raw.items() if v2 is not None},
             ))
-
-    return results
+    return out
 
 
 # ---------------------------------------------------------------------------
-# Link discovery
+# Discovery helpers
 # ---------------------------------------------------------------------------
 
-def discover_sailwave_links(
-    html: str,
-    base_url: str,
-    pattern: str | None = None,
-) -> list[dict]:
-    """Discover Sailwave result file links from an index page.
 
-    Scans the page for links to .htm/.html files that are likely
-    Sailwave results.
+def parse_folder_index(html: str, base_url: str) -> list[tuple[str, datetime | None]]:
+    """sailwave.com/results/<folder>/ listing -> [(file url, uploaded at)].
 
-    Args:
-        html: HTML of the index/listing page.
-        base_url: Base URL for resolving relative links.
-        pattern: Optional regex to filter link hrefs.
-
-    Returns:
-        List of dicts with keys: url, text, filename.
+    Only .htm/.html files; sub-folders are not followed (each club folder is
+    its own seed).
     """
-    soup = BeautifulSoup(html, "html.parser")
-    links = []
+    out = []
     seen = set()
+    for m in re.finditer(
+        r"<p>\s*(\d{4}-\d{2}-\d{2})(?:\s+(\d{2}:\d{2}:\d{2}))?\s*<a\s+href=\"([^\"]+)\"", html, re.I
+    ):
+        href = m.group(3)
+        if not re.search(r"\.html?$", href, re.I):
+            continue
+        url = normalise_url(urljoin(base_url, href))
+        if url in seen:
+            continue
+        seen.add(url)
+        try:
+            ts = datetime.fromisoformat(f"{m.group(1)}T{m.group(2) or '00:00:00'}")
+        except ValueError:
+            ts = None
+        out.append((url, ts))
+    return out
 
+
+def normalise_url(url: str) -> str:
+    """https, percent-encoded path (Sailwave filenames contain spaces)."""
+    parts = urlsplit(url.strip())
+    scheme = "https" if parts.scheme in ("http", "https") else parts.scheme
+    path = quote(parts.path, safe="/%~._-()!*'&+,;=:@")
+    return urlunsplit((scheme, parts.netloc, path, parts.query, ""))
+
+
+def discover_sailwave_links(html: str, base_url: str, pattern: str | None = None) -> list[dict]:
+    """Links to .htm/.html files on a page (club results pages)."""
+    soup = BeautifulSoup(html, "html.parser")
+    links, seen = [], set()
     for a in soup.find_all("a", href=True):
-        href = a["href"]
-        text = a.get_text(strip=True)
-
-        # Resolve relative URLs
-        full_url = urljoin(base_url, href)
-
-        # Skip non-result links
-        if not re.search(r"\.(html?|php)(\?|$)", full_url, re.IGNORECASE):
-            # Also accept links with 'weblink.go' pattern (Joomla redirect)
-            if "weblink.go" not in href and "result" not in href.lower():
-                continue
-
-        # Apply optional filter
-        if pattern and not re.search(pattern, full_url, re.IGNORECASE):
+        full = urljoin(base_url, a["href"].strip())
+        if not re.search(r"\.html?($|\?)", full, re.I):
             continue
-
-        # De-duplicate
-        if full_url in seen:
+        if pattern and not re.search(pattern, full, re.I):
             continue
-        seen.add(full_url)
-
-        filename = href.split("/")[-1].split("?")[0]
-        links.append({
-            "url": full_url,
-            "text": text,
-            "filename": filename,
-        })
-
+        full = normalise_url(full)
+        if full in seen:
+            continue
+        seen.add(full)
+        links.append({"url": full, "text": a.get_text(strip=True),
+                      "filename": full.rsplit("/", 1)[-1]})
     return links
 
 
 def is_sailwave_html(html: str) -> bool:
-    """Detect whether an HTML string is Sailwave-generated output.
-
-    Checks for characteristic Sailwave signatures:
-    - "Sailwave Scoring Software" in the page
-    - CSS classes like .summarytable, .summaryrace
-    - Meta generator tag
-    """
     if not html:
         return False
-    # Fast string checks first
-    if "Sailwave Scoring Software" in html:
+    low = html.lower()
+    return ("sailwave scoring software" in low or "sailwave results" in low
+            or 'class="summarytable"' in low or 'class="racetable"' in low
+            or "summaryrace" in low)
+
+
+def page_mentions_irc(html: str) -> bool:
+    """Cheap pre-filter before a full parse."""
+    return bool(re.search(r"(?<![A-Za-z])IRC|TCC", html))
+
+
+# ---------------------------------------------------------------------------
+# Seeds and the RaceResultSource
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SailwaveSeed:
+    """One place Sailwave results are published.
+
+    url        folder listing (sailwave.com/results/<club>/), club page, or file
+    club       organising club stored on every row
+    source     race_results.source / register slug the rows belong to
+    series     optional event_series label (e.g. "Warsash Spring Series")
+    include    regex a file URL must match (applied to the decoded filename)
+    exclude    regex that drops a file
+    assume_irc treat fleets with no handicap-system token as IRC (only for
+               clubs whose keelboat fleets are IRC-only)
+    country    GB / IE (documentation; not stored)
+    """
+
+    url: str
+    club: str
+    source: str = SOURCE
+    series: str | None = None
+    include: str | None = None
+    exclude: str | None = None
+    assume_irc: bool = False
+    country: str = "GB"
+    note: str = ""
+
+    @property
+    def kind(self) -> str:
+        if re.search(r"\.html?$", urlsplit(self.url).path, re.I):
+            return "file"
+        if re.match(r"https?://(www\.)?sailwave\.com/results/", self.url, re.I) and self.url.endswith("/"):
+            return "folder"
+        return "page"
+
+    def wants(self, url: str) -> bool:
+        from urllib.parse import unquote
+
+        name = unquote(urlsplit(url).path.rsplit("/", 1)[-1])
+        if self.include and not re.search(self.include, name, re.I):
+            return False
+        if self.exclude and re.search(self.exclude, name, re.I):
+            return False
         return True
-    if "sailwave.com" in html.lower():
-        return True
-    if 'class="summarytable"' in html:
-        return True
-    if "summaryrace" in html:
-        return True
-    # Check meta generator
-    soup = BeautifulSoup(html[:2000], "html.parser")
-    meta = soup.find("meta", attrs={"name": "generator"})
-    if meta and "sailwave" in (meta.get("content", "") or "").lower():
-        return True
-    return False
+
+
+class DiscoveryError(RuntimeError):
+    """A seed that must list files listed none (site moved / blocked)."""
+
+
+class SailwaveSource(RaceResultSource):
+    """Discover + scrape Sailwave IRC results for a list of seeds."""
+
+    def __init__(self, seeds, *, source: str = SOURCE, client=None):
+        from irc_data.scrapers.polite_http import PoliteClient
+
+        self.seeds = list(seeds)
+        self._source = source
+        self.client = client or PoliteClient()
+        self.seed_errors: list[str] = []
+        self.seed_counts: dict[str, int] = {}
+
+    def source_name(self) -> str:
+        return self._source
+
+    def _listing(self, seed: SailwaveSeed) -> list[tuple[str, datetime | None]]:
+        if seed.kind == "file":
+            return [(normalise_url(seed.url), None)]
+        resp = self.client.get(seed.url)
+        if resp.status_code != 200:
+            raise DiscoveryError(f"{seed.url}: HTTP {resp.status_code}")
+        if seed.kind == "folder":
+            return parse_folder_index(resp.text, str(resp.url))
+        return [(l["url"], None) for l in discover_sailwave_links(resp.text, str(resp.url))]
+
+    def _last_modified(self, url: str) -> datetime | None:
+        try:
+            resp = self.client.get(url, method="HEAD")
+        except Exception:  # noqa: BLE001
+            return None
+        lm = resp.headers.get("last-modified")
+        if not lm:
+            return None
+        try:
+            return parsedate_to_datetime(lm).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            return None
+
+    async def discover_events(self, since: date | None = None) -> list[EventRef]:
+        from irc_data.scrapers.polite_http import SourceBlockedError
+
+        refs: list[EventRef] = []
+        seen: set[str] = set()
+        for seed in self.seeds:
+            try:
+                listing = self._listing(seed)
+            except SourceBlockedError:
+                raise
+            except Exception as e:  # noqa: BLE001
+                self.seed_errors.append(f"{seed.url}: {type(e).__name__}: {e}"[:300])
+                continue
+            wanted = [(u, ts) for u, ts in listing if seed.wants(u)]
+            self.seed_counts[seed.url] = len(wanted)
+            if not wanted:
+                self.seed_errors.append(f"{seed.url}: no result files found")
+                continue
+            for url, ts in wanted:
+                if url in seen:
+                    continue
+                if since is not None:
+                    if ts is None and seed.kind != "folder":
+                        ts = self._last_modified(url)
+                    if ts is not None and ts.date() < since:
+                        continue
+                seen.add(url)
+                refs.append(EventRef(
+                    source=seed.source,
+                    event_name=url.rsplit("/", 1)[-1],
+                    event_url=url,
+                    event_date=ts.date() if ts else None,
+                    organizing_club=seed.club,
+                    metadata={"seed": seed.url, "uploaded": ts.isoformat() if ts else None,
+                              "series": seed.series, "assume_irc": seed.assume_irc},
+                ))
+        return refs
+
+    def fetch_html(self, ref: EventRef) -> str | None:
+        """The page's HTML when it is a Sailwave page mentioning IRC, else None."""
+        resp = self.client.get(ref.event_url)
+        if resp.status_code != 200:
+            raise RuntimeError(f"HTTP {resp.status_code}")
+        html = _decode(resp)
+        if not is_sailwave_html(html) or not page_mentions_irc(html):
+            return None
+        return html
+
+    async def scrape_event(self, ref: EventRef) -> list[NormalizedResult]:
+        html = self.fetch_html(ref)
+        return self.rows_from(ref, html) if html else []
+
+    def rows_from(self, ref: EventRef, html: str, race_dates: dict | None = None) -> list[NormalizedResult]:
+        meta = ref.metadata or {}
+        rows = parse_sailwave_html(
+            html, source_url=ref.event_url, organizing_club=ref.organizing_club,
+            event_series=meta.get("series"), assume_irc=bool(meta.get("assume_irc")),
+            race_dates=race_dates,
+        )
+        for r in rows:
+            r.raw_data = dict(r.raw_data or {})
+            r.raw_data["seed_url"] = meta.get("seed")
+            if meta.get("uploaded"):
+                r.raw_data["uploaded"] = meta["uploaded"]
+        return rows
+
+
+def _decode(resp) -> str:
+    """Sailwave files are often windows-1252 without a charset header."""
+    ctype = resp.headers.get("content-type", "")
+    if "charset" in ctype.lower():
+        return resp.text
+    raw = resp.content
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("windows-1252", errors="replace")
+
+
+#: Back-compat: the register's adapter_class names this.
+SailwaveScraper = SailwaveSource
+
+
+# ---------------------------------------------------------------------------
+# Run (scheduled runner + backfill)
+# ---------------------------------------------------------------------------
+
+
+def dedupe_rows(rows: list[NormalizedResult]) -> tuple[list[NormalizedResult], int]:
+    """Keep one row per boat per race across files.
+
+    * Race-table rows beat summary rows for the same event/fleet/race.
+    * When two files publish the same race (re-uploads under a new name),
+      the most recently uploaded file wins.
+    """
+    def race_key(r):
+        return (r.event_name, _fleet_key(r.class_name or ""), r.race_number, r.event_date)
+
+    tabled = {}
+    for r in rows:
+        if (r.raw_data or {}).get("row_origin") == "race_table":
+            k = race_key(r)
+            cand = ((r.raw_data or {}).get("uploaded") or "", r.source_url or "")
+            if k not in tabled or cand > tabled[k]:
+                tabled[k] = cand
+    best_summary = {}
+    for r in rows:
+        if (r.raw_data or {}).get("row_origin") == "summary":
+            k = race_key(r)
+            up = (r.raw_data or {}).get("uploaded") or ""
+            if k not in best_summary or (up, r.source_url or "") > best_summary[k]:
+                best_summary[k] = (up, r.source_url or "")
+    out, dropped = [], 0
+    for r in rows:
+        k = race_key(r)
+        origin = (r.raw_data or {}).get("row_origin")
+        up = (r.raw_data or {}).get("uploaded") or ""
+        if origin == "race_table" and (up, r.source_url or "") != tabled[k]:
+            dropped += 1
+            continue
+        if origin == "summary" and (k in tabled or best_summary[k][1] != (r.source_url or "")):
+            dropped += 1
+            continue
+        out.append(r)
+    return out, dropped
+
+
+def _drop_races_already_tabled(engine, rows: list[NormalizedResult], source: str):
+    """Skip summary rows for races a race table already supplied in an earlier run."""
+    from sqlalchemy import text
+
+    summary = [r for r in rows if (r.raw_data or {}).get("row_origin") == "summary"]
+    if not summary:
+        return rows, 0
+    keys = {(r.event_name, r.class_name, r.race_number) for r in summary}
+    have = set()
+    with engine.connect() as conn:
+        for ev, cls, rn in keys:
+            hit = conn.execute(text(
+                "SELECT 1 FROM race_results WHERE source = :s AND event_name = :e "
+                "AND class_name IS NOT DISTINCT FROM :c AND race_number IS NOT DISTINCT FROM :r "
+                "AND raw_data->>'row_origin' = 'race_table' LIMIT 1"
+            ), {"s": source, "e": ev, "c": cls, "r": rn}).first()
+            if hit:
+                have.add((ev, cls, rn))
+    kept = [r for r in rows if not ((r.raw_data or {}).get("row_origin") == "summary"
+                                    and (r.event_name, r.class_name, r.race_number) in have)]
+    return kept, len(rows) - len(kept)
+
+
+def run(record: dict | None = None, *, source: str, seeds, since: date | None = None,
+        engine=None, store: bool = True) -> dict[str, Any]:
+    """Discover, scrape and persist Sailwave IRC results for ``seeds``.
+
+    Fails loudly when discovery is broken: every seed failing to list files,
+    or a seed whose listing came back empty, raises ``DiscoveryError`` (a
+    quiet period with no *new* files is fine; an empty listing is not).
+    """
+    import asyncio
+
+    from irc_data.db.operations import log_ingestion_end, log_ingestion_start
+    from irc_data.scrapers.result_import import store_normalized_results
+
+    seeds = list(seeds)
+    src = SailwaveSource(seeds, source=source)
+    try:
+        refs = asyncio.run(src.discover_events(since=since))
+        if src.seed_errors and len(src.seed_errors) >= len(seeds):
+            raise DiscoveryError(f"{source}: discovery failed for every seed: {src.seed_errors[:3]}")
+        empty = [e for e in src.seed_errors if e.endswith("no result files found")]
+        from irc_data.scrapers.polite_http import SourceBlockedError
+
+        file_errors: list[str] = []
+        pages: list[tuple[EventRef, str, SailwavePage]] = []
+        for ref in refs:
+            try:
+                html = src.fetch_html(ref)
+            except SourceBlockedError:
+                raise
+            except Exception as e:  # noqa: BLE001
+                file_errors.append(f"{ref.event_url}: {type(e).__name__}: {e}"[:300])
+                continue
+            if html:
+                pages.append((ref, html, parse_page(html)))
+        # Race tables often carry no date ("R9 - IRC 1"); the event's other
+        # files (summary column headers, dated race titles) supply it.
+        by_event: dict[str, list[dict]] = {}
+        for ref, _html, page in pages:
+            by_event.setdefault(page.event, []).append(page_race_dates(page, ref.event_url))
+        event_dates = {ev: merge_race_dates(maps) for ev, maps in by_event.items()}
+        rows: list[NormalizedResult] = []
+        files_with_irc = 0
+        for ref, html, page in pages:
+            got = src.rows_from(ref, html, event_dates.get(page.event))
+            if got:
+                files_with_irc += 1
+                rows.extend(got)
+    finally:
+        src.client.close()
+
+    rows, dup_dropped = dedupe_rows(rows)
+    stats: dict[str, Any] = {
+        "records_written": 0, "records_found": len(rows), "files": len(refs),
+        "files_with_irc": files_with_irc, "file_errors": len(file_errors),
+        "duplicates_dropped": dup_dropped, "seed_errors": src.seed_errors[:20],
+        "seed_files": src.seed_counts, "since": since.isoformat() if since else None,
+        "source": source, "http_requests": src.client.requests,
+    }
+    if file_errors:
+        stats["file_error_samples"] = file_errors[:10]
+    if store and rows:
+        if engine is None:
+            from irc_data.db.connection import get_engine
+
+            engine = get_engine()
+        rows, already = _drop_races_already_tabled(engine, rows, source)
+        stats["summary_rows_skipped_tabled"] = already
+        log_id = log_ingestion_start(engine, source, metadata={
+            "adapter": f"legacy-cli:{source}", "since": stats["since"]})
+        try:
+            stored = store_normalized_results(engine, rows, source=source, log=False, detail=True)
+        except Exception as e:
+            log_ingestion_end(engine, log_id, status="failed", records_found=len(rows),
+                              records_new=0, error_message=str(e)[:1000])
+            raise
+        errs = file_errors + stored["error_details"]
+        log_ingestion_end(engine, log_id,
+                          status="completed" if not errs else "completed_with_errors",
+                          records_found=len(rows), records_new=stored["written"],
+                          error_message="; ".join(errs)[:1000] if errs else None)
+        stats.update(records_written=stored["written"], upserted=stored["imported"],
+                     boats_matched_rows=stored["matched"], store_errors=stored["errors"])
+    if empty:
+        # Raised after storing so what was found is kept, but the run is red.
+        raise DiscoveryError(f"{source}: seeds listed no result files: {empty[:5]}; stats={stats}")
+    return stats

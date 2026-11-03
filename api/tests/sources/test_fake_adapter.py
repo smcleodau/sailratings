@@ -208,9 +208,10 @@ def test_policy_blocks_disabled_source():
 
 
 def test_registry_seeds_all_eleven_sources():
-    """The in-memory registry has exactly 11 sources (9 approved, 2 hold)."""
+    """The in-memory registry has 12 sources (10 approved incl. halsail since
+    2026-11-03, 2 hold)."""
     sources = get_in_memory_sources()
-    assert len(sources) == SEED_COUNT == 11
+    assert len(sources) == SEED_COUNT == 12
 
     slugs = {s.slug for s in sources}
     assert "sailsys" in slugs
@@ -224,7 +225,7 @@ def test_registry_seeds_all_eleven_sources():
     assert hold_slugs == set(HOLD_SOURCES) == {"clubspot", "kwindoo"}
 
     approved = [s for s in sources if s.legal_status == LegalStatus.APPROVED]
-    assert len(approved) == 9
+    assert len(approved) == 10
 
 
 # ---------------------------------------------------------------------------
