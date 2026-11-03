@@ -61,6 +61,7 @@ def _run(coro_fn, routes):
     (["", "PHS", "IRC", "Entrants"], [2]),
     (["", "ORC AP", "AMS Div1", "IRC  Div1", "Super40", "Entrants"], [3]),
     (["", "IRC TCC", "IRC Overall", "IRC 1", "ORCi"], [1, 2, 3]),
+    (["", "PHS", "ORC NS AP", "IRCNS", "IRC_NS", "IRC2"], [3, 4, 5]),
     (["", "Circuit", "PHS", "AMS"], []),
 ])
 def test_irc_column_indexes_accepts_header_variants(headers, expected):

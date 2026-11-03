@@ -294,6 +294,11 @@ TOPYACHT_CLUBS: dict[str, dict] = {
 }
 
 
+# "IRC", "IRC  Div1", "IRC TCC", "IRC1", "IRC_NS", "IRCNS" (non-spinnaker) —
+# but not words that merely contain the letters (e.g. "Circuit").
+_IRC_HEADER_RE = re.compile(r"(?<![A-Za-z])IRC(?:NS)?(?![A-Za-z])", re.I)
+
+
 def _safe_decimal(val: str) -> Decimal | None:
     if not val:
         return None
@@ -411,7 +416,7 @@ def parse_topyacht_html(
         caption_text = caption.get_text(strip=True) if caption else ""
 
         # Only process IRC result tables
-        is_irc = bool(re.search(r"\bIRC\b", caption_text, re.IGNORECASE))
+        is_irc = bool(_IRC_HEADER_RE.search(caption_text))
 
         # If no caption, check headers for AHC/IRC column as fallback
         if not caption_text:
@@ -538,6 +543,7 @@ def parse_topyacht_html(
                     "race_date": str(race_date) if race_date else None,
                     "status": status,
                     "bch": cell_texts[col_map["bch"]] if "bch" in col_map else None,
+                    "caption": " ".join(caption_text.split()) or None,
                 },
             )
             results.append(result)
@@ -588,13 +594,10 @@ async def discover_series_from_index(
     return series_list
 
 
-_IRC_HEADER_RE = re.compile(r"\bIRC\b", re.I)
-
-
 def irc_column_indexes(headers: list[str]) -> list[int]:
     """Indexes of IRC-scored columns in a series.htm header row.
 
-    Clubs label them "IRC", "IRC  Div1", "IRC TCC", "IRC Overall", "IRC 1"…
+    Clubs label them "IRC", "IRC  Div1", "IRC TCC", "IRC Overall", "IRCNS"…
     — an exact "IRC" match silently dropped Festival of Sails and similar
     multi-division regattas.
     """
@@ -1043,9 +1046,10 @@ async def scrape_results_url(client, url: str, since: date | None = None,
     seen = seen if seen is not None else set()
     results: list[RaceResult] = []
     for s_url in await resolve_series_urls(client, url, since=since):
-        if s_url in seen:
+        key = s_url.split("://", 1)[-1]  # http/https copies of the same page
+        if key in seen:
             continue
-        seen.add(s_url)
+        seen.add(key)
         if _PUBLICRESULTS_RE.search(s_url):
             for ser in await publicresults_series(client, s_url):
                 key = f"topyacht.net-series:{ser['series_id']}"
@@ -1073,7 +1077,7 @@ async def scrape_events_directory(since: date | None = None, years: set[int] | N
     if not years:
         first = min(since.year, today.year - 1) if since else today.year - 1
         years = set(range(first, today.year + 2))
-    seen = set(skip_series or ())
+    seen = {u.split("://", 1)[-1] for u in skip_series or ()}
     roots_done: set[str] = set()
     all_results: list[RaceResult] = []
     async with get_http_client() as client:
