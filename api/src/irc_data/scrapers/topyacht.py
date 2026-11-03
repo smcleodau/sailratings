@@ -26,6 +26,7 @@ from email.utils import parsedate_to_datetime
 from decimal import Decimal, InvalidOperation
 from urllib.parse import parse_qs, urljoin, urlparse
 
+import httpx
 from bs4 import BeautifulSoup
 
 from irc_data.parsers.schemas import RaceResult
@@ -789,6 +790,24 @@ def _modified_before(resp, since: date | None) -> bool:
         return False
 
 
+async def _fetch_club_page(client, url: str):
+    """Like ``_fetch`` but keeps a 404 page's body.
+
+    Directory Results links often point at a club page that has since moved
+    (byc.org.au/current-race-results/, ryct.org.au/sailing/results/); the
+    club's 404 page still carries its site navigation, whose "Results" links
+    lead to the current pages.
+    """
+    try:
+        return await fetch_with_retry(client, url, rate_limiter=rate_limiter, max_retries=1)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404 and "html" in e.response.headers.get("content-type", ""):
+            return e.response
+        return None
+    except Exception:
+        return None
+
+
 def _stale_url(url: str, since: date | None) -> bool:
     """URL names only seasons that ended before ``since`` (e.g. .../2019/...)."""
     if not since:
@@ -822,7 +841,7 @@ async def resolve_series_urls(client, url: str, since: date | None = None,
             if page_url not in out:
                 out.append(page_url)
             continue
-        resp = await _fetch(client, page_url)
+        resp = await (_fetch_club_page(client, page_url) if hop == 0 else _fetch(client, page_url))
         fetched += 1
         if resp is None:
             continue

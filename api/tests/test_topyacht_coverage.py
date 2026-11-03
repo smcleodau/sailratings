@@ -169,3 +169,13 @@ def test_publicresults_since_cutoff_drops_old_races():
     }
     rows, _ = _run(lambda c: ty.scrape_publicresults_series(c, "1205", since=date(2026, 10, 1)), routes)
     assert rows == []
+
+
+def test_resolve_follows_results_nav_on_moved_club_page():
+    moved = ('<nav><a href="/racing/">Results 2026-27</a></nav>'
+             '<a href="https://topyacht.net/publicresults/SeriesIndex?seriesId=1267">CC Midweek</a>')
+    routes = {"byc.example/current-race-results/": (404, moved),
+              "byc.example/racing/": '<a href="https://topyacht.net/publicresults/SeriesIndex?seriesId=1400">Overnight</a>'}
+    out, _ = _run(lambda c: ty.resolve_series_urls(c, "https://byc.example/current-race-results/"), routes)
+    assert out == ["https://topyacht.net/publicresults/SeriesIndex?seriesId=1267",
+                   "https://topyacht.net/publicresults/SeriesIndex?seriesId=1400"]
