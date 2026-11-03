@@ -389,114 +389,182 @@ def _run_topyacht(record: Mapping[str, Any]) -> Mapping[str, Any]:
     }
 
 
-def _run_isora(record: Mapping[str, Any]) -> Mapping[str, Any]:
-    """ISORA results (legacy ``scrape results --source isora``)."""
+def _record_since(record: Mapping[str, Any]) -> "date | None":
+    """Operator override: ``record["since"]`` as an ISO date (backfills)."""
+    from datetime import date
+
+    value = record.get("since") if record else None
+    return date.fromisoformat(str(value)) if value else None
+
+
+def _run_event_source(
+    record: Mapping[str, Any],
+    *,
+    slug: str,
+    source: str,
+    make_source: Callable[[], Any],
+    include_class_name: bool = False,
+) -> dict[str, Any]:
+    """Discover → scrape → persist for a DP-01 ``RaceResultSource``.
+
+    Until Nov 2026 the isora/rhkyc/sailracehq/rorc/sydney-hobart/cowesweek/
+    yachtscoring runners scraped every event and then returned
+    ``records_written: 0`` without persisting anything (the same bug fixed
+    for sailsys/topyacht in Oct 2026): every scheduled "success" threw its
+    results away. Results now go through
+    :func:`~irc_data.scrapers.result_import.store_normalized_results`, the
+    exact per-row loop the CLI's ``scrape results --source <x> --store``
+    uses, under the same ``race_results.source`` value (``source`` — note
+    the register slug ``sydney-hobart`` stores as ``sydneyhobart``).
+
+    * ``since`` is ``record["since"]`` if given, else the last successful
+      run minus a 14-day lookback (results are filtered by race/event date
+      and are often posted late). Most of these scrapers filter by season
+      year, so a run re-reads the current season; re-runs are idempotent
+      because ``upsert_race_result`` returns the existing row for an
+      already-stored entry+race.
+    * Each event is persisted as soon as it is scraped, so a run that dies
+      part-way keeps what it already fetched; one failing event is recorded
+      and skipped rather than discarding the run (the run fails only if
+      every event failed).
+    * ``records_written`` is the real number of new rows (row-count delta),
+      not the number of upsert calls.
+    """
     import asyncio
 
+    from irc_data.db.connection import get_engine
+    from irc_data.db.operations import log_ingestion_end, log_ingestion_start
+    from irc_data.scrapers.result_import import store_normalized_results
+
+    since = _record_since(record) or _last_successful_run_since(slug, lookback_days=14)
+    src = make_source()
+    events = asyncio.run(src.discover_events(since=since)) or []
+
+    engine = get_engine()
+    log_id = log_ingestion_start(engine, source, metadata={"adapter": f"legacy-cli:{slug}", "since": str(since) if since else None})
+    found = written = matched = store_errors = events_with_results = 0
+    newest = None
+    event_errors: list[str] = []
+    store_error_details: list[str] = []
+    try:
+        for event in events:
+            try:
+                rows = asyncio.run(src.scrape_event(event)) or []
+            except Exception as e:  # one broken event must not discard the run
+                event_errors.append(f"{event.event_name}: {type(e).__name__}: {e}"[:300])
+                continue
+            if not rows:
+                continue
+            events_with_results += 1
+            found += len(rows)
+            dates = [r.event_date for r in rows if r.event_date]
+            if dates:
+                newest = max([newest, *dates]) if newest else max(dates)
+            stats = store_normalized_results(
+                engine, rows, source=source, include_class_name=include_class_name, log=False,
+            )
+            written += stats["written"]
+            matched += stats["matched"]
+            store_errors += stats["errors"]
+            store_error_details.extend(stats["error_details"][: max(0, 20 - len(store_error_details))])
+        if events and len(event_errors) == len(events):
+            raise RuntimeError(
+                f"{slug}: all {len(events)} events failed to scrape; first: {event_errors[0]}"
+            )
+    except Exception as e:
+        log_ingestion_end(engine, log_id, status="failed", records_found=found,
+                          records_new=written, error_message=str(e)[:1000])
+        raise
+    errors = event_errors + store_error_details
+    log_ingestion_end(
+        engine, log_id,
+        status="completed" if not errors else "completed_with_errors",
+        records_found=found,
+        records_new=written,
+        error_message="; ".join(errors)[:1000] if errors else None,
+    )
+    return {
+        "records_written": written,
+        "records_found": found,
+        "events": len(events),
+        "events_with_results": events_with_results,
+        "event_errors": len(event_errors),
+        "store_errors": store_errors,
+        "boats_matched_rows": matched,
+        "newest_event_date": str(newest) if newest else None,
+        "since": str(since) if since else None,
+        "source": source,
+    }
+
+
+def _run_isora(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """ISORA results (legacy ``scrape results --source isora --store``)."""
     from irc_data.scrapers.isora import ISORASource
 
-    src = ISORASource()
-    events = asyncio.run(src.discover_events())
-    total = 0
-    for event in events:
-        event_results = asyncio.run(src.scrape_event(event)) or []
-        total += len(event_results)
-    return {"records_written": 0, "records_found": total, "events": len(events)}
+    return _run_event_source(record, slug="isora", source="isora",
+                             make_source=ISORASource, include_class_name=True)
 
 
 def _run_rhkyc(record: Mapping[str, Any]) -> Mapping[str, Any]:
-    """RHKYC results (legacy ``scrape results --source rhkyc``)."""
-    import asyncio
-
+    """RHKYC results (legacy ``scrape results --source rhkyc --store``)."""
     from irc_data.scrapers.legacy.rhkyc import RHKYCSource
 
-    src = RHKYCSource()
-    events = asyncio.run(src.discover_events())
-    total = 0
-    for event in events:
-        event_results = asyncio.run(src.scrape_event(event)) or []
-        total += len(event_results)
-    return {"records_written": 0, "records_found": total, "events": len(events)}
+    return _run_event_source(record, slug="rhkyc", source="rhkyc",
+                             make_source=RHKYCSource, include_class_name=True)
 
 
 def _run_sailracehq(record: Mapping[str, Any]) -> Mapping[str, Any]:
-    """SailRaceHQ results (legacy ``scrape results --source sailracehq``)."""
-    import asyncio
-
+    """SailRaceHQ / RORC 2023+ results (legacy ``scrape results --source sailracehq --store``)."""
     from irc_data.scrapers.sailracehq import SailRaceHQSource
 
-    src = SailRaceHQSource()
-    events = asyncio.run(src.discover_events())
-    total = 0
-    for event in events:
-        event_results = asyncio.run(src.scrape_event(event)) or []
-        total += len(event_results)
-    return {"records_written": 0, "records_found": total, "events": len(events)}
+    return _run_event_source(record, slug="sailracehq", source="sailracehq",
+                             make_source=SailRaceHQSource)
 
 
 def _run_rorc(record: Mapping[str, Any]) -> Mapping[str, Any]:
-    """RORC results (register pointed at a nonexistent ``RORCScraper``;
-    the real class is ``RORCSource`` — same DP-01 SDK pattern as isora/
-    rhkyc/sailracehq, just never wired into this registry)."""
-    import asyncio
+    """RORC static-HTML results archive, 2007-2022 (legacy ``scrape results --source rorc --store``).
 
+    RORC moved to SailRaceHQ in 2023 (the ``sailracehq`` source), so with an
+    incremental ``since`` in 2023+ this correctly finds nothing; it only
+    returns rows for an explicit archive backfill (``record["since"]``).
+    """
     from irc_data.scrapers.rorc import RORCSource
 
-    src = RORCSource()
-    events = asyncio.run(src.discover_events())
-    total = 0
-    for event in events:
-        event_results = asyncio.run(src.scrape_event(event)) or []
-        total += len(event_results)
-    return {"records_written": 0, "records_found": total, "events": len(events)}
+    return _run_event_source(record, slug="rorc", source="rorc", make_source=RORCSource)
 
 
 def _run_sydneyhobart(record: Mapping[str, Any]) -> Mapping[str, Any]:
-    """Sydney Hobart results (register pointed at a nonexistent
-    ``SydneyHobartScraper``; the real class is ``SydneyHobartSource``)."""
-    import asyncio
+    """Sydney Hobart results (legacy ``scrape results --source sydneyhobart --store``).
 
+    Register slug ``sydney-hobart``; rows are stored as ``source='sydneyhobart'``
+    like every existing row and the CLI.
+    """
     from irc_data.scrapers.sydneyhobart import SydneyHobartSource
 
-    src = SydneyHobartSource()
-    events = asyncio.run(src.discover_events())
-    total = 0
-    for event in events:
-        event_results = asyncio.run(src.scrape_event(event)) or []
-        total += len(event_results)
-    return {"records_written": 0, "records_found": total, "events": len(events)}
+    return _run_event_source(record, slug="sydney-hobart", source="sydneyhobart",
+                             make_source=SydneyHobartSource)
 
 
 def _run_cowesweek(record: Mapping[str, Any]) -> Mapping[str, Any]:
-    """Cowes Week results (register pointed at a nonexistent
-    ``CowesWeekScraper``; the real class is ``CowesWeekSource``)."""
-    import asyncio
-
+    """Cowes Week results (legacy ``scrape results --source cowesweek --store``)."""
     from irc_data.scrapers.cowesweek import CowesWeekSource
 
-    src = CowesWeekSource()
-    events = asyncio.run(src.discover_events())
-    total = 0
-    for event in events:
-        event_results = asyncio.run(src.scrape_event(event)) or []
-        total += len(event_results)
-    return {"records_written": 0, "records_found": total, "events": len(events)}
+    return _run_event_source(record, slug="cowesweek", source="cowesweek",
+                             make_source=CowesWeekSource, include_class_name=True)
 
 
 def _run_yachtscoring(record: Mapping[str, Any]) -> Mapping[str, Any]:
-    """YachtScoring results (register pointed at a nonexistent
-    ``YachtScoringScraper``; the real class is ``YachtScoringSource``)."""
-    import asyncio
+    """YachtScoring results (no CLI ``--store`` path ever existed).
 
+    ``YachtScoringSource`` only scrapes event ids it is given, so a run
+    without ``record["event_ids"]`` discovers nothing.
+    """
     from irc_data.scrapers.yachtscoring import YachtScoringSource
 
-    src = YachtScoringSource()
-    events = asyncio.run(src.discover_events())
-    total = 0
-    for event in events:
-        event_results = asyncio.run(src.scrape_event(event)) or []
-        total += len(event_results)
-    return {"records_written": 0, "records_found": total, "events": len(events)}
+    event_ids = [int(i) for i in (record.get("event_ids") or [])]
+    return _run_event_source(record, slug="yachtscoring", source="yachtscoring",
+                             make_source=lambda: YachtScoringSource(event_ids=event_ids),
+                             include_class_name=True)
 
 
 def _run_manage2sail(record: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -546,11 +614,25 @@ def _run_cert_parse(record: Mapping[str, Any]) -> Mapping[str, Any]:
 
     Legacy: ``parse-certs``.
     """
-    from irc_data.config import CERTIFICATES_DIR
-    from irc_data.parsers.certificate_pdf import parse_all_certificates
+    from sqlalchemy import text
 
-    parsed = parse_all_certificates(CERTIFICATES_DIR)
-    return {"records_written": 0, "records_found": len(parsed or [])}
+    from irc_data.cli import cli
+    from irc_data.config import CERTIFICATES_DIR
+    from irc_data.db.connection import get_engine
+
+    # Same throw-away bug as the results runners: this parsed every PDF and
+    # discarded the parse (records_written hardcoded 0). Run the CLI's own
+    # parse-certs (which upserts each certificate on cert_number) and report
+    # the real number of new certificate rows.
+    engine = get_engine()
+    count = text("SELECT count(*) FROM certificates")
+    with engine.connect() as conn:
+        before = int(conn.execute(count).scalar() or 0)
+    cli.main(args=["parse-certs"], standalone_mode=False)
+    with engine.connect() as conn:
+        after = int(conn.execute(count).scalar() or 0)
+    pdfs = len(list(CERTIFICATES_DIR.glob("*.pdf"))) if CERTIFICATES_DIR.exists() else 0
+    return {"records_written": after - before, "records_found": pdfs}
 
 
 def _run_wayback_certs(record: Mapping[str, Any]) -> Mapping[str, Any]:

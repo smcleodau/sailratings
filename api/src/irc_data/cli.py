@@ -729,17 +729,9 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
     engine = ctx.obj["engine"]
     results = []
 
-    # Helper used by every source-specific upsert below — inject the matching
-    # signals into raw_data so rematch passes can find a boat later.
-    def _enrich_raw_data(r):
-        rd = dict(r.raw_data) if getattr(r, "raw_data", None) else {}
-        bname = getattr(r, "boat_name", None)
-        sn = getattr(r, "sail_number", None)
-        if bname and "boat_name" not in rd:
-            rd["boat_name"] = bname
-        if sn and "sail_number" not in rd:
-            rd["sail_number"] = sn
-        return rd
+    # rorc / sydneyhobart / isora / cowesweek / rhkyc / sailracehq persist via
+    # result_import.store_normalized_results (shared with the scheduled
+    # legacy adapters in irc_data.temporal.legacy_adapters).
 
     if source == "manage2sail":
         from datetime import date as date_type
@@ -876,38 +868,12 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
                 console.print(f"  {event.event_name}: {len(event_results)} results")
 
         if store and all_results:
-            from irc_data.scrapers.result_import import _find_boat_by_name
-            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
-            from irc_data.matching.identity import normalize_sail
+            from irc_data.scrapers.result_import import store_normalized_results
 
-            log_id = log_ingestion_start(engine, "rorc")
-            imported = matched = 0
-            for r in all_results:
-                boat_id = None
-                if r.sail_number:
-                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
-                if not boat_id:
-                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
-                if boat_id:
-                    matched += 1
-                try:
-                    upsert_race_result(
-                        engine, boat_id=boat_id,
-                        event_name=r.event_name, event_date=r.event_date,
-                        race_name=r.race_name, event_series=r.event_series,
-                        organizing_club=r.organizing_club, event_type=r.event_type,
-                        source="rorc", source_url=r.source_url,
-                        rating_type=r.rating_type, rating_value=r.rating_value,
-                        place=r.place, fleet_size=r.fleet_size,
-                        status=r.status, raw_data=_enrich_raw_data(r),
-                    )
-                    imported += 1
-                except Exception as e:
-                    if imported < 3:
-                        console.print(f"    [yellow]Error: {e}[/yellow]")
-
-            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
-            console.print(f"\n[green]RORC: {imported} results stored ({matched} matched to boats)[/green]")
+            stats = store_normalized_results(engine, all_results, source="rorc", include_class_name=False)
+            for err in stats["error_details"][:3]:
+                console.print(f"    [yellow]Error: {err}[/yellow]")
+            console.print(f"\n[green]RORC: {stats['imported']} results stored ({stats['written']} new, {stats['matched']} matched to boats)[/green]")
         elif all_results:
             console.print(f"\n[green]Found {len(all_results)} RORC results (not stored, use --store)[/green]")
         return
@@ -934,38 +900,12 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
                 console.print(f"  {event.event_name}: {len(event_results)} results")
 
         if store and all_results:
-            from irc_data.scrapers.result_import import _find_boat_by_name
-            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
-            from irc_data.matching.identity import normalize_sail
+            from irc_data.scrapers.result_import import store_normalized_results
 
-            log_id = log_ingestion_start(engine, "sydneyhobart")
-            imported = matched = 0
-            for r in all_results:
-                boat_id = None
-                if r.sail_number:
-                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
-                if not boat_id:
-                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
-                if boat_id:
-                    matched += 1
-                try:
-                    upsert_race_result(
-                        engine, boat_id=boat_id,
-                        event_name=r.event_name, event_date=r.event_date,
-                        race_name=r.race_name, event_series=r.event_series,
-                        organizing_club=r.organizing_club, event_type=r.event_type,
-                        source="sydneyhobart", source_url=r.source_url,
-                        rating_type=r.rating_type, rating_value=r.rating_value,
-                        place=r.place, fleet_size=r.fleet_size,
-                        status=r.status, raw_data=_enrich_raw_data(r),
-                    )
-                    imported += 1
-                except Exception as e:
-                    if imported < 3:
-                        console.print(f"    [yellow]Error: {e}[/yellow]")
-
-            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
-            console.print(f"\n[green]Sydney Hobart: {imported} results stored ({matched} matched to boats)[/green]")
+            stats = store_normalized_results(engine, all_results, source="sydneyhobart", include_class_name=False)
+            for err in stats["error_details"][:3]:
+                console.print(f"    [yellow]Error: {err}[/yellow]")
+            console.print(f"\n[green]Sydney Hobart: {stats['imported']} results stored ({stats['written']} new, {stats['matched']} matched to boats)[/green]")
         elif all_results:
             console.print(f"\n[green]Found {len(all_results)} Sydney Hobart results (not stored, use --store)[/green]")
         return
@@ -988,39 +928,12 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
                 console.print(f"  {event.event_name}: {len(event_results)} results")
 
         if store and all_results:
-            from irc_data.scrapers.result_import import _find_boat_by_name
-            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
-            from irc_data.matching.identity import normalize_sail
+            from irc_data.scrapers.result_import import store_normalized_results
 
-            log_id = log_ingestion_start(engine, "isora")
-            imported = matched = 0
-            for r in all_results:
-                boat_id = None
-                if r.sail_number:
-                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
-                if not boat_id:
-                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
-                if boat_id:
-                    matched += 1
-                try:
-                    upsert_race_result(
-                        engine, boat_id=boat_id,
-                        event_name=r.event_name, event_date=r.event_date,
-                        race_name=r.race_name, event_series=r.event_series,
-                        organizing_club=r.organizing_club, event_type=r.event_type,
-                        source="isora", source_url=r.source_url,
-                        rating_type=r.rating_type, rating_value=r.rating_value,
-                        place=r.place, fleet_size=r.fleet_size,
-                        class_name=r.class_name,
-                        status=r.status, raw_data=_enrich_raw_data(r),
-                    )
-                    imported += 1
-                except Exception as e:
-                    if imported < 3:
-                        console.print(f"    [yellow]Error: {e}[/yellow]")
-
-            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
-            console.print(f"\n[green]ISORA: {imported} results stored ({matched} matched to boats)[/green]")
+            stats = store_normalized_results(engine, all_results, source="isora", include_class_name=True)
+            for err in stats["error_details"][:3]:
+                console.print(f"    [yellow]Error: {err}[/yellow]")
+            console.print(f"\n[green]ISORA: {stats['imported']} results stored ({stats['written']} new, {stats['matched']} matched to boats)[/green]")
         elif all_results:
             irc_count = sum(1 for r in all_results if r.rating_value)
             console.print(f"\n[green]Found {len(all_results)} ISORA results ({irc_count} with IRC ratings)[/green]")
@@ -1049,39 +962,12 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
                 console.print(f"  {event.event_name}: {len(event_results)} results")
 
         if store and all_results:
-            from irc_data.scrapers.result_import import _find_boat_by_name
-            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
-            from irc_data.matching.identity import normalize_sail
+            from irc_data.scrapers.result_import import store_normalized_results
 
-            log_id = log_ingestion_start(engine, "cowesweek")
-            imported = matched = 0
-            for r in all_results:
-                boat_id = None
-                if r.sail_number:
-                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
-                if not boat_id:
-                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
-                if boat_id:
-                    matched += 1
-                try:
-                    upsert_race_result(
-                        engine, boat_id=boat_id,
-                        event_name=r.event_name, event_date=r.event_date,
-                        race_name=r.race_name, event_series=r.event_series,
-                        organizing_club=r.organizing_club, event_type=r.event_type,
-                        source="cowesweek", source_url=r.source_url,
-                        rating_type=r.rating_type, rating_value=r.rating_value,
-                        place=r.place, fleet_size=r.fleet_size,
-                        class_name=r.class_name,
-                        status=r.status, raw_data=_enrich_raw_data(r),
-                    )
-                    imported += 1
-                except Exception as e:
-                    if imported < 3:
-                        console.print(f"    [yellow]Error: {e}[/yellow]")
-
-            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
-            console.print(f"\n[green]Cowes Week: {imported} results stored ({matched} matched to boats)[/green]")
+            stats = store_normalized_results(engine, all_results, source="cowesweek", include_class_name=True)
+            for err in stats["error_details"][:3]:
+                console.print(f"    [yellow]Error: {err}[/yellow]")
+            console.print(f"\n[green]Cowes Week: {stats['imported']} results stored ({stats['written']} new, {stats['matched']} matched to boats)[/green]")
         elif all_results:
             irc_count = sum(1 for r in all_results if r.rating_value)
             console.print(f"\n[green]Found {len(all_results)} Cowes Week results ({irc_count} with IRC ratings)[/green]")
@@ -1110,39 +996,12 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
                 console.print(f"  {event.event_name}: {len(event_results)} results")
 
         if store and all_results:
-            from irc_data.scrapers.result_import import _find_boat_by_name
-            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
-            from irc_data.matching.identity import normalize_sail
+            from irc_data.scrapers.result_import import store_normalized_results
 
-            log_id = log_ingestion_start(engine, "rhkyc")
-            imported = matched = 0
-            for r in all_results:
-                boat_id = None
-                if r.sail_number:
-                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
-                if not boat_id:
-                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
-                if boat_id:
-                    matched += 1
-                try:
-                    upsert_race_result(
-                        engine, boat_id=boat_id,
-                        event_name=r.event_name, event_date=r.event_date,
-                        race_name=r.race_name, event_series=r.event_series,
-                        organizing_club=r.organizing_club, event_type=r.event_type,
-                        source="rhkyc", source_url=r.source_url,
-                        rating_type=r.rating_type, rating_value=r.rating_value,
-                        place=r.place, fleet_size=r.fleet_size,
-                        class_name=r.class_name,
-                        status=r.status, raw_data=_enrich_raw_data(r),
-                    )
-                    imported += 1
-                except Exception as e:
-                    if imported < 3:
-                        console.print(f"    [yellow]Error: {e}[/yellow]")
-
-            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
-            console.print(f"\n[green]RHKYC: {imported} results stored ({matched} matched to boats)[/green]")
+            stats = store_normalized_results(engine, all_results, source="rhkyc", include_class_name=True)
+            for err in stats["error_details"][:3]:
+                console.print(f"    [yellow]Error: {err}[/yellow]")
+            console.print(f"\n[green]RHKYC: {stats['imported']} results stored ({stats['written']} new, {stats['matched']} matched to boats)[/green]")
         elif all_results:
             irc_count = sum(1 for r in all_results if r.rating_value)
             console.print(f"\n[green]Found {len(all_results)} RHKYC results ({irc_count} with IRC ratings)[/green]")
@@ -1176,38 +1035,12 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
                 console.print(f"    [red]Error: {e}[/red]")
 
         if store and all_results:
-            from irc_data.scrapers.result_import import _find_boat_by_name
-            from irc_data.db.operations import find_boat_by_sail_number, upsert_race_result, log_ingestion_start, log_ingestion_end
-            from irc_data.matching.identity import normalize_sail
+            from irc_data.scrapers.result_import import store_normalized_results
 
-            log_id = log_ingestion_start(engine, "sailracehq")
-            imported = matched = 0
-            for r in all_results:
-                boat_id = None
-                if r.sail_number:
-                    boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
-                if not boat_id:
-                    boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
-                if boat_id:
-                    matched += 1
-                try:
-                    upsert_race_result(
-                        engine, boat_id=boat_id,
-                        event_name=r.event_name, event_date=r.event_date,
-                        race_name=r.race_name, event_series=r.event_series,
-                        organizing_club=r.organizing_club, event_type=r.event_type,
-                        source="sailracehq", source_url=r.source_url,
-                        rating_type=r.rating_type, rating_value=r.rating_value,
-                        place=r.place, fleet_size=r.fleet_size,
-                        status=r.status, raw_data=_enrich_raw_data(r),
-                    )
-                    imported += 1
-                except Exception as e:
-                    if imported < 3:
-                        console.print(f"    [yellow]Error: {e}[/yellow]")
-
-            log_ingestion_end(engine, log_id, records_found=len(all_results), records_new=imported)
-            console.print(f"\n[green]SailRaceHQ: {imported} results stored ({matched} matched to boats)[/green]")
+            stats = store_normalized_results(engine, all_results, source="sailracehq", include_class_name=False)
+            for err in stats["error_details"][:3]:
+                console.print(f"    [yellow]Error: {err}[/yellow]")
+            console.print(f"\n[green]SailRaceHQ: {stats['imported']} results stored ({stats['written']} new, {stats['matched']} matched to boats)[/green]")
         elif all_results:
             irc_count = sum(1 for r in all_results if r.rating_value)
             console.print(f"\n[green]Found {len(all_results)} SailRaceHQ results ({irc_count} with IRC ratings)[/green]")

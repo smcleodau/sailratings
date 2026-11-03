@@ -326,3 +326,90 @@ def import_scraper_results(
     )
 
     return stats
+
+
+def count_source_rows(engine: Engine, source: str) -> int:
+    """Number of race_results rows stored under ``source``."""
+    with engine.connect() as conn:
+        return int(
+            conn.execute(
+                text("SELECT count(*) FROM race_results WHERE source = :s"), {"s": source}
+            ).scalar()
+            or 0
+        )
+
+
+def store_normalized_results(
+    engine: Engine,
+    results: list,
+    source: str,
+    include_class_name: bool = False,
+    log: bool = True,
+) -> dict:
+    """Persist ``NormalizedResult`` rows the way ``scrape results --store`` always has.
+
+    This is the per-row loop the CLI used for rorc, sydneyhobart, isora,
+    cowesweek, rhkyc and sailracehq (match by sail number, then by name+TCC,
+    then ``upsert_race_result``), now shared with the scheduled legacy
+    adapters. ``include_class_name`` is True for the sources whose CLI path
+    stored ``class_name`` (isora, cowesweek, rhkyc).
+
+    ``upsert_race_result`` returns the existing id when an entry+race is
+    already stored, so ``imported`` counts successful upserts while
+    ``written`` is the real number of new rows (source row-count delta).
+
+    ``log=False`` skips the ``ingestion_log`` row, for callers that store in
+    batches and log the run once themselves.
+    """
+    stats = {"total": len(results), "imported": 0, "written": 0, "matched": 0,
+             "errors": 0, "error_details": []}
+    if not results:
+        return stats
+
+    before = count_source_rows(engine, source)
+    log_id = log_ingestion_start(engine, source) if log else None
+    for r in results:
+        boat_id = None
+        if r.sail_number:
+            boat_id = find_boat_by_sail_number(engine, normalize_sail(r.sail_number))
+        if not boat_id:
+            boat_id = _find_boat_by_name(engine, r.boat_name, r.rating_value)
+        if boat_id:
+            stats["matched"] += 1
+
+        # Inject the matching signals so rematch passes can find a boat later.
+        raw = dict(r.raw_data) if r.raw_data else {}
+        if r.boat_name and "boat_name" not in raw:
+            raw["boat_name"] = r.boat_name
+        if r.sail_number and "sail_number" not in raw:
+            raw["sail_number"] = r.sail_number
+
+        extra = {"class_name": r.class_name} if include_class_name else {}
+        try:
+            upsert_race_result(
+                engine, boat_id=boat_id,
+                event_name=r.event_name, event_date=r.event_date,
+                race_name=r.race_name, event_series=r.event_series,
+                organizing_club=r.organizing_club, event_type=r.event_type,
+                source=source, source_url=r.source_url,
+                rating_type=r.rating_type, rating_value=r.rating_value,
+                place=r.place, fleet_size=r.fleet_size,
+                status=r.status, raw_data=raw,
+                **extra,
+            )
+            stats["imported"] += 1
+        except Exception as e:
+            stats["errors"] += 1
+            if len(stats["error_details"]) < 20:
+                stats["error_details"].append(f"{r.boat_name}: {type(e).__name__}: {e}")
+
+    stats["written"] = count_source_rows(engine, source) - before
+    if log_id is not None:
+        log_ingestion_end(
+            engine, log_id,
+            status="completed" if not stats["errors"] else "completed_with_errors",
+            records_found=stats["total"],
+            records_new=stats["written"],
+            error_message=("; ".join(stats["error_details"])[:1000] if stats["errors"] else None),
+        )
+    return stats
