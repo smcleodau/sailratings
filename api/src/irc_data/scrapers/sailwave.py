@@ -598,7 +598,18 @@ def _date_lookup(dates: dict, fleet: str, number: int | None):
 def _race_rows(tab, page, ref, systems, url, name, club, event_type, series, assume_irc):
     rating_idx, rating_key = _rating_col(tab)
     page, dates = ref
-    race_date = page.date_for(tab.race_date_text, url) or _date_lookup(dates, tab.fleet, tab.race_number)
+    date_source = "race_title"
+    race_date = page.date_for(tab.race_date_text, url)
+    if race_date is None:
+        date_source = "event_files"
+        race_date = _date_lookup(dates, tab.fleet, tab.race_number)
+    if race_date is None and page.as_of is not None:
+        # A file publishing a single race, stamped "provisional as of <day>",
+        # is that race day's results (Warsash: R7 in WSS25_D3_R1, as of 26 April).
+        numbers = {t.race_number for t in page.tables if t.kind == "race"}
+        if len(numbers) == 1 and not any(t.kind == "summary" for t in page.tables):
+            date_source = "results_as_of"
+            race_date = page.as_of
     if race_date is None or rating_idx is None:
         return []
     f = tab.fields
@@ -638,6 +649,7 @@ def _race_rows(tab, page, ref, systems, url, name, club, event_type, series, ass
             "points": _get(cells, f.get("points")) or None,
             "race_date": race_date.isoformat(),
             "race_title": tab.title,
+            "date_source": date_source,
             "row_origin": "race_table",
             "rating_system": "IRC",
         }
@@ -806,13 +818,15 @@ def normalise_url(url: str) -> str:
     return urlunsplit((scheme, parts.netloc, path, parts.query, ""))
 
 
-def discover_sailwave_links(html: str, base_url: str, pattern: str | None = None) -> list[dict]:
-    """Links to .htm/.html files on a page (club results pages)."""
+def discover_sailwave_links(html: str, base_url: str, pattern: str | None = None,
+                            pdf: bool = False) -> list[dict]:
+    """Links to .htm/.html (and with ``pdf``, .pdf) files on a club results page."""
     soup = BeautifulSoup(html, "html.parser")
     links, seen = [], set()
+    ext = r"\.(html?|pdf)($|\?)" if pdf else r"\.html?($|\?)"
     for a in soup.find_all("a", href=True):
         full = urljoin(base_url, a["href"].strip())
-        if not re.search(r"\.html?($|\?)", full, re.I):
+        if not re.search(ext, full, re.I):
             continue
         if pattern and not re.search(pattern, full, re.I):
             continue
@@ -868,10 +882,11 @@ class SailwaveSeed:
     assume_irc: bool = False
     country: str = "GB"
     note: str = ""
+    pdf: bool = False  # also follow .pdf links (Sailwave pages printed to PDF)
 
     @property
     def kind(self) -> str:
-        if re.search(r"\.html?$", urlsplit(self.url).path, re.I):
+        if re.search(r"\.(html?|pdf)$", urlsplit(self.url).path, re.I):
             return "file"
         if re.match(r"https?://(www\.)?sailwave\.com/results/", self.url, re.I) and self.url.endswith("/"):
             return "folder"
@@ -915,7 +930,7 @@ class SailwaveSource(RaceResultSource):
             raise DiscoveryError(f"{seed.url}: HTTP {resp.status_code}")
         if seed.kind == "folder":
             return parse_folder_index(resp.text, str(resp.url))
-        return [(l["url"], None) for l in discover_sailwave_links(resp.text, str(resp.url))]
+        return [(l["url"], None) for l in discover_sailwave_links(resp.text, str(resp.url), pdf=seed.pdf)]
 
     def _last_modified(self, url: str) -> datetime | None:
         try:
@@ -973,6 +988,10 @@ class SailwaveSource(RaceResultSource):
         resp = self.client.get(ref.event_url)
         if resp.status_code != 200:
             raise RuntimeError(f"HTTP {resp.status_code}")
+        if urlsplit(ref.event_url).path.lower().endswith(".pdf"):
+            from irc_data.scrapers.sailwave_pdf import pdf_to_sailwave_html
+
+            return pdf_to_sailwave_html(resp.content)  # None: image-only / not Sailwave
         html = _decode(resp)
         if not is_sailwave_html(html) or not page_mentions_irc(html):
             return None

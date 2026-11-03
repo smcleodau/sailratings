@@ -134,25 +134,37 @@ def test_extract_sub_scoring_is_not_an_irc_fleet():
     assert sw.parse_sailwave_html(_html("WSS25_P30_P40_extract.htm")) == []
 
 
-def test_undated_race_table_takes_dates_from_the_event_summary():
+def test_single_race_file_without_date_uses_results_as_of_day():
+    rows = sw.parse_sailwave_html(_html("WSS25_D3_R1.htm"))  # "R7 - IRC 1 Division"
+    assert rows and {r.event_date for r in rows} == {date(2025, 4, 26)}
+    assert {r.raw_data["date_source"] for r in rows} == {"results_as_of"}
+
+
+def test_undated_race_table_takes_dates_from_the_event_summary(monkeypatch):
     race = _html("WSS25_D3_R1.htm")
-    assert sw.parse_sailwave_html(race) == []  # "R7 - IRC 1 Division": no date
+    # Without the as-of fallback, an undated race is skipped.
+    page = sw.parse_page(race)
+    page.as_of = None
+    real_parse = sw.parse_page
+    monkeypatch.setattr(sw, "parse_page", lambda html: page if html == race else real_parse(html))
+    assert sw.parse_sailwave_html(race) == []
     # The 2025 summary leaves R7-R9 undated, so it cannot date them either.
     summary = sw.parse_page(_html("WSS25_BG_Summary.htm"))
     dates = sw.merge_race_dates([sw.page_race_dates(summary)])
     assert ("irc1division", 6) in dates and ("irc1division", 7) not in dates
     assert sw.parse_sailwave_html(race, race_dates=dates) == []
     # A date stated for the same fleet elsewhere in the event is used.
-    dates[("irc1division", 7)] = date(2025, 4, 26)
+    dates[("irc1division", 7)] = date(2025, 4, 25)
     rows = sw.parse_sailwave_html(race, race_dates=dates)
     assert rows and {r.class_name for r in rows} == {"IRC 1 Division"}
-    assert {(r.race_number, r.event_date) for r in rows} == {(7, date(2025, 4, 26))}
+    assert {(r.race_number, r.event_date) for r in rows} == {(7, date(2025, 4, 25))}
+    assert {r.raw_data["date_source"] for r in rows} == {"event_files"}
 
 
 def test_extract_dates_do_not_leak_into_other_fleets():
     extract = sw.parse_page(_html("WSS25_P30_P40_extract.htm"))
     dates = sw.merge_race_dates([sw.page_race_dates(extract)])
-    assert sw.parse_sailwave_html(_html("WSS25_D3_R1.htm"), race_dates=dates) == []
+    assert not any(k[0].startswith("irc") for k in dates)
 
 
 def test_tcf_rating_system_with_irc_fleet_names_2021_layout():
@@ -265,12 +277,13 @@ def test_run_two_pass_over_folder(monkeypatch):
 
     monkeypatch.setattr(sw, "dedupe_rows", spy)
     stats = sw.run(source="warsash-spring-series", seeds=seeds, store=False)
-    assert stats["files"] == 2 and stats["files_with_irc"] == 1
+    assert stats["files"] == 2 and stats["files_with_irc"] == 2
     rows = captured["rows"]
-    # Summary-derived rows for the dated races R1-R6; the undated R7 race
-    # table cannot be dated from this summary and is skipped.
-    assert rows and {r.race_number for r in rows} == {1, 2, 3, 4, 5, 6}
-    assert all(r.raw_data["uploaded"] == "2025-04-27T18:00:00" for r in rows)
+    # Summary-derived rows for the dated races R1-R6 plus the R7 race table
+    # (single-race file dated by its "as of" day).
+    assert rows and {r.race_number for r in rows} == {1, 2, 3, 4, 5, 6, 7}
+    r7 = [r for r in rows if r.race_number == 7]
+    assert all(r.raw_data["row_origin"] == "race_table" for r in r7)
     assert all(r.organizing_club == "Warsash Sailing Club" for r in rows)
 
 
@@ -316,3 +329,36 @@ def test_scrape_event_api(monkeypatch):
                       organizing_club="Warsash Sailing Club", metadata={})
     rows = asyncio.run(src.scrape_event(ref))
     assert rows and all(r.rating_type == "irc_tcc" for r in rows)
+
+
+# ---------------------------------------------------------------------------
+# Sailwave pages printed to PDF (Warsash 2024)
+# ---------------------------------------------------------------------------
+
+
+def test_pdf_race_blocks_parse_like_html():
+    from irc_data.scrapers.sailwave_pdf import pdf_to_sailwave_html
+
+    html = pdf_to_sailwave_html((FIX / "WSS-24-BG-Champs-R1c.pdf").read_bytes())
+    assert html
+    rows = sw.parse_sailwave_html(html, source_url="https://warsashsc.org.uk/x.pdf")
+    assert {r.class_name for r in rows} == {"IRC 1 Champs", "IRC 2 Champs", "IRC 3 Champs"}
+    jm = next(r for r in rows if r.sail_number == "GBR7751R")
+    assert (jm.boat_name, jm.place, jm.rating_value) == ("JourneyMaker 11", 1, Decimal("1.092"))
+    assert (jm.elapsed_time, jm.corrected_time) == ("0:39:21", "0:42:58")
+    assert jm.event_date == date(2024, 4, 20)
+    assert jm.event_name == "Warsash Spring Championships 2024"
+    assert not any(r.boat_name == "Bulldog" for r in rows)  # DNC
+
+
+def test_pdf_that_is_not_text_returns_none():
+    from irc_data.scrapers.sailwave_pdf import pdf_to_sailwave_html
+
+    assert pdf_to_sailwave_html(b"not a pdf") is None
+
+
+def test_pdf_seed_discovers_pdf_links():
+    page = '<a href="/wp-content/uploads/WSS-24-BG-Champs-R1c.pdf">R1</a><a href="/x.htm">x</a>'
+    links = sw.discover_sailwave_links(page, "https://warsashsc.org.uk/springseries/2024-2/", pdf=True)
+    assert [l["filename"] for l in links] == ["WSS-24-BG-Champs-R1c.pdf", "x.htm"]
+    assert sw.discover_sailwave_links(page, "https://warsashsc.org.uk/", pdf=False)[0]["filename"] == "x.htm"

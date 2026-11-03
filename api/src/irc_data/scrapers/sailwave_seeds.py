@@ -25,6 +25,12 @@ SAILWAVE_SEEDS: list[SailwaveSeed] = [
     # 2025+ files on sailwave.com (linked from warsashsc.org.uk/springseries/).
     SailwaveSeed(SW + "warsashsc/", "Warsash Sailing Club", source=WARSASH,
                  series="Warsash Spring Series", include=r"^(WSS|WSC_Champs)"),
+    # 2024 season: Sailwave race pages printed to PDF on the club site (race
+    # PDFs have a text layer; the printed series summaries are not parsed).
+    # 2023 PDFs are image-only and 2022 is summary-only, so neither is seeded.
+    SailwaveSeed("https://warsashsc.org.uk/springseries/2024-2/", "Warsash Sailing Club",
+                 source=WARSASH, series="Warsash Spring Series", include=r"^WSS-24-",
+                 exclude=r"Summary", pdf=True),
     # 2021 season hosted on the club site.
     SailwaveSeed("https://warsashsc.org.uk/springseries/y2021/", "Warsash Sailing Club",
                  source=WARSASH, series="Warsash Spring Series",
