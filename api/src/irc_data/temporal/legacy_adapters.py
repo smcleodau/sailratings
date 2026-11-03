@@ -562,9 +562,12 @@ def _run_yachtscoring(record: Mapping[str, Any]) -> Mapping[str, Any]:
     from irc_data.scrapers.yachtscoring import YachtScoringSource
 
     event_ids = [int(i) for i in (record.get("event_ids") or [])]
-    return _run_event_source(record, slug="yachtscoring", source="yachtscoring",
-                             make_source=lambda: YachtScoringSource(event_ids=event_ids),
-                             include_class_name=True)
+    out = _run_event_source(record, slug="yachtscoring", source="yachtscoring",
+                            make_source=lambda: YachtScoringSource(event_ids=event_ids),
+                            include_class_name=True)
+    if not event_ids:
+        out["warning"] = "no event_ids given and YachtScoringSource has no event discovery"
+    return out
 
 
 def _run_manage2sail(record: Mapping[str, Any]) -> Mapping[str, Any]:
