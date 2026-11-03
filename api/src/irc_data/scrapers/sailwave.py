@@ -650,6 +650,7 @@ def _race_rows(tab, page, ref, systems, url, name, club, event_type, series, ass
             "race_date": race_date.isoformat(),
             "race_title": tab.title,
             "date_source": date_source,
+            "results_as_of": page.as_of.isoformat() if page.as_of else None,
             "row_origin": "race_table",
             "rating_system": "IRC",
         }
@@ -1037,41 +1038,61 @@ SailwaveScraper = SailwaveSource
 # ---------------------------------------------------------------------------
 
 
+def _race_key(r: NormalizedResult) -> tuple:
+    """One race of one fleet of one event. Race numbers are unique within a
+    fleet, so the date is not part of the key (an amended re-issue of R9 can
+    carry a different "as of" day); unnumbered races fall back to name + date."""
+    # The year stays in the key: club series reuse names every season
+    # ("Wednesday Evening Series" race 1 of 2024 is not race 1 of 2025).
+    base = (r.event_name, _fleet_key(r.class_name or ""), r.event_date.year if r.event_date else None)
+    if r.race_number is not None:
+        return base + (r.race_number,)
+    return base + (r.race_name, r.event_date)
+
+
+def _rank(r: NormalizedResult) -> tuple:
+    raw = r.raw_data or {}
+    return (raw.get("uploaded") or "", raw.get("results_as_of") or "", r.source_url or "")
+
+
 def dedupe_rows(rows: list[NormalizedResult]) -> tuple[list[NormalizedResult], int]:
     """Keep one row per boat per race across files.
 
     * Race-table rows beat summary rows for the same event/fleet/race.
-    * When two files publish the same race (re-uploads under a new name),
-      the most recently uploaded file wins.
+    * When several files publish the same race (amended re-issues such as
+      Warsash "270424-R4a" for R9), the latest file wins (upload time, then
+      its "results as of" stamp).
+    * If the winner was only dated by its "as of" stamp, the race keeps the
+      best date any copy states: a title/event date, else the earliest stamp
+      (the race-day publication).
     """
-    def race_key(r):
-        return (r.event_name, _fleet_key(r.class_name or ""), r.race_number, r.event_date)
-
-    tabled = {}
+    best: dict[tuple, tuple] = {}
+    dates: dict[tuple, list] = {}
     for r in rows:
-        if (r.raw_data or {}).get("row_origin") == "race_table":
-            k = race_key(r)
-            cand = ((r.raw_data or {}).get("uploaded") or "", r.source_url or "")
-            if k not in tabled or cand > tabled[k]:
-                tabled[k] = cand
-    best_summary = {}
-    for r in rows:
-        if (r.raw_data or {}).get("row_origin") == "summary":
-            k = race_key(r)
-            up = (r.raw_data or {}).get("uploaded") or ""
-            if k not in best_summary or (up, r.source_url or "") > best_summary[k]:
-                best_summary[k] = (up, r.source_url or "")
+        raw = r.raw_data or {}
+        origin = raw.get("row_origin")
+        k = (_race_key(r), origin)
+        if k not in best or _rank(r) > best[k]:
+            best[k] = _rank(r)
+        if origin == "race_table" and r.event_date is not None:
+            dates.setdefault(_race_key(r), []).append((raw.get("date_source") != "results_as_of", r.event_date))
     out, dropped = [], 0
     for r in rows:
-        k = race_key(r)
-        origin = (r.raw_data or {}).get("row_origin")
-        up = (r.raw_data or {}).get("uploaded") or ""
-        if origin == "race_table" and (up, r.source_url or "") != tabled[k]:
+        raw = r.raw_data or {}
+        origin = raw.get("row_origin")
+        rk = _race_key(r)
+        if _rank(r) != best[(rk, origin)]:
             dropped += 1
             continue
-        if origin == "summary" and (k in tabled or best_summary[k][1] != (r.source_url or "")):
+        if origin == "summary" and (rk, "race_table") in best:
             dropped += 1
             continue
+        if origin == "race_table" and raw.get("date_source") == "results_as_of":
+            stated = [d for good, d in dates.get(rk, []) if good]
+            fixed = min(stated) if stated else min(d for _, d in dates.get(rk, [(False, r.event_date)]))
+            if fixed != r.event_date:
+                r.event_date = fixed
+                r.raw_data = dict(raw, race_date=fixed.isoformat())
         out.append(r)
     return out, dropped
 

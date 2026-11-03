@@ -229,3 +229,16 @@ def test_run_fails_loudly_when_page_has_no_selectors():
     seed = hs.HalSailSeed("https://www.halsail.com/Result/Club/3560", "HRSC")
     with pytest.raises(RuntimeError):
         hs.run(source="halsail", seeds=[seed], store=False, browser=b)
+
+
+def test_same_race_in_two_archive_series_is_kept_once():
+    html = _html("rys_archive_members_irc1.html")
+    a = hs.parse_public_results(html, class_name="2025 Members IRC Class 1",
+                                series_name="2025 Members IRC Regatta", series_id="3444/18")
+    b = hs.parse_public_results(html, class_name="2025 Members IRC Class 1",
+                                series_name="2025 Members IRC Regatta", series_id="3444/19")
+    assert a[0].raw_data["race_start"] == "2025-06-27 11:35:00"
+    out, seen = [], set()
+    hs._keep(a, out, seen, "3444/18")
+    hs._keep(b, out, seen, "3444/19")
+    assert len(out) == len(a)

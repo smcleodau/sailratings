@@ -362,3 +362,20 @@ def test_pdf_seed_discovers_pdf_links():
     links = sw.discover_sailwave_links(page, "https://warsashsc.org.uk/springseries/2024-2/", pdf=True)
     assert [l["filename"] for l in links] == ["WSS-24-BG-Champs-R1c.pdf", "x.htm"]
     assert sw.discover_sailwave_links(page, "https://warsashsc.org.uk/", pdf=False)[0]["filename"] == "x.htm"
+
+
+def test_dedupe_amended_reissue_wins_and_keeps_race_day():
+    def row(url, as_of, d, src="results_as_of", boat="Cobra"):
+        return NormalizedResult(
+            boat_name=boat, sail_number="GBR8888N", event_name="Warsash Spring Championships 2024",
+            event_date=d, race_name="R9", race_number=9, class_name="IRC 1 Champs", source_url=url,
+            raw_data={"row_origin": "race_table", "results_as_of": as_of, "date_source": src,
+                      "race_date": d.isoformat()})
+
+    rows = [row("D5-R3.pdf", "2024-04-27", date(2024, 4, 27)),
+            row("270424-R4a.pdf", "2024-04-29", date(2024, 4, 29))]
+    kept, dropped = sw.dedupe_rows(rows)
+    assert dropped == 1 and len(kept) == 1
+    assert kept[0].source_url == "270424-R4a.pdf"          # amended copy
+    assert kept[0].event_date == date(2024, 4, 27)          # race day, not the re-issue day
+    assert kept[0].raw_data["race_date"] == "2024-04-27"

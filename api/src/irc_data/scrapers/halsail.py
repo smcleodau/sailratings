@@ -60,7 +60,7 @@ MIN_DELAY = 2.5
 
 _IRC_CLASS_RE = re.compile(r"(?<![A-Z])IRC", re.IGNORECASE)
 _RACE_CAPTION_RE = re.compile(r"^Race\s+(\d+)\b", re.IGNORECASE)
-_CAPTION_DATE_RE = re.compile(r"(\d{1,2}\s+[A-Za-z]{3,}\s+\d{4}|\d{1,2}/\d{1,2}/\d{4})")
+_CAPTION_DATE_RE = re.compile(r"(\d{1,2}\s+[A-Za-z]{3,}\s+\d{4}|\d{1,2}/\d{1,2}/\d{4})(?:\s+(\d{1,2}:\d{2}(?::\d{2})?))?")
 
 
 @dataclass(frozen=True)
@@ -222,6 +222,7 @@ def parse_public_results(
                 "race_date": race_date.isoformat(),
                 "race_caption": cap_text[:200],
                 "halsail_race_id": race_id,
+                "race_start": f"{race_date.isoformat()} {dm.group(2) or ''}".strip(),
                 "halsail_series_id": series_id,
                 "halsail_class_id": class_id or None,
                 "halsail_series": series_name,
@@ -444,8 +445,13 @@ def _panel_text(html: str) -> str:
 
 def _keep(rows_in, rows_out, seen_races, series_key) -> None:
     for r in rows_in:
-        rid = (r.raw_data or {}).get("halsail_race_id") or f"{series_key}:{r.race_number}"
-        key = f"{rid}|{r.raw_data.get('boat_name')}|{r.sail_number}"
+        raw = r.raw_data or {}
+        # A race scored in two series of one class (archive pages carry no
+        # race id) is the same race when the class and start time agree.
+        rid = raw.get("halsail_race_id") or (
+            f"{r.class_name}@{raw['race_start']}" if " " in (raw.get("race_start") or "")
+            else f"{series_key}:{r.race_number}")
+        key = f"{rid}|{raw.get('boat_name')}|{r.sail_number}"
         if key in seen_races:
             continue  # the same race scored in two series of one class
         seen_races.add(key)
