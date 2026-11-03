@@ -256,6 +256,37 @@ def parse_public_results(
     return out
 
 
+def panel_label(html: str) -> str | None:
+    """Caption of the overall-results table shown in the results panel.
+
+    Public layout: "HWS IRC2, Hamble Winter Series"; archive layout:
+    "Class '2025 Members IRC Class 1', series '2025 Members IRC Regatta', ...".
+    None when the panel has no overall table (single-race series).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    root = soup.find(id="divResults") or soup
+    frame = root.find("div", class_="sizeframe") or root
+    for table in frame.find_all("table"):
+        cap = table.find("caption")
+        if cap is None:
+            continue
+        text = _clean(cap.get_text(" "))
+        if _RACE_CAPTION_RE.match(text) or re.match(r"^\d+ races? sailed|^One race", text, re.I):
+            continue
+        lead = cap.find(class_="lead")
+        return _clean((lead or cap).get_text(" "))
+    return None
+
+
+def panel_shows(html: str, class_name: str, series_name: str) -> bool | None:
+    """True/False when the panel's caption names the selection, None if it has none."""
+    label = panel_label(html)
+    if label is None:
+        return None
+    norm = lambda t: re.sub(r"\s+", " ", t).strip().lower()  # noqa: E731
+    return norm(class_name) in norm(label) and norm(series_name) in norm(label)
+
+
 def event_name_for(class_name: str, series_name: str, race_date: date) -> str:
     name = _clean(series_name)
     if not name or re.fullmatch(r"(new\s+)?series", name, re.I):
@@ -364,6 +395,31 @@ class HalSailBrowser:
         self._check_blocked()
         return self.page.content()
 
+    def settle(self, class_name: str, series_name: str, previous: str | None,
+               timeout: float = 25.0) -> str:
+        """Wait until the results panel shows this class/series, then return the page.
+
+        The panel is swapped in with an animation, so a changed panel is not
+        yet the right one. With an overall table its caption must name the
+        class and series; without one (single-race series) the panel must
+        differ from the previous selection's and be stable for a second.
+        Raises RuntimeError rather than return another class's results.
+        """
+        deadline = time.monotonic() + timeout
+        last = None
+        while time.monotonic() < deadline:
+            html = self.page.content()
+            ok = panel_shows(html, class_name, series_name)
+            if ok:
+                return html
+            if ok is None:
+                panel = _panel_text(html)
+                if panel and panel != previous and panel == last:
+                    return html
+                last = panel
+            time.sleep(1.0)
+        raise RuntimeError(f"results panel did not switch to {class_name!r} / {series_name!r}")
+
     def _check_blocked(self) -> None:
         from irc_data.scrapers.polite_http import SourceBlockedError
 
@@ -377,6 +433,13 @@ class HalSailBrowser:
                 closer()
             except Exception:  # noqa: BLE001
                 pass
+
+
+def _panel_text(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    root = soup.find(id="divResults") or soup.find(id="body") or soup
+    frame = root.find("div", class_="sizeframe") or root
+    return _clean(frame.get_text(" "))[:5000]
 
 
 def _keep(rows_in, rows_out, seen_races, series_key) -> None:
@@ -404,6 +467,7 @@ def scrape_seed(browser: HalSailBrowser, seed: HalSailSeed, since: date | None =
     seen_races = set() if seen_races is None else seen_races
     series_done = 0
     irc_classes: list[str] = []
+    panel_errors: list[str] = []
     classes_total = len(sel["classes"])
 
     if sel.get("layout") == "archive":
@@ -417,12 +481,19 @@ def scrape_seed(browser: HalSailBrowser, seed: HalSailSeed, since: date | None =
                 sel = parse_selectors(html)
                 classes_total = max(classes_total, len(sel["classes"]))
             for cls in [c for c in sel["classes"] if seed.wants_class(c.text)]:
+                previous = _panel_text(html)
                 html = browser.choose("ddClass", cls.value)
                 irc_classes.append(cls.text)
                 series = parse_selectors(html).get("series_current") or []
                 for i, ser in enumerate(series):
                     if i > 0 or (len(series) > 1):
+                        previous = _panel_text(html)
                         html = browser.choose("ddSeries", ser.value)
+                    try:
+                        html = browser.settle(cls.text, ser.text, previous)
+                    except RuntimeError as e:
+                        panel_errors.append(str(e))
+                        continue
                     page_url = browser.page.url
                     got = parse_public_results(
                         html, class_name=cls.text, series_name=ser.text,
@@ -437,10 +508,17 @@ def scrape_seed(browser: HalSailBrowser, seed: HalSailSeed, since: date | None =
         classes = [c for c in sel["classes"] if c.has_results and seed.wants_class(c.text)]
         irc_classes = [c.text for c in classes]
         for cls in classes:
+            previous = _panel_text(html)
             html = browser.choose("ddRacingClasses", cls.value)
             series = [s for s in sel["series"].get(cls.value, []) if s.has_results]
             for ser in series:
                 html = browser.choose(f"dd{cls.value}", ser.value)
+                try:
+                    html = browser.settle(cls.text, ser.text, previous)
+                except RuntimeError as e:
+                    panel_errors.append(str(e))
+                    continue
+                previous = _panel_text(html)
                 got = parse_public_results(
                     html, class_name=cls.text, series_name=ser.text, series_id=ser.value,
                     class_id=cls.value, club=club, seed_url=seed.url,
@@ -455,6 +533,7 @@ def scrape_seed(browser: HalSailBrowser, seed: HalSailSeed, since: date | None =
         "irc_classes": irc_classes,
         "series": series_done,
         "landing_url": browser.page.url,
+        "panel_errors": panel_errors,
     }
 
 
@@ -491,6 +570,7 @@ def run(record: dict | None = None, *, source: str, seeds, since: date | None = 
             if got["classes_total"] == 0:
                 no_classes += 1
                 errors.append(f"{seed.url}: page rendered without a class selector")
+            errors.extend(f"{seed.url}: {e}" for e in got.get("panel_errors", []))
             per_seed[seed.url] = {"rows": len(got["rows"]), "irc_classes": got["irc_classes"],
                                   "series": got["series"], "landing": got["landing_url"]}
             rows.extend(got["rows"])

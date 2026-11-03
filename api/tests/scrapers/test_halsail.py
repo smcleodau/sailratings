@@ -161,6 +161,19 @@ def test_archive_layout():
     assert leon.source_url == "https://archive.halsail.com/Result/Public/3444/18"
 
 
+def test_panel_label_names_the_selection():
+    html = _html("hws_public_irc2.html")
+    assert hs.panel_label(html) == "HWS IRC2, Hamble Winter Series"
+    assert hs.panel_shows(html, "HWS IRC2", "Hamble Winter Series") is True
+    # Another class's selection must not be accepted for this panel.
+    assert hs.panel_shows(html, "HWS IRC3", "Hamble Winter Series") is False
+    assert hs.panel_shows(html, "Autumn Regatta IRC1", "Autumn IRC Championship") is False
+    arch = _html("rys_archive_members_irc1.html")
+    assert hs.panel_shows(arch, "2025 Members IRC Class 1", "2025 Members IRC Regatta") is True
+    # Single-race series: no overall table, so no caption to check.
+    assert hs.panel_shows(_html("isc_public_besc_irc.html"), "BESC IRC 2026", "New Series") is None
+
+
 def test_event_name_for():
     assert hs.event_name_for("HWS IRC2", "Hamble Winter Series", date(2026, 10, 18)) == "Hamble Winter Series 2026"
     assert hs.event_name_for("BESC IRC 2026", "New Series", date(2026, 5, 23)) == "BESC IRC 2026"
@@ -190,6 +203,9 @@ class _FakeBrowser:
 
     def choose(self, select_id, value):
         self.choices.append((select_id, value))
+        return self.html
+
+    def settle(self, class_name, series_name, previous):
         return self.html
 
     def close(self):
