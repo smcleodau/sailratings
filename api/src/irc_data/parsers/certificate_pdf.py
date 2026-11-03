@@ -169,9 +169,21 @@ def looks_like_certificate(full_text: str) -> bool:
     )
 
 
+MAX_CERTIFICATE_PAGES = 4
+
+
+class NotACertificate(ValueError):
+    """The PDF is clearly not an IRC certificate (e.g. too many pages)."""
+
+
 def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
     """Parse an IRC certificate PDF into structured data."""
     with pdfplumber.open(pdf_path) as pdf:
+        if len(pdf.pages) > MAX_CERTIFICATE_PAGES:
+            # Rule books / annual reports from the Wayback harvest: extracting
+            # a 100-page document word-by-word takes minutes and is never a
+            # certificate (boat-data sheets are 1-2 pages).
+            raise NotACertificate(f"{len(pdf.pages)} pages")
         all_lines = []
         for page in pdf.pages:
             all_lines.extend(_extract_lines(page))

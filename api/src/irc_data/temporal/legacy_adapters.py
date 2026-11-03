@@ -50,10 +50,13 @@ verified by ``api/tests/temporal/test_legacy_adapters.py``:
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "LEGACY_CLI_ADAPTERS",
@@ -218,7 +221,22 @@ def _run_tcc(record: Mapping[str, Any]) -> Mapping[str, Any]:
     cli.main(args=["import", str(path), "--snapshot-date", str(today)], standalone_mode=False)
     with engine.connect() as conn:
         after = conn.execute(count, {"d": today}).scalar()
-    return {"records_written": after - before, "snapshot_rows_today": after, "downloaded": str(path)}
+    # New boats from today's listing may already have a parsed certificate
+    # (cert parsed before the boat row existed) — link them now rather than
+    # waiting for the weekly irc-certs run.
+    try:
+        from irc_data.parsers.certificate_ingest import link_unlinked_certificates
+
+        certs_linked = link_unlinked_certificates(engine)
+    except Exception as exc:  # never fail the TCC run over linking
+        logger.warning("certificate linking after TCC import failed: %s", exc)
+        certs_linked = None
+    return {
+        "records_written": after - before,
+        "snapshot_rows_today": after,
+        "downloaded": str(path),
+        "certs_linked": certs_linked,
+    }
 
 
 def _last_successful_run_since(slug: str, lookback_days: int = 1) -> "date | None":

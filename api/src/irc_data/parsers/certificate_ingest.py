@@ -27,7 +27,11 @@ from typing import Callable, Iterable
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from irc_data.parsers.certificate_pdf import parse_certificate_pdf, parse_filename_info
+from irc_data.parsers.certificate_pdf import (
+    NotACertificate,
+    parse_certificate_pdf,
+    parse_filename_info,
+)
 from irc_data.parsers.schemas import CertificateData
 
 logger = logging.getLogger(__name__)
@@ -250,6 +254,9 @@ def ingest_certificates(
                     continue
         try:
             cert = parse_certificate_pdf(path)
+        except NotACertificate:
+            stats.not_certificate += 1
+            continue
         except Exception as exc:  # corrupt / non-PDF
             stats.parse_errors += 1
             stats.errors.append(f"parse {path.name}: {exc}"[:200])
