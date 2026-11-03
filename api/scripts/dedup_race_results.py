@@ -11,7 +11,7 @@ Cleanup rules (``--apply``):
     least 10 minutes apart). Collisions inside one run are distinct rows the
     scraper did not label apart (e.g. two tables on one RHKYC page) and are
     reported, never deleted;
-  * keep the newest row of each group (latest scrape); if it lost the boat
+  * keep the newest row of each group that carries a rating (latest scrape); if it lost the boat
     link an older copy had, carry ``boat_id``/``event_entry_id`` over from
     the newest linked copy — the same "never drop a link" rule the save path
     applies;
@@ -52,7 +52,7 @@ def find_groups(conn):
     cols = ", ".join(f"r.{c}" for c in SCOPE_COLUMNS)
     rows = conn.execute(text(f"""
         SELECT r.id, {cols}, r.place, r.status, r.boat_id, r.event_entry_id,
-               r.source_url, r.created_at,
+               r.source_url, r.created_at, r.tcc_at_race,
                COALESCE(r.raw_data->>'boat_name', ee.boat_name) AS boat_name,
                COALESCE(r.raw_data->>'sail_number', r.raw_data->>'sail_no',
                         ee.sail_number) AS sail_number
@@ -100,7 +100,8 @@ def plan(groups, sources: set[str]):
             s["same_run_groups_left"] += 1
             s["same_run_rows_left"] += len(c) - 1
             continue
-        keep = max(c, key=lambda x: (x.created_at, x.id))
+        # Prefer a copy that carries the IRC rating, then the latest scrape.
+        keep = max(c, key=lambda x: (x.tcc_at_race is not None, x.created_at, x.id))
         drop = [x for x in c if x.id != keep.id]
         s["cross_run_groups"] += 1
         s["cross_run_rows"] += len(drop)
