@@ -808,6 +808,24 @@ def parse_folder_index(html: str, base_url: str) -> list[tuple[str, datetime | N
         except ValueError:
             ts = None
         out.append((url, ts))
+    # Sub-folders are plain IIS listings:
+    # "Sunday, December 29, 2019 10:14 AM   101787 <A HREF="/results/x/results.htm">"
+    for m in re.finditer(
+        r"[A-Za-z]+,\s+([A-Za-z]+ \d{1,2}, \d{4} \d{1,2}:\d{2} [AP]M)\s+\d+\s+<A\s+HREF=\"([^\"]+)\"",
+        html, re.I,
+    ):
+        href = m.group(2)
+        if not re.search(r"\.html?$", href, re.I):
+            continue
+        url = normalise_url(urljoin(base_url, href))
+        if url in seen:
+            continue
+        seen.add(url)
+        try:
+            ts = datetime.strptime(m.group(1), "%B %d, %Y %I:%M %p")
+        except ValueError:
+            ts = None
+        out.append((url, ts))
     return out
 
 

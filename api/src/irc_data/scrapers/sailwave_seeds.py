@@ -37,7 +37,10 @@ SAILWAVE_SEEDS: list[SailwaveSeed] = [
                  include=r"Spring_Championship"),
 
     # -- Solent / South coast ------------------------------------------------
-    SailwaveSeed(SW + "royalsolentyc/", "Royal Solent Yacht Club"),
+    # Royal Solent YC: only per-regatta sub-folders (Taittinger Regatta).
+    SailwaveSeed(SW + "royalsolentyc/2019TaittingerRegatta/", "Royal Solent Yacht Club"),
+    SailwaveSeed(SW + "royalsolentyc/2018TaittingerRegatta/", "Royal Solent Yacht Club"),
+    SailwaveSeed(SW + "royalsolentyc/2017TaittingerRegatta/", "Royal Solent Yacht Club"),
     SailwaveSeed(SW + "RLymYC/", "Royal Lymington Yacht Club"),
     SailwaveSeed(SW + "chichesteryc/", "Chichester Yacht Club"),
     SailwaveSeed(SW + "hisc/", "Hayling Island Sailing Club"),

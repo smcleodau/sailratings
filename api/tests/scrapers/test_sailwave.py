@@ -379,3 +379,12 @@ def test_dedupe_amended_reissue_wins_and_keeps_race_day():
     assert kept[0].source_url == "270424-R4a.pdf"          # amended copy
     assert kept[0].event_date == date(2024, 4, 27)          # race day, not the re-issue day
     assert kept[0].raw_data["race_date"] == "2024-04-27"
+
+
+def test_iis_subfolder_listing_parse():
+    html = ('<pre><A HREF="/results/royalsolentyc/">[To Parent Directory]</A><br><br>'
+            '    Sunday, December 29, 2019 10:14 AM       101787 '
+            '<A HREF="/results/royalsolentyc/2019TaittingerRegatta/results.htm">results.htm</A><br></pre>')
+    files = sw.parse_folder_index(html, "https://sailwave.com/results/royalsolentyc/2019TaittingerRegatta/")
+    assert files == [("https://sailwave.com/results/royalsolentyc/2019TaittingerRegatta/results.htm",
+                      datetime(2019, 12, 29, 10, 14))]
