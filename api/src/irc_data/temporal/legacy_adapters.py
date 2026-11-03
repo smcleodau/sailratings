@@ -10,7 +10,7 @@ This module is the adapter layer between the OPS-01-02 workflow's
 * :data:`LEGACY_CLI_ADAPTERS` — the register → adapter mapping.  One
   :class:`LegacyScraperAdapter` per legacy source slug:
   ``orc``, ``irc-tcc``, ``sailsys``, ``topyacht``, ``isora``, ``rhkyc``,
-  ``sailracehq``, ``irc-certs`` (certificate discovery/download **and**
+  ``sailracehq``, ``manage2sail``, ``irc-certs`` (certificate discovery/download **and**
   ``parse-certs`` ingestion), ``wayback-irc`` (plus a second wayback mode
   harvesting historical TCC listings), and ``sailing-news``.
 * :func:`run_legacy_source` — the single dispatch entry point used by the
@@ -499,6 +499,28 @@ def _run_yachtscoring(record: Mapping[str, Any]) -> Mapping[str, Any]:
     return {"records_written": 0, "records_found": total, "events": len(events)}
 
 
+def _run_manage2sail(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Manage2Sail IRC results: discover, scrape and persist.
+
+    The register row's ``adapter_class`` (``...manage2sail.Manage2SailScraper``)
+    is a scraper class, not a ``callable(record) -> stats``, so this explicit
+    runner is what the workflow executes. Persists through
+    ``manage2sail.store_results`` (upsert_race_result) and reports the real
+    number of new race_results rows. Same 14-day late-posting lookback as
+    sailsys/topyacht.
+    """
+    from datetime import date
+
+    from irc_data.scrapers import manage2sail
+
+    since = None
+    if record.get("since"):
+        since = date.fromisoformat(str(record["since"]))
+    else:
+        since = _last_successful_run_since("manage2sail", lookback_days=14)
+    return manage2sail.run(dict(record), since=since)
+
+
 def _run_cert_discovery(record: Mapping[str, Any]) -> Mapping[str, Any]:
     """IRC certificate discovery — exhaustive 2-letter search + download.
 
@@ -654,6 +676,12 @@ LEGACY_CLI_ADAPTERS: dict[str, LegacyScraperAdapter] = {
         cli_argv=("scrape", "results", "--source", "yachtscoring"),
         description="YachtScoring race results.",
         runner=_run_yachtscoring,
+    ),
+    "manage2sail": LegacyScraperAdapter(
+        slug="manage2sail",
+        cli_argv=("scrape", "results", "--source", "manage2sail"),
+        description="Manage2Sail IRC race results (event list + known IRC clubs).",
+        runner=_run_manage2sail,
     ),
     "irc-certs": LegacyScraperAdapter(
         slug="irc-certs",

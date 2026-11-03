@@ -419,7 +419,8 @@ _TIER2: list[DataSourceRecordV1] = [
         cadence_class="daily_results",
         staleness_budget_hours=48.0,
         notes="Notion: Unexplored / Public Domain / API / Daily. "
-              "DP-00-03 raw capture landed; adapter not yet registered.",
+              "IRC results adapter: legacy runner _run_manage2sail "
+              "(scrapers/manage2sail.py, public JSON API behind event pages).",
     ),
     DataSourceRecordV1(
         slug="clubspot",
