@@ -354,9 +354,10 @@ def store_normalized_results(
     adapters. ``include_class_name`` is True for the sources whose CLI path
     stored ``class_name`` (isora, cowesweek, rhkyc).
 
-    ``upsert_race_result`` returns the existing id when an entry+race is
-    already stored, so ``imported`` counts successful upserts while
-    ``written`` is the real number of new rows (source row-count delta).
+    ``upsert_race_result`` updates the stored row when the result is already
+    held (natural key in ``irc_data.db.result_identity``, not the matched
+    boat), so ``imported`` counts successful upserts while ``written`` is the
+    real number of new rows (source row-count delta).
 
     ``log=False`` skips the ``ingestion_log`` row, for callers that store in
     batches and log the run once themselves.
