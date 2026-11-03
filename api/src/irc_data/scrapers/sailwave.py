@@ -51,6 +51,7 @@ from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, Tag
 
+from irc_data.db.result_identity import normalize_key_name as normalize_name
 from irc_data.scrapers.result_base import EventRef, NormalizedResult, RaceResultSource
 
 logger = logging.getLogger(__name__)
@@ -514,6 +515,12 @@ def parse_page(html: str) -> SailwavePage:
 # ---------------------------------------------------------------------------
 
 
+def event_names_other_system(event: str) -> bool:
+    """An event title naming another handicap system and not IRC."""
+    text = _clean(event)
+    return bool(_OTHER_SYSTEMS_RE.search(text)) and not _IRC_RE.search(text)
+
+
 def fleet_is_irc(fleet: str, rating_system: str | None, rating_header: str | None,
                  *, assume_irc: bool = False) -> bool:
     if rating_header == "rating_other":
@@ -575,6 +582,10 @@ def parse_sailwave_html(
     ref = (page, race_dates if race_dates is not None else merge_race_dates([page_race_dates(page, source_url)]))
     name = event_name or page.event or "Sailwave event"
     club = organizing_club or page.venue or None
+    if event_names_other_system(page.event or page.title):
+        # "Parkstone Cruiser Winter Series VPRS Overall 2018": the club scored
+        # VPRS with Sailwave's IRC rating system; not IRC results.
+        return []
 
     # Rating system per fleet, from the summary captions (race tables have none).
     systems: dict[str, str] = {}
@@ -1150,6 +1161,14 @@ def _race_key(r: NormalizedResult) -> tuple:
     return base + (r.race_name, r.event_date)
 
 
+def _physical_key(r: NormalizedResult) -> tuple | None:
+    raw = r.raw_data or {}
+    if raw.get("row_origin") != "race_table" or not (r.elapsed_time or r.corrected_time):
+        return None
+    return (r.organizing_club, _fleet_key(r.class_name or ""), r.event_date,
+            normalize_name(r.boat_name), normalize_name(r.sail_number), r.elapsed_time, r.corrected_time)
+
+
 def _rank(r: NormalizedResult) -> tuple:
     raw = r.raw_data or {}
     return (raw.get("uploaded") or "", raw.get("results_as_of") or "", r.source_url or "")
@@ -1176,12 +1195,30 @@ def dedupe_rows(rows: list[NormalizedResult]) -> tuple[list[NormalizedResult], i
             best[k] = _rank(r)
         if origin == "race_table" and r.event_date is not None:
             dates.setdefault(_race_key(r), []).append((raw.get("date_source") != "results_as_of", r.event_date))
+    # The same race result published in several series files of one club
+    # (Parkstone "IRC Overall" and "IRC Mini Series 1" both list race 1):
+    # identical fleet, day, boat and times. Keep the copy from the file that
+    # publishes the most rows (the overall series).
+    per_file: dict[str, int] = {}
+    for r in rows:
+        per_file[r.source_url or ""] = per_file.get(r.source_url or "", 0) + 1
+    physical: dict[tuple, tuple] = {}
+    for r in rows:
+        pk = _physical_key(r)
+        if pk is not None:
+            cand = (per_file[r.source_url or ""], r.source_url or "")
+            if pk not in physical or cand > physical[pk]:
+                physical[pk] = cand
     out, dropped = [], 0
     for r in rows:
         raw = r.raw_data or {}
         origin = raw.get("row_origin")
         rk = _race_key(r)
         if _rank(r) != best[(rk, origin)]:
+            dropped += 1
+            continue
+        pk = _physical_key(r)
+        if pk is not None and physical[pk][1] != (r.source_url or ""):
             dropped += 1
             continue
         if origin == "summary" and (rk, "race_table") in best:

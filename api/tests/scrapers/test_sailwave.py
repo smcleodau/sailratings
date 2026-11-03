@@ -440,3 +440,26 @@ def test_parkstone_winter_series_two_fleets():
     r1 = [r for r in rows if r.class_name == "Class 1 Fleet" and r.race_number == 1]
     assert r1 and {r.event_date for r in r1} == {date(2019, 10, 6)}
     assert all(r.corrected_time for r in r1 if r.status == "finished")
+
+
+def test_event_named_for_another_system_is_skipped():
+    assert sw.event_names_other_system("Parkstone Cruiser Winter Series VPRS Overall 2018")
+    assert not sw.event_names_other_system("Parkstone Cruiser Winter Series IRC Overall 2018")
+    assert not sw.event_names_other_system("Warsash Spring Championships 2025")
+    html = _html("WSC_Champs_26_BG_D1_R1.htm").replace(
+        "<h1>The Henri-Lloyd Warsash Spring Championships 2026</h1>", "<h1>Winter Series ECHO 2026</h1>")
+    assert sw.parse_sailwave_html(html) == []
+
+
+def test_dedupe_same_result_in_overall_and_mini_series_files():
+    def row(url, event, n_boat="Enigma"):
+        return NormalizedResult(
+            boat_name=n_boat, sail_number="GBR4365T", event_name=event, event_date=date(2019, 10, 6),
+            race_number=1, class_name="Class 1 Fleet", organizing_club="Parkstone Yacht Club",
+            elapsed_time="0:51:42", corrected_time="0:49:04", source_url=url,
+            raw_data={"row_origin": "race_table"})
+    rows = [row("overall", "Winter 2019 Overall Series IRC"),
+            row("overall", "Winter 2019 Overall Series IRC", "Amigos"),
+            row("mini1", "Winter 2019 1st Mini Series IRC")]
+    kept, dropped = sw.dedupe_rows(rows)
+    assert dropped == 1 and {r.source_url for r in kept} == {"overall"}
