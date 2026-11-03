@@ -227,7 +227,7 @@ def _mk(y: int, m: int, d: int) -> date | None:
 
 _HEADER_FIELDS = {
     "rank": "rank", "pos": "rank", "position": "rank", "place": "rank", "posn": "rank",
-    "fleet": "fleet", "division": "fleet", "div": "fleet", "group": "fleet",
+    "fleet": "fleet", "division": "fleet", "div": "fleet",
     "boat": "boat", "boat name": "boat", "boatname": "boat", "yacht": "boat",
     "yacht name": "boat", "name": "boat",
     "sailno": "sail", "sail no": "sail", "sail no.": "sail", "sail number": "sail",
