@@ -17,25 +17,33 @@ from `main` on Railway.
 
 ## Environment
 
-- This machine is the **dev server**. Changes here are live at `dev.sailratings.com`.
-- Production is on Railway at `sailratings.com` — auto-deploys from `main`.
-- PostgreSQL: `localhost:5433`, db `irc_data`, user/password `irc`/`irc`.
-- Cloudflare tunnel config: `~/.cloudflared/config.yml`.
-- Environment variables: `op run --env-file=.env.dev.template` (1Password).
+- This machine runs **both dev and production** (since 2026-11-03; Railway is no longer used).
+  - Dev: this checkout on `develop`, live at `dev.sailratings.com`.
+  - Prod: worktree `/home/irc-data/code/sailratings-prod` on `main`, live at `sailratings.com`.
+- PostgreSQL: `localhost:5433`, db `irc_data`, user/password `irc`/`irc` (shared by dev and prod).
+- Cloudflare tunnels: dev on `/etc/cloudflared/sailing.yml` (system service `cloudflared-sailing`);
+  prod on `~/.cloudflared/prod.yml` (user service `cloudflared-sailratings-prod`).
+- Environment variables: 1Password Environments — dev `vzhxzxt7mgb4tolyepo5wqzcz4`, prod `ewoupn6p7qbyaxzrrda7tmhkr4`.
 
 ### Ports
 
-| Service     | Port | Domain                          |
-|-------------|------|---------------------------------|
-| Backend API | 4100 | `api-dev.sailratings.com`       |
-| Frontend    | 4200 | `dev.sailratings.com`           |
+| Service           | Port | Domain                                   | Service (systemd --user)  |
+|-------------------|------|------------------------------------------|---------------------------|
+| Dev backend API   | 4100 | `api-dev.sailratings.com`                | started by `api/start-api.sh` |
+| Dev frontend      | 4200 | `dev.sailratings.com`                    | `sailing-web`             |
+| Prod backend API  | 4300 | `api.sailratings.com`                    | `sailing-prod-api`        |
+| Prod frontend     | 4400 | `sailratings.com`, `www.sailratings.com` | `sailing-prod-web`        |
 
 ## Deployment workflow
 
 1. Work on `develop` in this repo.
 2. Commit and push — changes visible at `dev.sailratings.com`.
-3. To promote: merge `develop` → `main`, push `main` — Railway auto-deploys (~2 min).
-4. Rollback via Railway dashboard if needed.
+3. Check for new migrations: `git diff --name-only origin/main origin/develop -- api/alembic/versions/`.
+4. Promote: `git push origin origin/develop:refs/heads/main`.
+5. Deploy: `scripts/prod/deploy.sh` (fast-forwards the prod worktree, runs migrations, rebuilds the
+   site with prod settings, restarts both prod services, smoke-tests locally).
+6. Rollback: `git -C /home/irc-data/code/sailratings-prod reset --hard <good-sha>` then re-run the
+   build/restart steps of `deploy.sh` (or move `main` back and redeploy).
 
 ## Operational notes
 
