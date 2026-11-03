@@ -631,7 +631,9 @@ def _run_cert_discovery(record: Mapping[str, Any]) -> Mapping[str, Any]:
     from irc_data.db.connection import get_engine
     from irc_data.scrapers.certificate_bulk import discover_and_download
 
-    out = asyncio.run(discover_and_download(get_engine()))
+    # 10 s between downloads: weekly volumes are small and the site meters
+    # downloads per connection (it answers 429 + Retry-After past its cap).
+    out = asyncio.run(discover_and_download(get_engine(), download_delay=10.0))
     stats = out.get("stats") or {}
     return {
         "records_written": int(stats.get("new", 0)) + int(stats.get("updated", 0)),

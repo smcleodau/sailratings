@@ -177,12 +177,19 @@ class CertificateHarvester:
         self.stats = HarvestStats()
         self._done: set[str] = set()  # filenames handled this run
 
-    def wanted(self, info: dict) -> bool:
+    def wanted(self, info: dict, only_cert: str | None = None) -> bool:
+        """Download this listing entry?
+
+        ``only_cert`` (targeted searches) limits re-downloads to the cert
+        number searched for; PDFs not on disk at all are always wanted.
+        """
         if info["filename"] in self._done:
             return False
-        if self.refresh_all or info.get("cert_number") in self.refresh:
+        if not (self.output_dir / info["filename"]).exists():
             return True
-        return not (self.output_dir / info["filename"]).exists()
+        if only_cert is not None and info.get("cert_number") != only_cert:
+            return False
+        return self.refresh_all or info.get("cert_number") in self.refresh
 
     async def _honour_429(self, resp, what: str) -> bool:
         """Back off on HTTP 429. Returns True when the caller should retry."""
@@ -253,7 +260,7 @@ class CertificateHarvester:
             self.log(f"  {status.title()}: {info['filename']}")
         return status
 
-    async def harvest_term(self, term: str) -> list[dict]:
+    async def harvest_term(self, term: str, only_cert: str | None = None) -> list[dict]:
         try:
             results = await self.search(term)
         except DownloadQuotaExhausted:
@@ -268,7 +275,9 @@ class CertificateHarvester:
                 self.stats.found += 1
             if info.get("cert_number"):
                 self.stats.seen_cert_numbers.add(info["cert_number"])
-            if not self.wanted(info):
+            if not self.wanted(info, only_cert):
+                if only_cert is not None and info.get("cert_number") != only_cert:
+                    continue  # leave for the sweep; don't mark handled
                 if info["filename"] not in self._done:
                     self.stats.skipped_existing += 1
                 self._done.add(info["filename"])
@@ -389,6 +398,7 @@ async def discover_and_download(
     refresh_all: bool = False,
     log: Callable[[str], None] = print,
     harvester_factory=None,
+    download_delay: float = 2.0,
 ) -> dict:
     """Weekly discovery, highest-value downloads first (the site meters
     downloads per connection, so order matters):
@@ -416,7 +426,7 @@ async def discover_and_download(
         log(f"Targeted cert-number searches ({label}): {len(cert_nos)}")
         hits = 0
         for i, cert_no in enumerate(cert_nos, 1):
-            results = await h.harvest_term(cert_no)
+            results = await h.harvest_term(cert_no, only_cert=cert_no)
             if any(r.get("cert_number") == cert_no for r in results):
                 hits += 1
             if i % 100 == 0:
@@ -425,8 +435,14 @@ async def discover_and_download(
         return {"searched": len(cert_nos), "listed": hits}
 
     async with get_http_client() as client:
-        factory = harvester_factory or CertificateHarvester
-        h = factory(client, output_dir=output_dir, refresh=refresh, refresh_all=refresh_all, log=log)
+        if harvester_factory is not None:
+            h = harvester_factory(client, output_dir=output_dir, refresh=refresh,
+                                  refresh_all=refresh_all, log=log)
+        else:
+            h = CertificateHarvester(
+                client, output_dir=output_dir, refresh=refresh, refresh_all=refresh_all, log=log,
+                download_limiter=RateLimiter(min_delay=max(download_delay, 2.0), jitter=1.0),
+            )
         try:
             if missing:
                 out["targeted_missing"] = await _targeted(missing, "missing")
@@ -439,7 +455,8 @@ async def discover_and_download(
                         log(f"  Progress: {i}/{len(terms)} terms, {s.found} listed, {s.new} new, "
                             f"{s.updated} updated, {s.failed} failed, {s.rate_limited} rate-limited")
             if targeted and refresh:
-                leftover = sorted(refresh - h.stats.seen_cert_numbers,
+                handled = {fn.split("_", 1)[0] for fn in h._done}
+                leftover = sorted(refresh - handled,
                                   key=lambda c: int(c) if c.isdigit() else 0)
                 if leftover:
                     out["targeted_refresh"] = await _targeted(leftover, "refresh")

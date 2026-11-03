@@ -190,6 +190,23 @@ def test_harvester_skips_existing_unless_cert_due_refresh(tmp_path):
     assert (tmp_path / "9348_KARAKOA_PHI8088.pdf").read_bytes() == b"%PDF-old"
 
 
+def test_targeted_search_spends_downloads_on_the_searched_cert(tmp_path):
+    # "938" also matches 50376_NOTORIOUS I_GBR938R (on disk, due a refresh):
+    # a targeted search must leave that refresh to the sweep, but still grab
+    # anything not on disk at all.
+    (tmp_path / "50376_NOTORIOUS I_GBR938R.pdf").write_bytes(b"%PDF-old")
+    client = _FakeClient(["938_SUNBURST_GBR23.pdf", "50376_NOTORIOUS I_GBR938R.pdf", "51000_NEW_GBR938.pdf"])
+    h = cb.CertificateHarvester(client, output_dir=tmp_path, refresh={"50376"},
+                                limiter=_NoWait(), log=lambda *_: None)
+    asyncio.run(h.harvest_term("938", only_cert="938"))
+    assert (tmp_path / "938_SUNBURST_GBR23.pdf").exists()
+    assert (tmp_path / "51000_NEW_GBR938.pdf").exists()
+    assert (tmp_path / "50376_NOTORIOUS I_GBR938R.pdf").read_bytes() == b"%PDF-old"
+    # ...and the sweep later still refreshes it.
+    asyncio.run(h.harvest_term("NO"))
+    assert (tmp_path / "50376_NOTORIOUS I_GBR938R.pdf").read_bytes() != b"%PDF-old"
+
+
 def test_exhaustive_terms_are_two_characters():
     terms = cb.exhaustive_terms()
     assert len(terms) == 26 * 26 + 26 * 10

@@ -291,13 +291,19 @@ def ingest_certificates(
     return stats
 
 
-def default_certificate_paths(include_historical: bool = False) -> list[Path]:
-    """Every certificate PDF the platform has downloaded."""
+def default_certificate_paths(include_historical: bool = False, include_raw_store: bool = False) -> list[Path]:
+    """Every certificate PDF the platform has downloaded.
+
+    The DP-00-05 content-addressed store (``irc_pdfs/``) is opt-in: its
+    hash-named files carry no cert number, so they cannot be skipped
+    incrementally and would be re-parsed (and win the ``pdf_path``) on
+    every run.
+    """
     from irc_data.config import CERTIFICATES_DIR, HISTORICAL_CERTS_DIR, RAW_DIR
 
     dirs = [CERTIFICATES_DIR]
     if include_historical:
         dirs.append(HISTORICAL_CERTS_DIR)
     raw_store = RAW_DIR / "irc_pdfs"
-    return iter_certificate_files(dirs, raw_store_dirs=[raw_store] if raw_store.exists() else [])
-
+    stores = [raw_store] if include_raw_store and raw_store.exists() else []
+    return iter_certificate_files(dirs, raw_store_dirs=stores)

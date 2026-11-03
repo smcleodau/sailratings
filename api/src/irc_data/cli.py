@@ -308,8 +308,10 @@ def scrape():
 @click.option("--exhaustive", is_flag=True, help="2-letter exhaustive search (AA..ZZ) + targeted cert-number search for current-TCC boats still missing a cert")
 @click.option("--targeted-only", is_flag=True, help="Only search current-TCC cert numbers that are missing or due a refresh")
 @click.option("--refresh-all", is_flag=True, help="Re-download every listed PDF, not only new/stale ones")
+@click.option("--download-delay", type=float, default=2.0, show_default=True,
+              help="Seconds between PDF downloads (the site meters downloads; it slows further on HTTP 429)")
 @click.pass_context
-def scrape_certs(ctx, search, all_targets, exhaustive, targeted_only, refresh_all):
+def scrape_certs(ctx, search, all_targets, exhaustive, targeted_only, refresh_all, download_delay):
     """Download certificate PDFs from ircrating.org."""
     import asyncio
     import json as _json
@@ -329,6 +331,7 @@ def scrape_certs(ctx, search, all_targets, exhaustive, targeted_only, refresh_al
                 targeted=True,
                 refresh_all=refresh_all,
                 log=console.print,
+                download_delay=download_delay,
             )
         )
         ctx.obj["scrape_certs_stats"] = out
@@ -1986,7 +1989,10 @@ def parse_certs(ctx, cert_dir, include_historical, reparse_all):
             dirs.append(HISTORICAL_CERTS_DIR)
         paths = iter_certificate_files(dirs)
     else:
-        paths = default_certificate_paths(include_historical=include_historical)
+        # --include-historical also sweeps the DP-00-05 raw store.
+        paths = default_certificate_paths(
+            include_historical=include_historical, include_raw_store=include_historical
+        )
     console.print(f"Found {len(paths)} certificate PDFs")
 
     stats = ingest_certificates(
