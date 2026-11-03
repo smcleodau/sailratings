@@ -516,16 +516,43 @@ async def scrape_race_results(
     Extracts boat info, IRC/PHS handicaps, corrected times, and placings
     from the structured JSON response.
     """
+    race_data = await fetch_race_payload(client, race_id)
+    if race_data is None:
+        return []
+    return parse_race_payload(race_data, club_id, series_id, race_id,
+                              series_name=series_name, club_name=club_name)
+
+
+async def fetch_race_payload(client: httpx.AsyncClient, race_id: int) -> dict | None:
+    """Fetch one race's ``resultsentrants/display`` payload (rate limited).
+
+    Returns the ``data`` object, or None when SailSys answers an HTTP error.
+    """
     url = f"{SAILSYS_API}/races/{race_id}/resultsentrants/display"
     await rate_limiter.wait()
     try:
         resp = await client.get(url)
         resp.raise_for_status()
     except httpx.HTTPStatusError:
-        return []
+        return None
+    return resp.json().get("data", {})
 
-    data = resp.json()
-    race_data = data.get("data", {})
+
+def parse_race_payload(
+    race_data: dict,
+    club_id: int,
+    series_id: int,
+    race_id: int,
+    series_name: str = "",
+    club_name: str = "",
+    irc_ids: set[int] | None = None,
+) -> list[RaceResult]:
+    """Parse a race payload into RaceResults.
+
+    ``irc_ids`` overrides the IRC definition ids (default: detected per race
+    by :func:`irc_definition_ids`); the IRC repair passes the old fixed set
+    to see what the pre-fix parser stored.
+    """
     race_name = race_data.get("name", f"Race {race_id}")
     race_date = race_data.get("dateTime")
     event_date = _parse_race_date(race_date)
@@ -533,7 +560,8 @@ async def scrape_race_results(
     results = []
     source_url = f"{SAILSYS_BASE}/club/{club_id}/results/series/{series_id}/races/{race_id}?handicap=1"
 
-    irc_ids = irc_definition_ids(race_data)
+    if irc_ids is None:
+        irc_ids = irc_definition_ids(race_data)
 
     # Count fleet size across all competitor groups
     total_competitors = 0
