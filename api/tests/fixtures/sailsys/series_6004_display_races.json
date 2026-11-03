@@ -1,0 +1,20 @@
+{
+ "data": {
+  "club": {
+   "id": 5,
+   "shortName": "MHYC",
+   "longName": "Middle Harbour Yacht Club"
+  },
+  "name": "Harbour Trek October 2026",
+  "id": 6004,
+  "races": [
+   {
+    "id": 44599,
+    "dateTime": "2026-10-24T00:00:00.000",
+    "number": 1,
+    "name": "Race  1",
+    "status": 4
+   }
+  ]
+ }
+}

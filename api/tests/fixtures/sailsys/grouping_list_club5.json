@@ -1,0 +1,29 @@
+{
+ "data": [
+  {
+   "id": 139,
+   "name": "2025-2026",
+   "lastRaceDate": "2026-08-29T00:00:00.000",
+   "series": [
+    {
+     "id": 4801,
+     "name": "ANZAC Day Two Up Cup 2026",
+     "clubId": 5,
+     "includes": "Two Handed Division"
+    },
+    {
+     "id": 4802,
+     "name": "Autumn Sail Feature Race 2025/26",
+     "clubId": 5,
+     "includes": ""
+    },
+    {
+     "id": 6127,
+     "name": "Leading Edge Series Winter 2026_Pointscore incl casual entrants",
+     "clubId": 5,
+     "includes": ""
+    }
+   ]
+  }
+ ]
+}

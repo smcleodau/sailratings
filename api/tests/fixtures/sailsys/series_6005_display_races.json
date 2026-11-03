@@ -1,0 +1,20 @@
+{
+ "data": {
+  "club": {
+   "id": 5,
+   "shortName": "MHYC",
+   "longName": "Middle Harbour Yacht Club"
+  },
+  "name": "Seven Islands Race November 2026",
+  "id": 6005,
+  "races": [
+   {
+    "id": 44609,
+    "dateTime": "2026-11-28T00:00:00.000",
+    "number": 1,
+    "name": "Race  1",
+    "status": 1
+   }
+  ]
+ }
+}

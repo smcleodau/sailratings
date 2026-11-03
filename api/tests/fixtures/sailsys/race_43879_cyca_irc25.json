@@ -1,0 +1,148 @@
+{
+ "data": {
+  "id": 43879,
+  "dateTime": "2026-10-31T00:00:00.000",
+  "name": "Race  3 - Passage Race",
+  "status": 3,
+  "handicappings": [
+   {
+    "id": 5,
+    "shortName": "PHS",
+    "fullName": "SailSys PHS"
+   },
+   {
+    "id": 25,
+    "shortName": "IRC",
+    "fullName": "IRC Fleet (Manual)"
+   },
+   null
+  ],
+  "competitors": [
+   {
+    "parent": {
+     "name": "Division 1"
+    },
+    "items": [
+     {
+      "finishTimeLocal": "14:56:12",
+      "elapsedTime": "04:56:12",
+      "boat": {
+       "name": "About Time",
+       "sailNumber": "7700",
+       "make": "Neo ",
+       "model": "Roma 430",
+       "club": "CYCA"
+      },
+      "skipper": {
+       "profile": {
+        "fullName": "Julian Farren-Price"
+       }
+      },
+      "handicap": {
+       "currentHandicaps": [
+        {
+         "definition": {
+          "id": 5,
+          "shortName": "PHS",
+          "fullName": "SailSys PHS"
+         },
+         "value": 1.2249
+        },
+        {
+         "definition": {
+          "id": 25,
+          "shortName": "IRC",
+          "fullName": "IRC Fleet (Manual)"
+         },
+         "value": 1.221
+        }
+       ]
+      },
+      "calculations": [
+       {
+        "handicapDefinitionId": null,
+        "correctedTime": null,
+        "placings": [
+         {
+          "place": 1,
+          "placingText": "1"
+         }
+        ]
+       },
+       {
+        "handicapDefinitionId": 5,
+        "correctedTime": "06:02:49",
+        "placings": [
+         {
+          "place": 2,
+          "placingText": "2"
+         }
+        ]
+       },
+       {
+        "handicapDefinitionId": 25,
+        "correctedTime": "06:01:40",
+        "placings": [
+         {
+          "place": 1,
+          "placingText": "1"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "finishTimeLocal": null,
+      "elapsedTime": null,
+      "boat": {
+       "name": "Cadenza",
+       "sailNumber": "8301",
+       "make": "Farr",
+       "model": "50",
+       "club": "CYCA"
+      },
+      "skipper": {
+       "profile": {
+        "fullName": "Gunnar Tuisk"
+       }
+      },
+      "handicap": {
+       "currentHandicaps": [
+        {
+         "definition": {
+          "id": 5,
+          "shortName": "PHS",
+          "fullName": "SailSys PHS"
+         },
+         "value": 1.0381
+        }
+       ]
+      },
+      "calculations": [
+       {
+        "handicapDefinitionId": 5,
+        "correctedTime": null,
+        "placings": [
+         {
+          "place": 8,
+          "placingText": null
+         }
+        ]
+       },
+       {
+        "handicapDefinitionId": null,
+        "correctedTime": null,
+        "placings": [
+         {
+          "place": 8,
+          "placingText": null
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}
