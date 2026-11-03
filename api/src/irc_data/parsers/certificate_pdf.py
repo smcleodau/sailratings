@@ -119,6 +119,56 @@ def classify_spinnaker(
     return kind, {"slu": slu, "sle": sle, "sf": sfl, "shw": shw}
 
 
+_MONTH_ALIASES = {
+    # French / Spanish / Italian abbreviations -> English %b
+    "fév": "Feb", "fev": "Feb", "avr": "Apr", "mai": "May", "juin": "Jun",
+    "juil": "Jul", "août": "Aug", "aout": "Aug", "déc": "Dec", "dec": "Dec",
+    "ene": "Jan", "abr": "Apr", "ago": "Aug", "dic": "Dec", "gen": "Jan",
+    "mag": "May", "giu": "Jun", "lug": "Jul", "set": "Sep", "ott": "Oct",
+}
+
+_EXPIRY_TOKEN_RE = re.compile(r"(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,5})\.?\s+(\d{2,4})\b")
+
+
+def parse_expiry_date(expires_str: str | None):
+    """Parse the certificate expiry line into a ``date``.
+
+    Accepts the plain annual form (``31 Dec 26``) plus the variants that
+    used to defeat the parser and leave ``issue_date`` NULL:
+
+    * Single Event Ratings, which append a label after the date
+      (``18 Oct 25 SINGLE EVENT RATING`` / ``... RATING D'ÉVÉNEMENT UNIQUE``)
+    * localised month abbreviations with a trailing dot (``31 déc. 26``)
+    * free text after the date (``31 Dec 26 changes aimed at ...``)
+    """
+    if not expires_str:
+        return None
+    m = _EXPIRY_TOKEN_RE.search(expires_str)
+    if not m:
+        return None
+    day, month, year = m.groups()
+    month = _MONTH_ALIASES.get(month.lower(), month)
+    for fmt in ("%d %b %y", "%d %b %Y"):
+        try:
+            return datetime.strptime(f"{day} {month[:3].title()} {year}", fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def looks_like_certificate(full_text: str) -> bool:
+    """True when extracted text is an IRC certificate / boat-data sheet.
+
+    The Wayback harvest dropped rule books, notices and annual reports into
+    ``certificates/historical``; their wayback-timestamped filenames
+    (``20251231141539_...pdf``) must not be mistaken for cert numbers.
+    """
+    return bool(
+        re.search(r"(Cert No\.?|N° de Cert|No\. de Cert|N° di Cert)\s*:?\s*\d", full_text)
+        or (re.search(r"\bLH\s+\d+\.\d+", full_text) and re.search(r"\bTCC\b|IRC", full_text))
+    )
+
+
 def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
     """Parse an IRC certificate PDF into structured data."""
     with pdfplumber.open(pdf_path) as pdf:
@@ -184,24 +234,16 @@ def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
     if not expires_str:
         expires_str = _search_value(full_text, r"Hasta el:\s*(.+?)(?:\n|$)")
     issue_date = None
-    if expires_str:
-        french_months = {
-            "Fév": "Feb", "Avr": "Apr", "Mai": "May", "Juin": "Jun",
-            "Juil": "Jul", "Août": "Aug", "Déc": "Dec"
-        }
-        expires_normalized = expires_str.strip()
-        for fr, en in french_months.items():
-            expires_normalized = expires_normalized.replace(fr, en)
-        expiry_date = None
-        for fmt in ["%d %b %y", "%d %b %Y", "%d %b %y %H:%M:%S", "%d %b %Y %H:%M:%S"]:
-            try:
-                expiry_date = datetime.strptime(expires_normalized, fmt).date()
-                break
-            except ValueError:
-                continue
-        if expiry_date:
-            # Certificate year = expiry minus 1 year
+    single_event = bool(
+        re.search(r"SINGLE EVENT RATING|RATING D.[ÉE]V[ÉE]NEMENT UNIQUE", full_text, re.IGNORECASE)
+    )
+    expiry_date = parse_expiry_date(expires_str)
+    if expiry_date:
+        # Certificate year = expiry minus 1 year (29 Feb guarded).
+        try:
             issue_date = expiry_date.replace(year=expiry_date.year - 1)
+        except ValueError:
+            issue_date = expiry_date.replace(year=expiry_date.year - 1, day=28)
 
     # Parse design name — may include draft variant and WB flag
     # e.g. "SUN FAST 3300 1.95 WB" or "J/99"
@@ -226,11 +268,16 @@ def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
     # Allow optional comma thousands separator and optional kg/kgs unit suffix so we
     # cover variants like "Boat Weight: 1,234 kg". Require a colon so we don't match
     # section headers like "Poids & Elancements" or "Peso con cuscini e batterie".
+    # The comma is a thousands separator here ("2,800" kg), not a decimal
+    # point, so strip it before _dec (which maps "," -> ".").
     displacement = _dec(
-        _search_value(
-            measurement_text,
-            r"(?:Boat\s*Weight|Poids|Peso|Gewicht)\s*:\s*([\d,]+)(?:\s*kgs?)?",
-        )
+        (
+            _search_value(
+                measurement_text,
+                r"(?:Boat\s*Weight|Poids|Peso|Gewicht)\s*:\s*([\d,]+)(?:\s*kgs?)?",
+            )
+            or ""
+        ).replace(",", "")
     )
     # DLR is usually an integer but some certs print decimals ("DLR 150.5").
     dlr = _dec(_search_value(measurement_text, r"DLR\s+(\d+(?:\.\d+)?)"))
@@ -354,6 +401,9 @@ def parse_certificate_pdf(pdf_path: Path) -> CertificateData:
         "sail_number": sail_number,
         "crew": crew_str,
         "expires": expires_str,
+        "expiry_date": expiry_date.isoformat() if expiry_date else None,
+        "single_event": single_event,
+        "is_certificate": looks_like_certificate(full_text),
         "lwp": str(lwp) if lwp else None,
         "dlr": str(dlr) if dlr else None,
         "hsa": str(hsa) if hsa else None,

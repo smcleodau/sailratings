@@ -213,32 +213,35 @@ def test_store_normalized_results_counts_new_rows_and_logs(monkeypatch):
     assert logged["source"] == "rorc" and logged["records_new"] == 2
 
 
-def test_cert_parse_persists_via_cli_and_counts_new_certificates(monkeypatch):
-    """irc-certs parse half used to discard every parsed certificate."""
-    import irc_data.cli as cli_mod
+def test_cert_parse_persists_via_shared_ingest_and_counts_rows(monkeypatch):
+    """irc-certs parse half used to discard every parsed certificate, then
+    counted a ``certificates`` table that no longer exists (renamed to
+    ``irc_certificates`` in 0012). It now runs the shared ingest."""
+    import irc_data.parsers.certificate_ingest as ingest
 
-    counts = iter([100, 104])
-    calls = []
+    calls = {}
 
-    class _Conn:
-        def __enter__(self):
-            return self
+    def _fake_ingest(engine, paths, *, incremental, log):
+        calls["incremental"] = incremental
+        calls["paths"] = list(paths)
+        return ingest.IngestStats(parsed=5, inserted=3, updated=1, linked_after=2)
 
-        def __exit__(self, *a):
-            return False
-
-        def execute(self, *a, **k):
-            class _R:
-                def scalar(self_inner):
-                    return next(counts)
-            return _R()
-
-    class _Engine:
-        def connect(self):
-            return _Conn()
-
-    monkeypatch.setattr(connection, "get_engine", lambda: _Engine())
-    monkeypatch.setattr(cli_mod.cli, "main", lambda args, standalone_mode: calls.append(args))
+    monkeypatch.setattr(connection, "get_engine", lambda: object())
+    monkeypatch.setattr(ingest, "default_certificate_paths", lambda: ["a.pdf", "b.pdf"])
+    monkeypatch.setattr(ingest, "ingest_certificates", _fake_ingest)
     out = legacy_adapters._run_cert_parse({})
-    assert calls == [["parse-certs"]]
+    assert calls == {"incremental": True, "paths": ["a.pdf", "b.pdf"]}
     assert out["records_written"] == 4
+    assert out["inserted"] == 3 and out["updated"] == 1 and out["linked"] == 2
+    assert out["records_found"] == 2
+
+
+def test_cert_chain_still_parses_when_discovery_fails(monkeypatch):
+    parsed = []
+    monkeypatch.setattr(legacy_adapters, "_run_cert_discovery", lambda r: (_ for _ in ()).throw(RuntimeError("site down")))
+    monkeypatch.setattr(legacy_adapters, "_run_cert_parse", lambda r: parsed.append(1) or {"records_written": 0})
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        legacy_adapters._chain_cert_discovery_and_parse({})
+    assert parsed == [1]
