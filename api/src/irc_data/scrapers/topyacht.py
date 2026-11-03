@@ -864,7 +864,7 @@ async def resolve_series_urls(client, url: str, since: date | None = None,
             href = urljoin(final, raw).split("#")[0]
             path = href.lower().split("?")[0]
             if path.endswith("/series.htm") or _PUBLICRESULTS_RE.search(href):
-                if href not in out:
+                if href not in out and not _stale_url(href, since):
                     out.append(href)
                 continue
             if hop >= max_hops or href in seen or _SKIP_EXT_RE.search(path) or _stale_url(href, since):
@@ -891,7 +891,10 @@ async def scrape_series(client, series_url: str, since: date | None = None,
             print(f"      {race['race_label']}: ERROR — {e}")
             continue
         if since:
-            parsed = [r for r in parsed if r.event_date is None or r.event_date >= since]
+            # Undated rows can't be shown to be recent; a club page linking an
+            # old regatta (e.g. rmys/2018/ayc from the Range Series page) would
+            # otherwise slip through a since-bounded run.
+            parsed = [r for r in parsed if r.event_date is not None and r.event_date >= since]
         results.extend(parsed)
     return results
 

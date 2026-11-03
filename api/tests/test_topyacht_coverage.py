@@ -180,3 +180,11 @@ def test_resolve_follows_results_nav_on_moved_club_page():
     out, _ = _run(lambda c: ty.resolve_series_urls(c, "https://byc.example/current-race-results/"), routes)
     assert out == ["https://topyacht.net/publicresults/SeriesIndex?seriesId=1267",
                    "https://topyacht.net/publicresults/SeriesIndex?seriesId=1400"]
+
+
+def test_resolve_drops_series_links_from_old_seasons():
+    page = ('<a href="http://www.topyacht.net.au/results/rmys/2018/ayc/mono/series.htm">AYC 2018</a>'
+            '<a href="https://topyacht.net.au/results/syc/2026/range/series.htm">Range 2026</a>')
+    out, _ = _run(lambda c: ty.resolve_series_urls(c, "https://champs.example/range-series/", since=date(2025, 7, 1)),
+                  {"champs.example/range-series/": page})
+    assert out == ["https://topyacht.net.au/results/syc/2026/range/series.htm"]
