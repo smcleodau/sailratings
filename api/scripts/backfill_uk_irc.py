@@ -5,7 +5,9 @@ one broken seed does not stop the rest) through the same ``sailwave.run`` /
 ``halsail.run`` the scheduled runners use, with no ``since`` (all history).
 Prints one JSON line per seed.
 
-    PYTHONPATH=src python scripts/backfill_uk_irc.py [warsash hamble halsail sailwave]
+    PYTHONPATH=src python scripts/backfill_uk_irc.py [warsash hamble halsail sailwave] [--from SUBSTR]
+
+``--from`` resumes at the first seed whose URL contains SUBSTR.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ def _emit(**kw) -> None:
     print(json.dumps(kw, default=str), flush=True)
 
 
-def main(groups: list[str]) -> None:
+def main(groups: list[str], start_at: str | None = None) -> None:
     from irc_data.scrapers import halsail, sailwave
     from irc_data.scrapers.halsail_seeds import seeds_for as hal_seeds
     from irc_data.scrapers.sailwave_seeds import seeds_for as sw_seeds
@@ -34,8 +36,12 @@ def main(groups: list[str]) -> None:
         "halsail": [("halsail", "halsail", s) for s in hal_seeds("halsail")],
         "sailwave": [("sailwave", "sailwave", s) for s in sw_seeds("sailwave")],
     }
+    skipping = bool(start_at)
     for group in groups:
         for kind, source, seed in plan[group]:
+            if skipping and start_at not in seed.url:
+                continue
+            skipping = False
             started = time.monotonic()
             try:
                 _assert_approved(source, kind)
@@ -51,4 +57,10 @@ def main(groups: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:] or ["warsash", "hamble", "halsail", "sailwave"])
+    args = sys.argv[1:]
+    start = None
+    if "--from" in args:
+        i = args.index("--from")
+        start = args[i + 1]
+        args = args[:i] + args[i + 2:]
+    main(args or ["warsash", "hamble", "halsail", "sailwave"], start)
