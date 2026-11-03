@@ -1,0 +1,232 @@
+{
+ "RegattaName": "Europe",
+ "UpdatedDate": "2026-10-31T16:58:12.445+0100",
+ "RaceCount": 5,
+ "HasSailNumbers": true,
+ "HcpName": "Hdcp.",
+ "ScoringName": "Default",
+ "Id": "b181798b-74d9-4453-88af-fc8e6acb2c89",
+ "ShowCdl": true,
+ "ShowHandicap": true,
+ "Discards": "",
+ "PointSystem": "Low Point",
+ "IsLowPointSystem": true,
+ "RatingSystem": "One Design",
+ "HasOneDesignRatingSystem": true,
+ "StageInfos": [
+  {}
+ ],
+ "OverallReport": {
+  "Id": "1ed95bc7-e593-4c90-a8ac-91565e87ddd3",
+  "Version": "1.0",
+  "PublishedDate": "2026-11-01T11:57:30.635+0100",
+  "IsOfficial": true
+ },
+ "Statuses": [
+  "OCS",
+  "DNC"
+ ],
+ "Countries": [
+  "DEN",
+  "GER",
+  "POL"
+ ],
+ "RaceNames": [
+  {
+   "Index": 0,
+   "Name": "1. Wettfahrt",
+   "RaceType": 0,
+   "RaceIndex": 1
+  },
+  {
+   "Index": 1,
+   "Name": "2. Wettfahrt",
+   "RaceType": 0,
+   "RaceIndex": 2
+  },
+  {
+   "Index": 2,
+   "Name": "3. Wettfahrt",
+   "RaceType": 0,
+   "RaceIndex": 3
+  },
+  {
+   "Index": 3,
+   "Name": "4. Wettfahrt",
+   "RaceType": 0,
+   "RaceIndex": 4
+  },
+  {
+   "Index": 4,
+   "Name": "5. Wettfahrt",
+   "RaceType": 0,
+   "RaceIndex": 5
+  }
+ ],
+ "SubtotalNames": [],
+ "LastRaceIndex": 3,
+ "EntryResults": [
+  {
+   "Id": "238df095-0ca5-4287-b1cb-ff99e24e3714",
+   "Rank": 1,
+   "TeamName": "Barbara BARTKOWIAK",
+   "Name": "Barbara BARTKOWIAK",
+   "TVShortName": "B. BARTKOWIAK",
+   "SailNumber": "POL 107",
+   "SailNumberCountry": "POL",
+   "Country": "POL",
+   "BoatName": "rouge 2",
+   "ClubName": "Akademicki Związek Sportowy Poznań",
+   "ClubCode": "AZS P",
+   "CarriedWins": [],
+   "EntryRaceResults": [
+    {
+     "RaceId": "c96bff76-911a-4aa7-badd-f4946b80fcb3",
+     "Points": "1.0",
+     "Fleet": "",
+     "RaceType": 0,
+     "Rank": 1,
+     "OverallRaceIndex": 1
+    },
+    {
+     "RaceId": "d0e6b5cb-f5b7-49b5-a546-979cbe156345",
+     "Points": "3.0",
+     "Fleet": "",
+     "RaceType": 0,
+     "Rank": 3,
+     "OverallRaceIndex": 2
+    },
+    {
+     "RaceId": "4c1d0f34-b6df-461a-a682-05f7360bc719",
+     "Points": "3.0",
+     "Fleet": "",
+     "RaceType": 0,
+     "Rank": 3,
+     "OverallRaceIndex": 3
+    },
+    {},
+    {}
+   ],
+   "Subtotals": [
+    {
+     "Name": "Q",
+     "Stage": 0,
+     "Total": 7.0,
+     "Net": 7.0,
+     "StageTotal": 7.0,
+     "StageNet": 7.0,
+     "AfterRaceIndex": 3,
+     "FactorizedBy": 1.0
+    }
+   ],
+   "Protests": [],
+   "TotalPoints": "7.0",
+   "NetPoints": "7.0",
+   "Skipper": {
+    "FirstName": "Barbara",
+    "LastName": "Bartkowiak"
+   },
+   "AfterNewQualificationSeriesTotal": 7.0,
+   "AfterNewQualificationSeriesNet": 7.0,
+   "FinalSeriesCarryForwardPoints2026": 0.0
+  },
+  {
+   "Id": "1d3d5971-1470-4d42-8071-6bae2707b41c",
+   "Rank": 2,
+   "TeamName": "Hanna MÜHLBERG",
+   "Name": "Hanna MÜHLBERG",
+   "TVShortName": "H. MÜHLBERG",
+   "SailNumber": "GER 61",
+   "SailNumberCountry": "GER",
+   "Country": "GER",
+   "BoatName": "",
+   "ClubName": "Segel Club Pirk",
+   "ClubCode": "SC037",
+   "CarriedWins": [],
+   "EntryRaceResults": [
+    {
+     "RaceId": "c96bff76-911a-4aa7-badd-f4946b80fcb3",
+     "Points": "7.0",
+     "Fleet": "",
+     "RaceType": 0,
+     "Rank": 7,
+     "OverallRaceIndex": 1
+    },
+    {
+     "RaceId": "d0e6b5cb-f5b7-49b5-a546-979cbe156345",
+     "Points": "4.0",
+     "Fleet": "",
+     "RaceType": 0,
+     "Rank": 4,
+     "OverallRaceIndex": 2
+    },
+    {
+     "RaceId": "4c1d0f34-b6df-461a-a682-05f7360bc719",
+     "Points": "1.0",
+     "Fleet": "",
+     "RaceType": 0,
+     "Rank": 1,
+     "OverallRaceIndex": 3
+    },
+    {},
+    {}
+   ],
+   "Subtotals": [
+    {
+     "Name": "Q",
+     "Stage": 0,
+     "Total": 12.0,
+     "Net": 12.0,
+     "StageTotal": 12.0,
+     "StageNet": 12.0,
+     "AfterRaceIndex": 3,
+     "FactorizedBy": 1.0
+    }
+   ],
+   "Protests": [],
+   "TotalPoints": "12.0",
+   "NetPoints": "12.0",
+   "Skipper": {
+    "FirstName": "Hanna",
+    "LastName": "Mühlberg"
+   },
+   "AfterNewQualificationSeriesTotal": 12.0,
+   "AfterNewQualificationSeriesNet": 12.0,
+   "FinalSeriesCarryForwardPoints2026": 0.0
+  }
+ ],
+ "ScoringResults": [],
+ "RaceInfos": [
+  {
+   "StartDateWithTime": "10/31/2026 12:40:00",
+   "RaceId": "c96bff76-911a-4aa7-badd-f4946b80fcb3",
+   "RaceIndex": 1,
+   "RaceName": "1. Wettfahrt",
+   "FleetName": "",
+   "StartDate": "2026-10-31T00:00:00",
+   "StartTime": 45600,
+   "StartTimeText": "12:40:00"
+  },
+  {
+   "StartDateWithTime": "10/31/2026 13:50:00",
+   "RaceId": "d0e6b5cb-f5b7-49b5-a546-979cbe156345",
+   "RaceIndex": 2,
+   "RaceName": "2. Wettfahrt",
+   "FleetName": "",
+   "StartDate": "2026-10-31T00:00:00",
+   "StartTime": 49800,
+   "StartTimeText": "13:50:00"
+  },
+  {
+   "StartDateWithTime": "10/31/2026 15:05:00",
+   "RaceId": "4c1d0f34-b6df-461a-a682-05f7360bc719",
+   "RaceIndex": 3,
+   "RaceName": "3. Wettfahrt",
+   "FleetName": "",
+   "StartDate": "2026-10-31T00:00:00",
+   "StartTime": 54300,
+   "StartTimeText": "15:05:00"
+  }
+ ],
+ "EchoBlend": "60/40 (HDCP/ECHO PI)"
+}

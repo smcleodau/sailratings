@@ -1,0 +1,1609 @@
+{
+ "RegattaName": "IRC/ORC 1 (TCC ≥ 1.043/APH < 531)",
+ "UpdatedDate": "2026-08-30T13:56:01.806+0200",
+ "RaceCount": 7,
+ "IsOpenClass": true,
+ "HasBowNumbers": true,
+ "HasSailNumbers": true,
+ "HasBoatType": true,
+ "HasCDL": true,
+ "HcpName": "Hdcp.",
+ "ScoringName": "Default",
+ "Id": "b181798b-74d9-4453-88af-fc8e6acb2c89",
+ "IsInternal": true,
+ "ShowCdl": true,
+ "ShowHandicap": true,
+ "Discards": "5; ",
+ "PointSystem": "Low Point",
+ "IsLowPointSystem": true,
+ "RatingSystem": "ORC",
+ "ScoringOptions": "Triple number inshore - time on time",
+ "StageInfos": [
+  {}
+ ],
+ "InfoOptions": {
+  "ResultListDisplayOwner": true,
+  "ResultListDisplayBoatNames": true
+ },
+ "Statuses": [
+  "OCS",
+  "DNF"
+ ],
+ "Countries": [
+  "BEL",
+  "GBR",
+  "NED"
+ ],
+ "RaceNames": [
+  {
+   "Index": 0,
+   "Name": "R1",
+   "RaceType": 0,
+   "RaceIndex": 1
+  },
+  {
+   "Index": 1,
+   "Name": "R2",
+   "RaceType": 0,
+   "RaceIndex": 2
+  },
+  {
+   "Index": 2,
+   "Name": "R3",
+   "RaceType": 0,
+   "RaceIndex": 3
+  },
+  {
+   "Index": 3,
+   "Name": "R4",
+   "RaceType": 0,
+   "RaceIndex": 4
+  },
+  {
+   "Index": 4,
+   "Name": "R5",
+   "RaceType": 0,
+   "RaceIndex": 5
+  },
+  {
+   "Index": 5,
+   "Name": "R6",
+   "RaceType": 0,
+   "RaceIndex": 6
+  },
+  {
+   "Index": 6,
+   "Name": "R7",
+   "RaceType": 0,
+   "RaceIndex": 7
+  }
+ ],
+ "SubtotalNames": [],
+ "LastRaceIndex": 6,
+ "EntryResults": [
+  {
+   "Id": "2c07c74e-f7f4-4b62-a3fa-36cb255e3e15",
+   "Rank": 1,
+   "TeamName": "Luc FEREMANS",
+   "Name": "Luc FEREMANS",
+   "TVShortName": "L. FEREMANS",
+   "SailNumber": "BEL 4343",
+   "SailNumberCountry": "BEL",
+   "Country": "BEL",
+   "BoatType": "GRAND SOLEIL 43 BC",
+   "BoatName": "Antilope",
+   "BoatOwner": "yes",
+   "BowNumber": "IRC",
+   "OrcCertificateType": "IN",
+   "ClubName": "ROYAL BELGIAN SAILING CLUB",
+   "ClubCode": "RBSC",
+   "CarriedWins": [],
+   "EntryRaceResults": [
+    {
+     "PointsDiscarded": true,
+     "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+     "Points": "2.0",
+     "RaceTime": "0:50:46",
+     "RaceTimeForCalculation": "0:50:46",
+     "CorrectedTime": "0:00:00",
+     "CorrectedTimeMs": 0,
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "Rank": 1,
+     "OverallRaceIndex": 1
+    },
+    {
+     "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+     "Points": "3.0",
+     "RaceTime": "2:43:58",
+     "RaceTimeForCalculation": "2:43:58",
+     "CorrectedTime": "0:00:00",
+     "CorrectedTimeMs": 0,
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "Rank": 1,
+     "OverallRaceIndex": 2
+    },
+    {
+     "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+     "Points": "2.0",
+     "RaceTime": "1:07:18",
+     "RaceTimeForCalculation": "1:07:18",
+     "CorrectedTime": "0:00:00",
+     "CorrectedTimeMs": 0,
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "Rank": 1,
+     "OverallRaceIndex": 3
+    },
+    {
+     "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+     "Points": "2.0",
+     "RaceTime": "1:05:07",
+     "RaceTimeForCalculation": "1:05:07",
+     "CorrectedTime": "0:00:00",
+     "CorrectedTimeMs": 0,
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "Rank": 1,
+     "OverallRaceIndex": 4
+    },
+    {
+     "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+     "Points": "2.0",
+     "RaceTime": "1:05:36",
+     "RaceTimeForCalculation": "1:05:36",
+     "CorrectedTime": "0:00:00",
+     "CorrectedTimeMs": 0,
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "Rank": 1,
+     "OverallRaceIndex": 5
+    },
+    {
+     "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+     "Points": "",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "OverallRaceIndex": 6
+    },
+    {}
+   ],
+   "Subtotals": [
+    {
+     "Name": "Q",
+     "Stage": 0,
+     "Total": 11.0,
+     "Net": 9.0,
+     "StageTotal": 11.0,
+     "StageNet": 9.0,
+     "AfterRaceIndex": 5,
+     "FactorizedBy": 1.0
+    }
+   ],
+   "Protests": [],
+   "TotalPoints": "11.0",
+   "NetPoints": "9.0",
+   "Skipper": {
+    "FirstName": "Luc",
+    "LastName": "Feremans"
+   },
+   "AfterNewQualificationSeriesTotal": 11.0,
+   "AfterNewQualificationSeriesNet": 9.0,
+   "FinalSeriesCarryForwardPoints2026": 0.0
+  },
+  {
+   "Id": "3eab8680-1467-44ca-9cbc-fb4081bf4fea",
+   "Rank": 1,
+   "TeamName": "François GOUBAU",
+   "Name": "François GOUBAU",
+   "TVShortName": "F. GOUBAU",
+   "SailNumber": "BEL 4701",
+   "SailNumberCountry": "BEL",
+   "Country": "BEL",
+   "BoatType": "Beneteau First 47.7",
+   "BoatName": "MOANA",
+   "BoatOwner": "javelin Sailing Promotion",
+   "BowNumber": "IRC",
+   "OrcCertificateType": "IN",
+   "ClubName": "ROYAL BELGIAN SAILING CLUB",
+   "ClubCode": "RBSC",
+   "CarriedWins": [],
+   "EntryRaceResults": [
+    {
+     "PointsDiscarded": true,
+     "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+     "Points": "2.0",
+     "RaceTime": "0:45:23",
+     "RaceTimeForCalculation": "0:45:23",
+     "CorrectedTime": "0:00:00",
+     "CorrectedTimeMs": 0,
+     "Interval": "0:00:00",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "Rank": 1,
+     "OverallRaceIndex": 1
+    },
+    {
+     "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+     "Points": "3.0",
+     "RaceTime": "2:28:27",
+     "RaceTimeForCalculation": "2:28:27",
+     "CorrectedTime": "0:00:00",
+     "CorrectedTimeMs": 0,
+     "Interval": "0:00:00",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "Rank": 1,
+     "OverallRaceIndex": 2
+    },
+    {
+     "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+     "Points": "2.0",
+     "RaceTime": "0:59:58",
+     "RaceTimeForCalculation": "0:59:58",
+     "CorrectedTime": "0:00:00",
+     "CorrectedTimeMs": 0,
+     "Interval": "0:00:00",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "Rank": 1,
+     "OverallRaceIndex": 3
+    },
+    {
+     "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+     "Points": "2.0",
+     "RaceTime": "0:59:44",
+     "RaceTimeForCalculation": "0:59:44",
+     "CorrectedTime": "0:00:00",
+     "CorrectedTimeMs": 0,
+     "Interval": "0:00:00",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "Rank": 1,
+     "OverallRaceIndex": 4
+    },
+    {
+     "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+     "Points": "2.0",
+     "RaceTime": "0:57:41",
+     "RaceTimeForCalculation": "0:57:41",
+     "CorrectedTime": "0:00:00",
+     "CorrectedTimeMs": 0,
+     "Interval": "0:00:00",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "Rank": 1,
+     "OverallRaceIndex": 5
+    },
+    {
+     "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+     "Points": "",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.0,
+     "OverallRaceIndex": 6
+    },
+    {}
+   ],
+   "Subtotals": [
+    {
+     "Name": "Q",
+     "Stage": 0,
+     "Total": 11.0,
+     "Net": 9.0,
+     "StageTotal": 11.0,
+     "StageNet": 9.0,
+     "AfterRaceIndex": 5,
+     "FactorizedBy": 1.0
+    }
+   ],
+   "Protests": [],
+   "TotalPoints": "11.0",
+   "NetPoints": "9.0",
+   "Skipper": {
+    "FirstName": "François",
+    "LastName": "Goubau"
+   },
+   "AfterNewQualificationSeriesTotal": 11.0,
+   "AfterNewQualificationSeriesNet": 9.0,
+   "FinalSeriesCarryForwardPoints2026": 0.0
+  },
+  {
+   "Id": "a998b584-cf3e-48f7-9a17-bcacea75a0af",
+   "Rank": 9,
+   "TeamName": "Arend Jan VELSINK",
+   "Name": "Arend Jan VELSINK",
+   "TVShortName": "A.J. VELSINK",
+   "SailNumber": "NED 112",
+   "SailNumberCountry": "NED",
+   "Country": "NED",
+   "BoatType": "J-112E",
+   "BoatName": "Jet Rebel",
+   "BoatOwner": "Arend Jan Velsink",
+   "BowNumber": "IRC/ORC",
+   "Hcp": 528.0,
+   "Cdl": 9.705,
+   "OrcCertificateType": "IN",
+   "ClubName": "WV IJBURG",
+   "ClubCode": "WVIJ",
+   "CarriedWins": [],
+   "EntryRaceResults": [
+    {
+     "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+     "Points": "9.0",
+     "RaceTime": "0:50:30",
+     "RaceTimeForCalculation": "0:50:30",
+     "CorrectedTime": "0:47:05",
+     "CorrectedTimeMs": 2825000,
+     "Delta": "0:47:05",
+     "Interval": "0:00:11",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.9323,
+     "Rank": 9,
+     "OverallRaceIndex": 1
+    },
+    {
+     "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+     "Points": "12.0",
+     "RaceTime": "2:39:44",
+     "RaceTimeForCalculation": "2:39:44",
+     "CorrectedTime": "2:28:55",
+     "CorrectedTimeMs": 8935000,
+     "Delta": "2:28:55",
+     "Interval": "0:01:04",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.9323,
+     "Rank": 8,
+     "OverallRaceIndex": 2
+    },
+    {
+     "PointsDiscarded": true,
+     "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+     "Points": "11.0",
+     "RaceStatusCode": "OCS",
+     "RaceTime": "1:05:28",
+     "RaceTimeForCalculation": "1:05:28",
+     "CorrectedTime": "1:01:02",
+     "CorrectedTimeMs": 3662000,
+     "Delta": "1:01:02",
+     "Interval": "0:01:36",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.9323,
+     "OverallRaceIndex": 3
+    },
+    {
+     "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+     "Points": "8.0",
+     "RaceTime": "1:06:41",
+     "RaceTimeForCalculation": "1:06:41",
+     "CorrectedTime": "1:02:10",
+     "CorrectedTimeMs": 3730000,
+     "Delta": "1:02:10",
+     "Interval": "0:00:27",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.9323,
+     "Rank": 8,
+     "OverallRaceIndex": 4
+    },
+    {
+     "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+     "Points": "9.0",
+     "RaceTime": "1:07:15",
+     "RaceTimeForCalculation": "1:07:15",
+     "CorrectedTime": "1:10:28",
+     "CorrectedTimeMs": 4228000,
+     "Delta": "1:10:28",
+     "Interval": "0:01:24",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 1.0478,
+     "Rank": 9,
+     "OverallRaceIndex": 5
+    },
+    {
+     "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+     "Points": "",
+     "Fleet": "",
+     "RaceType": 0,
+     "Hdcp": 0.696,
+     "OverallRaceIndex": 6
+    },
+    {}
+   ],
+   "Subtotals": [
+    {
+     "Name": "Q",
+     "Stage": 0,
+     "Total": 49.0,
+     "Net": 38.0,
+     "StageTotal": 49.0,
+     "StageNet": 38.0,
+     "AfterRaceIndex": 5,
+     "FactorizedBy": 1.0
+    }
+   ],
+   "Protests": [],
+   "TotalPoints": "49.0",
+   "NetPoints": "38.0",
+   "Skipper": {
+    "FirstName": "Arend Jan",
+    "LastName": "Velsink"
+   },
+   "OrcDetailUrl": "https://data.orc.org/public/WPub.dll/CC/04310004WHK",
+   "AfterNewQualificationSeriesTotal": 49.0,
+   "AfterNewQualificationSeriesNet": 38.0,
+   "FinalSeriesCarryForwardPoints2026": 0.0
+  }
+ ],
+ "ScoringResults": [
+  {
+   "Id": "72364e15-0b57-45b0-b4da-82897af728c1",
+   "Name": "IRC 1",
+   "Result": {
+    "RegattaName": "IRC/ORC 1 (TCC ≥ 1.043/APH < 531)",
+    "UpdatedDate": "2026-08-30T13:56:01.806+0200",
+    "RaceCount": 7,
+    "IsOpenClass": true,
+    "HasBowNumbers": true,
+    "HasSailNumbers": true,
+    "HasBoatType": true,
+    "HcpName": "IRC",
+    "ScoringName": "IRC 1",
+    "Id": "72364e15-0b57-45b0-b4da-82897af728c1",
+    "ShowCdl": true,
+    "ShowHandicap": true,
+    "Discards": "5; ",
+    "PointSystem": "Low Point",
+    "IsLowPointSystem": true,
+    "RatingSystem": "IRC",
+    "StageInfos": [
+     {}
+    ],
+    "InfoOptions": {
+     "ResultListDisplayOwner": true,
+     "ResultListDisplayBoatNames": true
+    },
+    "OverallReport": {
+     "Id": "b4df363f-2e08-4589-b6ba-3734698668d8",
+     "Version": "10.0",
+     "PublishedDate": "2026-08-30T13:55:44.371+0200"
+    },
+    "Statuses": [
+     "OCS",
+     "DNF"
+    ],
+    "Countries": [
+     "BEL",
+     "GBR",
+     "NED"
+    ],
+    "RaceNames": [
+     {
+      "Index": 0,
+      "Name": "R1",
+      "RaceType": 0,
+      "RaceIndex": 1
+     },
+     {
+      "Index": 1,
+      "Name": "R2",
+      "RaceType": 0,
+      "RaceIndex": 2
+     },
+     {
+      "Index": 2,
+      "Name": "R3",
+      "RaceType": 0,
+      "RaceIndex": 3
+     },
+     {
+      "Index": 3,
+      "Name": "R4",
+      "RaceType": 0,
+      "RaceIndex": 4
+     },
+     {
+      "Index": 4,
+      "Name": "R5",
+      "RaceType": 0,
+      "RaceIndex": 5
+     },
+     {
+      "Index": 5,
+      "Name": "R6",
+      "RaceType": 0,
+      "RaceIndex": 6
+     },
+     {
+      "Index": 6,
+      "Name": "R7",
+      "RaceType": 0,
+      "RaceIndex": 7
+     }
+    ],
+    "SubtotalNames": [],
+    "LastRaceIndex": 6,
+    "EntryResults": [
+     {
+      "Id": "4633daa9-cbbd-4330-8049-cdb373549ce9",
+      "Rank": 1,
+      "TeamName": "Rutger KRIJGER",
+      "Name": "Rutger KRIJGER",
+      "TVShortName": "R. KRIJGER",
+      "SailNumber": "NED 1112",
+      "SailNumberCountry": "NED",
+      "Country": "NED",
+      "BoatType": "J-112",
+      "BoatName": "Jack Rabbit",
+      "BoatOwner": "Caroline van Beelen & Rutger Krijger",
+      "BowNumber": "IRC/ORC",
+      "Hcp": 1.047,
+      "ClubName": "KR EN ZV DE MAAS",
+      "ClubCode": "MAAS",
+      "CarriedWins": [],
+      "EntryRaceResults": [
+       {
+        "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+        "Points": "1.0",
+        "RaceTime": "0:47:03",
+        "RaceTimeForCalculation": "0:47:03",
+        "CorrectedTime": "0:49:16",
+        "CorrectedTimeMs": 2956000,
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.047,
+        "Rank": 1,
+        "OverallRaceIndex": 1
+       },
+       {
+        "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+        "Points": "1.5",
+        "RaceTime": "2:34:01",
+        "RaceTimeForCalculation": "2:34:01",
+        "CorrectedTime": "2:41:15",
+        "CorrectedTimeMs": 9675000,
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.047,
+        "Rank": 1,
+        "OverallRaceIndex": 2
+       },
+       {
+        "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+        "Points": "2.0",
+        "RaceTime": "1:03:23",
+        "RaceTimeForCalculation": "1:03:23",
+        "CorrectedTime": "1:06:22",
+        "CorrectedTimeMs": 3982000,
+        "Delta": "0:01:21",
+        "Interval": "0:01:21",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.047,
+        "Rank": 2,
+        "OverallRaceIndex": 3
+       },
+       {
+        "PointsDiscarded": true,
+        "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+        "Points": "4.0",
+        "RaceTime": "1:03:56",
+        "RaceTimeForCalculation": "1:03:56",
+        "CorrectedTime": "1:06:56",
+        "CorrectedTimeMs": 4016000,
+        "Delta": "0:01:33",
+        "Interval": "0:00:26",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.047,
+        "Rank": 4,
+        "OverallRaceIndex": 4
+       },
+       {
+        "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+        "Points": "1.0",
+        "RaceTime": "0:59:10",
+        "RaceTimeForCalculation": "0:59:10",
+        "CorrectedTime": "1:01:57",
+        "CorrectedTimeMs": 3717000,
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.047,
+        "Rank": 1,
+        "OverallRaceIndex": 5
+       },
+       {
+        "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+        "Points": "",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.047,
+        "OverallRaceIndex": 6
+       },
+       {}
+      ],
+      "Subtotals": [
+       {
+        "Name": "Q",
+        "Stage": 0,
+        "Total": 9.5,
+        "Net": 5.5,
+        "StageTotal": 9.5,
+        "StageNet": 5.5,
+        "AfterRaceIndex": 5,
+        "FactorizedBy": 1.0
+       }
+      ],
+      "Protests": [],
+      "TotalPoints": "9.5",
+      "NetPoints": "5.5",
+      "Skipper": {
+       "FirstName": "Rutger",
+       "LastName": "Krijger"
+      },
+      "OrcDetailUrl": "https://data.orc.org/public/WPub.dll/CC/04310004KD3",
+      "AfterNewQualificationSeriesTotal": 9.5,
+      "AfterNewQualificationSeriesNet": 5.5,
+      "FinalSeriesCarryForwardPoints2026": 0.0
+     },
+     {
+      "Id": "a4f8fb2d-68a7-45e6-9e26-eef4460f5f94",
+      "Rank": 2,
+      "TeamName": "Thomas DE KRAKER",
+      "Name": "Thomas de KRAKER",
+      "TVShortName": "T. de KRAKER",
+      "SailNumber": "NED 67",
+      "SailNumberCountry": "NED",
+      "Country": "NED",
+      "BoatType": "Cape 31",
+      "BoatName": "K-Force jr",
+      "BoatOwner": "Thomas de Kraker",
+      "BowNumber": "IRC",
+      "Hcp": 1.131,
+      "ClubName": "",
+      "ClubCode": "",
+      "CarriedWins": [],
+      "EntryRaceResults": [
+       {
+        "PointsDiscarded": true,
+        "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+        "Points": "6.5",
+        "RaceTime": "0:45:54",
+        "RaceTimeForCalculation": "0:45:54",
+        "CorrectedTime": "0:51:55",
+        "CorrectedTimeMs": 3115000,
+        "Delta": "0:02:39",
+        "Interval": "0:00:26",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.131,
+        "Rank": 6,
+        "OverallRaceIndex": 1
+       },
+       {
+        "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+        "Points": "4.5",
+        "RaceTime": "2:23:04",
+        "RaceTimeForCalculation": "2:23:04",
+        "CorrectedTime": "2:41:49",
+        "CorrectedTimeMs": 9709000,
+        "Delta": "0:00:34",
+        "Interval": "0:00:20",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.131,
+        "Rank": 3,
+        "OverallRaceIndex": 2
+       },
+       {
+        "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+        "Points": "1.0",
+        "RaceTime": "0:57:29",
+        "RaceTimeForCalculation": "0:57:29",
+        "CorrectedTime": "1:05:01",
+        "CorrectedTimeMs": 3901000,
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.131,
+        "Rank": 1,
+        "OverallRaceIndex": 3
+       },
+       {
+        "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+        "Points": "1.0",
+        "RaceTime": "0:57:49",
+        "RaceTimeForCalculation": "0:57:49",
+        "CorrectedTime": "1:05:23",
+        "CorrectedTimeMs": 3923000,
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.131,
+        "Rank": 1,
+        "OverallRaceIndex": 4
+       },
+       {
+        "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+        "Points": "2.0",
+        "RaceTime": "0:55:15",
+        "RaceTimeForCalculation": "0:55:15",
+        "CorrectedTime": "1:02:29",
+        "CorrectedTimeMs": 3749000,
+        "Delta": "0:00:32",
+        "Interval": "0:00:32",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.131,
+        "Rank": 2,
+        "OverallRaceIndex": 5
+       },
+       {
+        "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+        "Points": "",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.131,
+        "OverallRaceIndex": 6
+       },
+       {}
+      ],
+      "Subtotals": [
+       {
+        "Name": "Q",
+        "Stage": 0,
+        "Total": 15.0,
+        "Net": 8.5,
+        "StageTotal": 15.0,
+        "StageNet": 8.5,
+        "AfterRaceIndex": 5,
+        "FactorizedBy": 1.0
+       }
+      ],
+      "Protests": [],
+      "TotalPoints": "15.0",
+      "NetPoints": "8.5",
+      "Skipper": {
+       "FirstName": "Thomas",
+       "LastName": "de Kraker"
+      },
+      "AfterNewQualificationSeriesTotal": 15.0,
+      "AfterNewQualificationSeriesNet": 8.5,
+      "FinalSeriesCarryForwardPoints2026": 0.0
+     },
+     {
+      "Id": "a998b584-cf3e-48f7-9a17-bcacea75a0af",
+      "Rank": 8,
+      "TeamName": "Arend Jan VELSINK",
+      "Name": "Arend Jan VELSINK",
+      "TVShortName": "A.J. VELSINK",
+      "SailNumber": "NED 112",
+      "SailNumberCountry": "NED",
+      "Country": "NED",
+      "BoatType": "J-112E",
+      "BoatName": "Jet Rebel",
+      "BoatOwner": "Arend Jan Velsink",
+      "BowNumber": "IRC/ORC",
+      "Hcp": 1.044,
+      "ClubName": "WV IJBURG",
+      "ClubCode": "WVIJ",
+      "CarriedWins": [],
+      "EntryRaceResults": [
+       {
+        "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+        "Points": "8.0",
+        "RaceTime": "0:50:30",
+        "RaceTimeForCalculation": "0:50:30",
+        "CorrectedTime": "0:52:43",
+        "CorrectedTimeMs": 3163000,
+        "Delta": "0:03:27",
+        "Interval": "0:00:48",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.044,
+        "Rank": 8,
+        "OverallRaceIndex": 1
+       },
+       {
+        "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+        "Points": "10.5",
+        "RaceTime": "2:39:44",
+        "RaceTimeForCalculation": "2:39:44",
+        "CorrectedTime": "2:46:46",
+        "CorrectedTimeMs": 10006000,
+        "Delta": "0:05:31",
+        "Interval": "0:01:59",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.044,
+        "Rank": 7,
+        "OverallRaceIndex": 2
+       },
+       {
+        "PointsDiscarded": true,
+        "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+        "Points": "11.0",
+        "RaceStatusCode": "OCS",
+        "RaceTime": "1:05:28",
+        "RaceTimeForCalculation": "1:05:28",
+        "CorrectedTime": "1:08:21",
+        "CorrectedTimeMs": 4101000,
+        "Delta": "0:03:20",
+        "Interval": "0:03:07",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.044,
+        "OverallRaceIndex": 3
+       },
+       {
+        "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+        "Points": "9.0",
+        "RaceTime": "1:06:41",
+        "RaceTimeForCalculation": "1:06:41",
+        "CorrectedTime": "1:09:37",
+        "CorrectedTimeMs": 4177000,
+        "Delta": "0:04:14",
+        "Interval": "0:00:12",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.044,
+        "Rank": 9,
+        "OverallRaceIndex": 4
+       },
+       {
+        "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+        "Points": "9.0",
+        "RaceTime": "1:07:15",
+        "RaceTimeForCalculation": "1:07:15",
+        "CorrectedTime": "1:10:13",
+        "CorrectedTimeMs": 4213000,
+        "Delta": "0:08:16",
+        "Interval": "0:00:33",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.044,
+        "Rank": 9,
+        "OverallRaceIndex": 5
+       },
+       {
+        "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+        "Points": "",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.044,
+        "OverallRaceIndex": 6
+       },
+       {}
+      ],
+      "Subtotals": [
+       {
+        "Name": "Q",
+        "Stage": 0,
+        "Total": 47.5,
+        "Net": 36.5,
+        "StageTotal": 47.5,
+        "StageNet": 36.5,
+        "AfterRaceIndex": 5,
+        "FactorizedBy": 1.0
+       }
+      ],
+      "Protests": [],
+      "TotalPoints": "47.5",
+      "NetPoints": "36.5",
+      "Skipper": {
+       "FirstName": "Arend Jan",
+       "LastName": "Velsink"
+      },
+      "OrcDetailUrl": "https://data.orc.org/public/WPub.dll/CC/04310004WHK",
+      "AfterNewQualificationSeriesTotal": 47.5,
+      "AfterNewQualificationSeriesNet": 36.5,
+      "FinalSeriesCarryForwardPoints2026": 0.0
+     }
+    ],
+    "ScoringResults": [],
+    "RaceInfos": [
+     {
+      "StartDateWithTime": "8/28/2026 12:00:00",
+      "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+      "RaceIndex": 1,
+      "RaceName": "R1",
+      "FleetName": "",
+      "OrcTripleNumberType": 1,
+      "StartDate": "2026-08-28T00:00:00",
+      "StartTime": 43200,
+      "StartTimeText": "12:00:00"
+     },
+     {
+      "StartDateWithTime": "8/28/2026 14:00:00",
+      "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+      "RaceIndex": 2,
+      "RaceName": "R2",
+      "FleetName": "",
+      "OrcTripleNumberType": 1,
+      "StartDate": "2026-08-28T00:00:00",
+      "StartTime": 50400,
+      "StartTimeText": "14:00:00"
+     },
+     {
+      "StartDateWithTime": "8/29/2026 11:05:00",
+      "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+      "RaceIndex": 3,
+      "RaceName": "R3",
+      "FleetName": "",
+      "OrcTripleNumberType": 1,
+      "StartDate": "2026-08-29T00:00:00",
+      "StartTime": 39900,
+      "StartTimeText": "11:05:00"
+     },
+     {
+      "StartDateWithTime": "8/29/2026 12:52:00",
+      "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+      "RaceIndex": 4,
+      "RaceName": "R4",
+      "FleetName": "",
+      "OrcTripleNumberType": 1,
+      "StartDate": "2026-08-29T00:00:00",
+      "StartTime": 46320,
+      "StartTimeText": "12:52:00"
+     },
+     {
+      "StartDateWithTime": "8/29/2026 14:25:00",
+      "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+      "RaceIndex": 5,
+      "RaceName": "R5",
+      "FleetName": "",
+      "OrcTripleNumberType": 2,
+      "StartDate": "2026-08-29T00:00:00",
+      "StartTime": 51900,
+      "StartTimeText": "14:25:00"
+     },
+     {
+      "StartDateWithTime": "8/30/2026 ",
+      "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+      "RaceIndex": 6,
+      "RaceName": "R6",
+      "FleetName": "",
+      "StartDate": "2026-08-30T00:00:00"
+     }
+    ],
+    "EchoBlend": "60/40 (HDCP/ECHO PI)"
+   }
+  },
+  {
+   "Id": "27c5f779-d062-44e5-9bef-4e1e6d48c535",
+   "Name": "ORC 1",
+   "Result": {
+    "RegattaName": "IRC/ORC 1 (TCC ≥ 1.043/APH < 531)",
+    "UpdatedDate": "2026-08-30T13:56:01.806+0200",
+    "RaceCount": 7,
+    "IsOpenClass": true,
+    "HasBowNumbers": true,
+    "HasSailNumbers": true,
+    "HasBoatType": true,
+    "HasCDL": true,
+    "HcpName": "Hdcp.",
+    "ScoringName": "ORC 1",
+    "Id": "27c5f779-d062-44e5-9bef-4e1e6d48c535",
+    "ShowCdl": true,
+    "ShowHandicap": true,
+    "Discards": "5; ",
+    "PointSystem": "Low Point",
+    "IsLowPointSystem": true,
+    "RatingSystem": "ORC",
+    "ScoringOptions": "Triple number inshore - time on time",
+    "StageInfos": [
+     {}
+    ],
+    "InfoOptions": {
+     "ResultListDisplayOwner": true,
+     "ResultListDisplayBoatNames": true
+    },
+    "OverallReport": {
+     "Id": "50aa9c7b-57d8-448a-ae13-3bd61d7f39f4",
+     "Version": "10.0",
+     "PublishedDate": "2026-08-30T13:55:45.121+0200"
+    },
+    "Statuses": [
+     "OCS",
+     "DNF"
+    ],
+    "Countries": [
+     "BEL",
+     "GBR",
+     "NED"
+    ],
+    "RaceNames": [
+     {
+      "Index": 0,
+      "Name": "R1",
+      "RaceType": 0,
+      "RaceIndex": 1
+     },
+     {
+      "Index": 1,
+      "Name": "R2",
+      "RaceType": 0,
+      "RaceIndex": 2
+     },
+     {
+      "Index": 2,
+      "Name": "R3",
+      "RaceType": 0,
+      "RaceIndex": 3
+     },
+     {
+      "Index": 3,
+      "Name": "R4",
+      "RaceType": 0,
+      "RaceIndex": 4
+     },
+     {
+      "Index": 4,
+      "Name": "R5",
+      "RaceType": 0,
+      "RaceIndex": 5
+     },
+     {
+      "Index": 5,
+      "Name": "R6",
+      "RaceType": 0,
+      "RaceIndex": 6
+     },
+     {
+      "Index": 6,
+      "Name": "R7",
+      "RaceType": 0,
+      "RaceIndex": 7
+     }
+    ],
+    "SubtotalNames": [],
+    "LastRaceIndex": 6,
+    "EntryResults": [
+     {
+      "Id": "4633daa9-cbbd-4330-8049-cdb373549ce9",
+      "Rank": 1,
+      "TeamName": "Rutger KRIJGER",
+      "Name": "Rutger KRIJGER",
+      "TVShortName": "R. KRIJGER",
+      "SailNumber": "NED 1112",
+      "SailNumberCountry": "NED",
+      "Country": "NED",
+      "BoatType": "J-112",
+      "BoatName": "Jack Rabbit",
+      "BoatOwner": "Caroline van Beelen & Rutger Krijger",
+      "BowNumber": "IRC/ORC",
+      "Hcp": 524.5,
+      "Cdl": 10.012,
+      "OrcCertificateType": "CL",
+      "ClubName": "KR EN ZV DE MAAS",
+      "ClubCode": "MAAS",
+      "CarriedWins": [],
+      "EntryRaceResults": [
+       {
+        "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+        "Points": "1.0",
+        "RaceTime": "0:47:03",
+        "RaceTimeForCalculation": "0:47:03",
+        "CorrectedTime": "0:44:28",
+        "CorrectedTimeMs": 2668000,
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.9452,
+        "Rank": 1,
+        "OverallRaceIndex": 1
+       },
+       {
+        "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+        "Points": "3.0",
+        "RaceTime": "2:34:01",
+        "RaceTimeForCalculation": "2:34:01",
+        "CorrectedTime": "2:25:35",
+        "CorrectedTimeMs": 8735000,
+        "Delta": "0:00:12",
+        "Interval": "0:00:12",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.9452,
+        "Rank": 2,
+        "OverallRaceIndex": 2
+       },
+       {
+        "PointsDiscarded": true,
+        "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+        "Points": "2.0",
+        "RaceTime": "1:03:23",
+        "RaceTimeForCalculation": "1:03:23",
+        "CorrectedTime": "0:59:55",
+        "CorrectedTimeMs": 3595000,
+        "Delta": "0:00:20",
+        "Interval": "0:00:20",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.9452,
+        "Rank": 2,
+        "OverallRaceIndex": 3
+       },
+       {
+        "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+        "Points": "2.0",
+        "RaceTime": "1:03:56",
+        "RaceTimeForCalculation": "1:03:56",
+        "CorrectedTime": "1:00:26",
+        "CorrectedTimeMs": 3626000,
+        "Delta": "0:00:22",
+        "Interval": "0:00:22",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.9452,
+        "Rank": 2,
+        "OverallRaceIndex": 4
+       },
+       {
+        "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+        "Points": "1.0",
+        "RaceTime": "0:59:10",
+        "RaceTimeForCalculation": "0:59:10",
+        "CorrectedTime": "1:04:06",
+        "CorrectedTimeMs": 3846000,
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.0833,
+        "Rank": 1,
+        "OverallRaceIndex": 5
+       },
+       {
+        "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+        "Points": "",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.6941,
+        "OverallRaceIndex": 6
+       },
+       {}
+      ],
+      "Subtotals": [
+       {
+        "Name": "Q",
+        "Stage": 0,
+        "Total": 9.0,
+        "Net": 7.0,
+        "StageTotal": 9.0,
+        "StageNet": 7.0,
+        "AfterRaceIndex": 5,
+        "FactorizedBy": 1.0
+       }
+      ],
+      "Protests": [],
+      "TotalPoints": "9.0",
+      "NetPoints": "7.0",
+      "Skipper": {
+       "FirstName": "Rutger",
+       "LastName": "Krijger"
+      },
+      "OrcDetailUrl": "https://data.orc.org/public/WPub.dll/CC/04310004KD3",
+      "AfterNewQualificationSeriesTotal": 9.0,
+      "AfterNewQualificationSeriesNet": 7.0,
+      "FinalSeriesCarryForwardPoints2026": 0.0
+     },
+     {
+      "Id": "3b1edc9b-8dac-4464-a6b3-3c75633d071b",
+      "Rank": 2,
+      "TeamName": "Hugo GOMMERS",
+      "Name": "Hugo GOMMERS",
+      "TVShortName": "H. GOMMERS",
+      "SailNumber": "NED 7084",
+      "SailNumberCountry": "NED",
+      "Country": "NED",
+      "BoatType": "Landmark 43 mod.",
+      "BoatName": "Olympix",
+      "BoatOwner": "Gommers Groep",
+      "BowNumber": "IRC/ORC",
+      "Hcp": 481.8,
+      "Cdl": 11.587,
+      "OrcCertificateType": "IN",
+      "ClubName": "WV NOORD BEVELAND",
+      "ClubCode": "WVNB",
+      "CarriedWins": [],
+      "EntryRaceResults": [
+       {
+        "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+        "Points": "2.0",
+        "RaceTime": "0:43:42",
+        "RaceTimeForCalculation": "0:43:42",
+        "CorrectedTime": "0:44:42",
+        "CorrectedTimeMs": 2682000,
+        "Delta": "0:00:14",
+        "Interval": "0:00:14",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.023,
+        "Rank": 2,
+        "OverallRaceIndex": 1
+       },
+       {
+        "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+        "Points": "1.5",
+        "RaceTime": "2:22:07",
+        "RaceTimeForCalculation": "2:22:07",
+        "CorrectedTime": "2:25:23",
+        "CorrectedTimeMs": 8723000,
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.023,
+        "Rank": 1,
+        "OverallRaceIndex": 2
+       },
+       {
+        "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+        "Points": "3.0",
+        "RaceTime": "0:59:35",
+        "RaceTimeForCalculation": "0:59:35",
+        "CorrectedTime": "1:00:57",
+        "CorrectedTimeMs": 3657000,
+        "Delta": "0:01:22",
+        "Interval": "0:01:02",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.023,
+        "Rank": 3,
+        "OverallRaceIndex": 3
+       },
+       {
+        "PointsDiscarded": true,
+        "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+        "Points": "7.0",
+        "RaceTime": "1:00:53",
+        "RaceTimeForCalculation": "1:00:53",
+        "CorrectedTime": "1:02:17",
+        "CorrectedTimeMs": 3737000,
+        "Delta": "0:02:13",
+        "Interval": "0:00:03",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.023,
+        "Rank": 7,
+        "OverallRaceIndex": 4
+       },
+       {
+        "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+        "Points": "2.0",
+        "RaceTime": "0:56:57",
+        "RaceTimeForCalculation": "0:56:57",
+        "CorrectedTime": "1:05:45",
+        "CorrectedTimeMs": 3945000,
+        "Delta": "0:01:39",
+        "Interval": "0:01:39",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.1545,
+        "Rank": 2,
+        "OverallRaceIndex": 5
+       },
+       {
+        "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+        "Points": "",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.7696,
+        "OverallRaceIndex": 6
+       },
+       {}
+      ],
+      "Subtotals": [
+       {
+        "Name": "Q",
+        "Stage": 0,
+        "Total": 15.5,
+        "Net": 8.5,
+        "StageTotal": 15.5,
+        "StageNet": 8.5,
+        "AfterRaceIndex": 5,
+        "FactorizedBy": 1.0
+       }
+      ],
+      "Protests": [],
+      "TotalPoints": "15.5",
+      "NetPoints": "8.5",
+      "Skipper": {
+       "FirstName": "Hugo",
+       "LastName": "Gommers"
+      },
+      "OrcDetailUrl": "https://data.orc.org/public/WPub.dll/CC/04310004PHE",
+      "AfterNewQualificationSeriesTotal": 15.5,
+      "AfterNewQualificationSeriesNet": 8.5,
+      "FinalSeriesCarryForwardPoints2026": 0.0
+     },
+     {
+      "Id": "a998b584-cf3e-48f7-9a17-bcacea75a0af",
+      "Rank": 6,
+      "TeamName": "Arend Jan VELSINK",
+      "Name": "Arend Jan VELSINK",
+      "TVShortName": "A.J. VELSINK",
+      "SailNumber": "NED 112",
+      "SailNumberCountry": "NED",
+      "Country": "NED",
+      "BoatType": "J-112E",
+      "BoatName": "Jet Rebel",
+      "BoatOwner": "Arend Jan Velsink",
+      "BowNumber": "IRC/ORC",
+      "Hcp": 528.0,
+      "Cdl": 9.705,
+      "OrcCertificateType": "IN",
+      "ClubName": "WV IJBURG",
+      "ClubCode": "WVIJ",
+      "CarriedWins": [],
+      "EntryRaceResults": [
+       {
+        "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+        "Points": "6.0",
+        "RaceTime": "0:50:30",
+        "RaceTimeForCalculation": "0:50:30",
+        "CorrectedTime": "0:47:05",
+        "CorrectedTimeMs": 2825000,
+        "Delta": "0:02:37",
+        "Interval": "0:00:11",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.9323,
+        "Rank": 6,
+        "OverallRaceIndex": 1
+       },
+       {
+        "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+        "Points": "7.5",
+        "RaceTime": "2:39:44",
+        "RaceTimeForCalculation": "2:39:44",
+        "CorrectedTime": "2:28:55",
+        "CorrectedTimeMs": 8935000,
+        "Delta": "0:03:32",
+        "Interval": "0:01:04",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.9323,
+        "Rank": 5,
+        "OverallRaceIndex": 2
+       },
+       {
+        "PointsDiscarded": true,
+        "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+        "Points": "8.0",
+        "RaceStatusCode": "OCS",
+        "RaceTime": "1:05:28",
+        "RaceTimeForCalculation": "1:05:28",
+        "CorrectedTime": "1:01:02",
+        "CorrectedTimeMs": 3662000,
+        "Delta": "0:01:27",
+        "Interval": "0:01:36",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.9323,
+        "OverallRaceIndex": 3
+       },
+       {
+        "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+        "Points": "5.0",
+        "RaceTime": "1:06:41",
+        "RaceTimeForCalculation": "1:06:41",
+        "CorrectedTime": "1:02:10",
+        "CorrectedTimeMs": 3730000,
+        "Delta": "0:02:06",
+        "Interval": "0:00:27",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.9323,
+        "Rank": 5,
+        "OverallRaceIndex": 4
+       },
+       {
+        "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+        "Points": "6.0",
+        "RaceTime": "1:07:15",
+        "RaceTimeForCalculation": "1:07:15",
+        "CorrectedTime": "1:10:28",
+        "CorrectedTimeMs": 4228000,
+        "Delta": "0:06:22",
+        "Interval": "0:01:24",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 1.0478,
+        "Rank": 6,
+        "OverallRaceIndex": 5
+       },
+       {
+        "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+        "Points": "",
+        "Fleet": "",
+        "RaceType": 0,
+        "Hdcp": 0.696,
+        "OverallRaceIndex": 6
+       },
+       {}
+      ],
+      "Subtotals": [
+       {
+        "Name": "Q",
+        "Stage": 0,
+        "Total": 32.5,
+        "Net": 24.5,
+        "StageTotal": 32.5,
+        "StageNet": 24.5,
+        "AfterRaceIndex": 5,
+        "FactorizedBy": 1.0
+       }
+      ],
+      "Protests": [],
+      "TotalPoints": "32.5",
+      "NetPoints": "24.5",
+      "Skipper": {
+       "FirstName": "Arend Jan",
+       "LastName": "Velsink"
+      },
+      "OrcDetailUrl": "https://data.orc.org/public/WPub.dll/CC/04310004WHK",
+      "AfterNewQualificationSeriesTotal": 32.5,
+      "AfterNewQualificationSeriesNet": 24.5,
+      "FinalSeriesCarryForwardPoints2026": 0.0
+     }
+    ],
+    "ScoringResults": [],
+    "RaceInfos": [
+     {
+      "RaceImpliedWind": "",
+      "StartDateWithTime": "8/28/2026 12:00:00",
+      "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+      "RaceIndex": 1,
+      "RaceName": "R1",
+      "FleetName": "",
+      "OrcTripleNumberType": 1,
+      "StartDate": "2026-08-28T00:00:00",
+      "StartTime": 43200,
+      "StartTimeText": "12:00:00"
+     },
+     {
+      "RaceImpliedWind": "",
+      "StartDateWithTime": "8/28/2026 14:00:00",
+      "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+      "RaceIndex": 2,
+      "RaceName": "R2",
+      "FleetName": "",
+      "OrcTripleNumberType": 1,
+      "StartDate": "2026-08-28T00:00:00",
+      "StartTime": 50400,
+      "StartTimeText": "14:00:00"
+     },
+     {
+      "RaceImpliedWind": "",
+      "StartDateWithTime": "8/29/2026 11:05:00",
+      "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+      "RaceIndex": 3,
+      "RaceName": "R3",
+      "FleetName": "",
+      "OrcTripleNumberType": 1,
+      "StartDate": "2026-08-29T00:00:00",
+      "StartTime": 39900,
+      "StartTimeText": "11:05:00"
+     },
+     {
+      "RaceImpliedWind": "",
+      "StartDateWithTime": "8/29/2026 12:52:00",
+      "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+      "RaceIndex": 4,
+      "RaceName": "R4",
+      "FleetName": "",
+      "OrcTripleNumberType": 1,
+      "StartDate": "2026-08-29T00:00:00",
+      "StartTime": 46320,
+      "StartTimeText": "12:52:00"
+     },
+     {
+      "RaceImpliedWind": "",
+      "StartDateWithTime": "8/29/2026 14:25:00",
+      "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+      "RaceIndex": 5,
+      "RaceName": "R5",
+      "FleetName": "",
+      "OrcTripleNumberType": 2,
+      "StartDate": "2026-08-29T00:00:00",
+      "StartTime": 51900,
+      "StartTimeText": "14:25:00"
+     },
+     {
+      "RaceImpliedWind": "",
+      "StartDateWithTime": "8/30/2026 ",
+      "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+      "RaceIndex": 6,
+      "RaceName": "R6",
+      "FleetName": "",
+      "StartDate": "2026-08-30T00:00:00"
+     }
+    ],
+    "EchoBlend": "60/40 (HDCP/ECHO PI)"
+   }
+  }
+ ],
+ "RaceInfos": [
+  {
+   "RaceImpliedWind": "",
+   "StartDateWithTime": "8/28/2026 12:00:00",
+   "RaceId": "6076bfd6-1054-4fc0-9cdb-969f19eceb3d",
+   "RaceIndex": 1,
+   "RaceName": "R1",
+   "FleetName": "",
+   "OrcTripleNumberType": 1,
+   "StartDate": "2026-08-28T00:00:00",
+   "StartTime": 43200,
+   "StartTimeText": "12:00:00"
+  },
+  {
+   "RaceImpliedWind": "",
+   "StartDateWithTime": "8/28/2026 14:00:00",
+   "RaceId": "f1ff40cc-586c-44e1-a700-63635de4859e",
+   "RaceIndex": 2,
+   "RaceName": "R2",
+   "FleetName": "",
+   "OrcTripleNumberType": 1,
+   "StartDate": "2026-08-28T00:00:00",
+   "StartTime": 50400,
+   "StartTimeText": "14:00:00"
+  },
+  {
+   "RaceImpliedWind": "",
+   "StartDateWithTime": "8/29/2026 11:05:00",
+   "RaceId": "5622cd52-3eae-4676-849a-ac802a116294",
+   "RaceIndex": 3,
+   "RaceName": "R3",
+   "FleetName": "",
+   "OrcTripleNumberType": 1,
+   "StartDate": "2026-08-29T00:00:00",
+   "StartTime": 39900,
+   "StartTimeText": "11:05:00"
+  },
+  {
+   "RaceImpliedWind": "",
+   "StartDateWithTime": "8/29/2026 12:52:00",
+   "RaceId": "a9135531-1950-4297-b92a-8cab9fd3c1a2",
+   "RaceIndex": 4,
+   "RaceName": "R4",
+   "FleetName": "",
+   "OrcTripleNumberType": 1,
+   "StartDate": "2026-08-29T00:00:00",
+   "StartTime": 46320,
+   "StartTimeText": "12:52:00"
+  },
+  {
+   "RaceImpliedWind": "",
+   "StartDateWithTime": "8/29/2026 14:25:00",
+   "RaceId": "5c1ed019-2b11-412b-a63a-4d47b77b76eb",
+   "RaceIndex": 5,
+   "RaceName": "R5",
+   "FleetName": "",
+   "OrcTripleNumberType": 2,
+   "StartDate": "2026-08-29T00:00:00",
+   "StartTime": 51900,
+   "StartTimeText": "14:25:00"
+  },
+  {
+   "RaceImpliedWind": "",
+   "StartDateWithTime": "8/30/2026 ",
+   "RaceId": "45dc2727-5580-4d2c-8863-d87fff1a4ff6",
+   "RaceIndex": 6,
+   "RaceName": "R6",
+   "FleetName": "",
+   "StartDate": "2026-08-30T00:00:00"
+  }
+ ],
+ "EchoBlend": "60/40 (HDCP/ECHO PI)"
+}

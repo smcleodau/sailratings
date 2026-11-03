@@ -711,7 +711,7 @@ def wayback_tcc(ctx, start_year, end_year, out_dir, max_per_pattern):
 @scrape.command(name="results")
 @click.option(
     "--source",
-    type=click.Choice(["sailsys", "cyca", "sailracehq", "sailwave", "topyacht", "rorc", "isora", "cowesweek", "rhkyc", "sydneyhobart"]),
+    type=click.Choice(["sailsys", "cyca", "sailracehq", "sailwave", "topyacht", "rorc", "isora", "cowesweek", "rhkyc", "sydneyhobart", "manage2sail"]),
     default="sailsys",
     help="Race results source",
 )
@@ -740,6 +740,20 @@ def scrape_results(ctx, source, club, all_clubs, incremental, max_series, year, 
         if sn and "sail_number" not in rd:
             rd["sail_number"] = sn
         return rd
+
+    if source == "manage2sail":
+        from datetime import date as date_type
+
+        from irc_data.scrapers import manage2sail
+
+        since = date_type(year, 1, 1) if year else None
+        if not store:
+            events, m2s_results, stats = asyncio.run(manage2sail.scrape(since))
+            console.print(f"Manage2Sail: {len(events)} events, {len(m2s_results)} IRC rows (not stored)")
+            return
+        out = manage2sail.run(since=since)
+        console.print(f"[green]Manage2Sail: {out}[/green]")
+        return
 
     if source == "sailsys":
         from irc_data.scrapers.sailsys import CLUBS as _CLUB_MAP
