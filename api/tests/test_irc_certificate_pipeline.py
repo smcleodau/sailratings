@@ -366,7 +366,7 @@ def test_harvester_honours_retry_after_and_slows_downloads(tmp_path):
     asyncio.run(h.harvest_term("KOA"))
     assert (tmp_path / "14163_KOA_AUS52152.pdf").exists()
     assert slept and slept[0] >= 600
-    assert dl.min_delay >= 15
+    assert dl.min_delay >= cb.MIN_DOWNLOAD_DELAY_AFTER_429
     assert h.stats.rate_limited == 1 and h.stats.failed == 0
 
 

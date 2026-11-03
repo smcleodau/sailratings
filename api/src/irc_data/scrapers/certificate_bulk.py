@@ -43,12 +43,14 @@ from irc_data.scrapers.base import RateLimiter, get_http_client
 
 rate_limiter = RateLimiter(min_delay=2.0, jitter=1.0)
 
-# The site caps PDF downloads per connection: past the cap it answers
-# ``429 Too many downloads from your connection`` with ``Retry-After: 600``.
-# We honour Retry-After, then slow the download pace (doubling, 15 s floor,
-# 120 s cap) and give up for the run after this many consecutive 429s.
+# The site caps PDF downloads per connection: after 30 downloads it answers
+# ``429 Too many downloads from your connection`` with ``Retry-After: 600``
+# (observed 2026-11-03: the cap is a count, not a rate — 30 downloads at 2 s
+# or at 25 s spacing both trip it — and the cooldown resets it).  We wait out
+# Retry-After, keep at least MIN_DOWNLOAD_DELAY_AFTER_429 between downloads,
+# and give up for the run after this many consecutive 429s.
 DEFAULT_RETRY_AFTER = 600
-MAX_DOWNLOAD_DELAY = 120.0
+MIN_DOWNLOAD_DELAY_AFTER_429 = 5.0
 MAX_CONSECUTIVE_429 = 6
 
 
@@ -208,7 +210,7 @@ class CertificateHarvester:
             wait = float(DEFAULT_RETRY_AFTER)
         wait = min(max(wait, 30.0), 3600.0) + 5.0
         dl = self.download_limiter
-        dl.min_delay = min(max(dl.min_delay * 2, 15.0), MAX_DOWNLOAD_DELAY)
+        dl.min_delay = max(dl.min_delay, MIN_DOWNLOAD_DELAY_AFTER_429)
         self.log(
             f"  HTTP 429 on {what}: waiting {wait:.0f}s (Retry-After), "
             f"download pace now >= {dl.min_delay:.0f}s"
