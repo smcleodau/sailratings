@@ -65,8 +65,15 @@ def new_irc_ids(race_data: dict) -> set[int]:
     return (irc_definition_ids(race_data) & _used_definition_ids(race_data)) - LEGACY_IRC_IDS
 
 
-def _key(raw: dict, level: tuple[str, ...]) -> tuple:
-    return tuple(raw.get(k) for k in level)
+_QUOTES = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
+
+
+def _key(raw: dict, level: tuple[str, ...], loose: bool = False) -> tuple:
+    vals = tuple(raw.get(k) for k in level)
+    if loose:  # SailSys sometimes swaps straight/curly quotes after import
+        vals = tuple(v.translate(_QUOTES).strip().casefold() if isinstance(v, str) else v
+                     for v in vals)
+    return vals
 
 
 def _fields(r: RaceResult) -> dict:
@@ -145,6 +152,10 @@ def plan_race(race_data: dict, stored_rows: list[dict], club_id: int, series_id:
                                    "reason": "ambiguous entrant identity in payload"})
             continue
         rows = [r for r in stored_rows if _key(r.get("raw_data") or {}, level) == _key(raw, level)]
+        if not rows and sum(_key(x.raw_data or {}, level, True) == _key(raw, level, True)
+                            for x in new) == 1:
+            rows = [r for r in stored_rows
+                    if _key(r.get("raw_data") or {}, level, True) == _key(raw, level, True)]
         if not rows:
             plan.unmatched.append({"boat_name": raw.get("boat_name"),
                                    "reason": "no stored row for entrant"})

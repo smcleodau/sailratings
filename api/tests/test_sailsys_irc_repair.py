@@ -70,3 +70,12 @@ def test_payload_cache_records_and_resumes(tmp_path):
     assert seen[43879]["new_irc_ids"] == [25] and seen[1]["new_irc_ids"] == []
     assert seen[2]["status"] == "http_error"
     assert cache.load(43879)["name"] and cache.load(2) is None
+
+
+def test_curly_quote_or_case_rename_still_matches_stored_row():
+    race = _race()
+    stored = _stored_as_old_parser(race)
+    row = next(r for r in stored if r["raw_data"]["boat_name"] == "About Time")
+    row["raw_data"] = {**row["raw_data"], "boat_name": "ABOUT TIME "}
+    plan = plan_race(race, stored, 3, 5924, 43879)
+    assert row["id"] in {u["id"] for u in plan.updates} and plan.unmatched == []
