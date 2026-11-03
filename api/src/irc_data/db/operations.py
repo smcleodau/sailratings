@@ -190,6 +190,60 @@ def _ensure_event_entry_id(
     )
 
 
+def _find_existing_result(conn, values: dict, boat_id: int | None):
+    """Return ``(id, boat_id, event_entry_id)`` of the stored row this result
+    re-states, or None. See :mod:`irc_data.db.result_identity` for the key.
+    """
+    from irc_data.db.result_identity import (
+        SCOPE_COLUMNS,
+        ResultIdentity,
+        pick_existing,
+        raw_boat_name,
+        raw_sail_number,
+    )
+
+    clauses, params = [], {}
+    for col in SCOPE_COLUMNS:
+        val = values.get(col)
+        if val is None:
+            # Plain IS NULL (not IS NOT DISTINCT FROM) so btree indexes apply.
+            clauses.append(f"r.{col} IS NULL")
+        else:
+            clauses.append(f"r.{col} = :{col}")
+            params[col] = val
+    rows = conn.execute(
+        text(
+            "SELECT r.id, r.boat_id, r.event_entry_id, r.place, r.status, r.source_url, "
+            "COALESCE(r.raw_data->>'boat_name', ee.boat_name) AS boat_name, "
+            "COALESCE(r.raw_data->>'sail_number', r.raw_data->>'sail_no', ee.sail_number) "
+            "AS sail_number "
+            "FROM race_results r LEFT JOIN event_entries ee ON ee.id = r.event_entry_id "
+            "WHERE " + " AND ".join(clauses)
+        ),
+        params,
+    ).fetchall()
+    if not rows:
+        return None
+    raw = values.get("raw_data") or {}
+    new = ResultIdentity.build(
+        boat_name=raw_boat_name(raw), sail_number=raw_sail_number(raw),
+        place=values.get("place"), status=values.get("status"),
+        boat_id=boat_id, source_url=values.get("source_url"),
+    )
+    cands = {
+        r.id: ResultIdentity.build(
+            id=r.id, boat_name=r.boat_name, sail_number=r.sail_number,
+            place=r.place, status=r.status, boat_id=r.boat_id, source_url=r.source_url,
+        )
+        for r in rows
+    }
+    hit = pick_existing(new, list(cands.values()))
+    if hit is None:
+        return None
+    row = next(r for r in rows if r.id == hit.id)
+    return int(row.id), row.boat_id, row.event_entry_id
+
+
 def upsert_race_result(
     engine: Engine,
     boat_id: int | None,
@@ -198,7 +252,7 @@ def upsert_race_result(
     race_name: str | None = None,
     **kwargs,
 ) -> int:
-    """Insert a race result, resolving its NOT NULL ``event_entry_id``.
+    """Insert or update a race result, resolving its NOT NULL ``event_entry_id``.
 
     ``race_results.event_entry_id`` has been NOT NULL since alembic 0022
     (strict 3NF), so every row must link to an event_entry. The previous
@@ -206,6 +260,16 @@ def upsert_race_result(
     model drifted to drop ``event_name``/``boat_id``/``organizing_club``,
     raised ``KeyError('organizing_club')`` on every row — which is why the
     SailSys runs logged found>0 / new=0 (OPS-02-02).
+
+    Identity: a result is recognised by the natural key in
+    :mod:`irc_data.db.result_identity` (source + event + race + class +
+    page + normalised boat name / sail number), deliberately *not* by the
+    matched ``boat_id``, which changes when boats are rematched. When the
+    result is already stored the existing row is updated in place with the
+    newly scraped values (including the new boat match and entry) and its id
+    returned; otherwise a row is inserted. Values passed as None never
+    overwrite stored data, and an existing boat link is never dropped by a
+    re-scrape that failed to match the boat.
     """
     # Default ingestion-path tag. Firecrawl callers set transport='firecrawl'
     # explicitly via import_scraper_results; bespoke scrapers and JSON imports
@@ -218,39 +282,44 @@ def upsert_race_result(
     sail_number = raw.get("sail_number") or raw.get("sail_no")
     tcc = kwargs.get("tcc_at_race") or kwargs.get("rating_value")
     organiser = kwargs.get("organizing_club")
+    table = RaceResultModel.__table__
+
+    values = dict(
+        boat_id=boat_id,
+        event_name=event_name,
+        event_date=event_date,
+        race_name=race_name,
+        **kwargs,
+    )
+    # Drift guard: only pass columns the mapped table actually has.
+    values = {k: v for k, v in values.items() if k in table.c}
 
     with engine.begin() as conn:
         event_id = _ensure_event_id(
             conn, name=event_name, start_date=event_date, organiser=organiser,
         )
-        event_entry_id = _ensure_event_entry_id(
-            conn, event_id=event_id, boat_id=boat_id,
-            boat_name=boat_name, sail_number=sail_number, tcc=tcc,
-        )
+        existing = _find_existing_result(conn, values, boat_id)
 
-        values = dict(
-            boat_id=boat_id,
-            event_name=event_name,
-            event_date=event_date,
-            race_name=race_name,
-            event_entry_id=event_entry_id,
-            **kwargs,
-        )
-        table = RaceResultModel.__table__
-        # Drift guard: only pass columns the mapped table actually has.
-        values = {k: v for k, v in values.items() if k in table.c}
+        if existing is not None and boat_id is None and existing[1] is not None:
+            # This scrape couldn't match the boat but the stored row is linked
+            # (e.g. by rematch-results): keep the link and its entry.
+            event_entry_id = existing[2]
+            values.pop("boat_id", None)
+        else:
+            event_entry_id = _ensure_event_entry_id(
+                conn, event_id=event_id, boat_id=boat_id,
+                boat_name=boat_name, sail_number=sail_number, tcc=tcc,
+            )
+        values["event_entry_id"] = event_entry_id
 
-        # Dedup: results are stable once published; if an identical row for
-        # this entry+race already exists, return it instead of duplicating.
-        existing = conn.execute(
-            text(
-                "SELECT id FROM race_results WHERE event_entry_id = :e AND "
-                "race_name IS NOT DISTINCT FROM :rn LIMIT 1"
-            ),
-            {"e": event_entry_id, "rn": race_name},
-        ).first()
-        if existing:
-            return int(existing[0])
+        if existing is not None:
+            result_id = existing[0]
+            updates = {
+                k: v for k, v in values.items()
+                if v is not None and k not in ("id", "created_at")
+            }
+            conn.execute(table.update().where(table.c.id == result_id).values(**updates))
+            return result_id
 
         stmt = pg_insert(table).values(**values).returning(table.c.id)
         return int(conn.execute(stmt).scalar_one())
