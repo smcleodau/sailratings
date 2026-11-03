@@ -1,0 +1,50 @@
+{
+ "raceId": 192,
+ "year": 2025,
+ "status": "Race completed",
+ "startDateTime": "2025-12-26T13:00:00",
+ "endDateTime": "2025-12-31T12:44:10",
+ "startDateUtc": "2025-12-26T02:00:00",
+ "endDateUtc": "2025-12-31T01:44:10",
+ "isCurrent": false,
+ "isRunning": false,
+ "publishLineHonoursLeader": true,
+ "timeZone": "Australia/Sydney",
+ "categories": [
+  {
+   "id": 1102,
+   "name": "IRC",
+   "type": "Handicap",
+   "isDefault": true,
+   "decidesWinner": true,
+   "totalDivisionsText": "1,2",
+   "divisions": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "id": 1103,
+   "name": "PHS",
+   "type": "Handicap",
+   "isDefault": false,
+   "decidesWinner": false,
+   "totalDivisionsText": "1,2",
+   "divisions": [
+    "1",
+    "2"
+   ]
+  },
+  {
+   "id": 1105,
+   "name": "Double Handed IRC",
+   "type": "Handicap",
+   "isDefault": false,
+   "decidesWinner": false,
+   "totalDivisionsText": "",
+   "divisions": [
+    ""
+   ]
+  }
+ ]
+}

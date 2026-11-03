@@ -1,0 +1,53 @@
+[
+ {
+  "raceId": 200,
+  "seriesId": 15,
+  "year": 2026,
+  "status": "Pre-race",
+  "startDateTime": "2026-12-26T13:00:00",
+  "endDateTime": null,
+  "startDateUtc": "2026-12-26T02:00:00",
+  "currentRaceTime": "0001-01-01T00:00:00",
+  "currentRaceTimeUtc": "0001-01-01T00:00:00",
+  "raceTimeFormatted": "00:00:00",
+  "isCurrent": true,
+  "isRunning": false,
+  "isEmbargoed": true,
+  "publishLineHonoursLeader": false,
+  "timeZone": "Australia/Sydney"
+ },
+ {
+  "raceId": 192,
+  "seriesId": 15,
+  "year": 2025,
+  "status": "Race completed",
+  "startDateTime": "2025-12-26T13:00:00",
+  "endDateTime": "2025-12-31T12:44:10",
+  "startDateUtc": "2025-12-26T02:00:00",
+  "currentRaceTime": "2026-01-01T10:00:00",
+  "currentRaceTimeUtc": "2025-12-31T23:00:00",
+  "raceTimeFormatted": "05:21:00",
+  "isCurrent": false,
+  "isRunning": false,
+  "isEmbargoed": false,
+  "publishLineHonoursLeader": true,
+  "timeZone": "Australia/Sydney"
+ },
+ {
+  "raceId": 184,
+  "seriesId": 15,
+  "year": 2024,
+  "status": "Race completed",
+  "startDateTime": "2024-12-26T13:00:00",
+  "endDateTime": "2024-12-31T18:20:35",
+  "startDateUtc": "2024-12-26T02:00:00",
+  "currentRaceTime": "2025-01-01T18:00:00",
+  "currentRaceTimeUtc": "2025-01-01T07:00:00",
+  "raceTimeFormatted": "06:05:00",
+  "isCurrent": false,
+  "isRunning": false,
+  "isEmbargoed": false,
+  "publishLineHonoursLeader": false,
+  "timeZone": "Australia/Sydney"
+ }
+]

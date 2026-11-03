@@ -36,6 +36,11 @@ from irc_data.scrapers.result_base import EventRef, NormalizedResult, RaceResult
 
 CW_BASE = "https://www.cowesweek.co.uk"
 CW_PHP = f"{CW_BASE}/web/code/php/main_c.php"
+# The site's results skin moved from map=cw26&ui=cw4 to map=cw-res&ui=cw-res
+# in 2026; the old skin now answers every page with an 89-byte stub (HTTP 200),
+# so discovery fell back to the default class ids and every points page
+# parsed to zero rows. section=regatta serves every year, current included.
+CW_PAGE = f"{CW_PHP}?map=cw-res&ui=cw-res&style=std&override="
 
 cw_limiter = RateLimiter(min_delay=2.0, jitter=1.0)
 
@@ -57,6 +62,8 @@ CW_YEARS = [
     2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011,
     2013, 2014, 2015, 2016, 2017, 2018, 2019,
     2021, 2022, 2023, 2024, 2025,
+    # Every season since: the list stopped at 2025, so 2026 was never scraped.
+    *range(2026, date.today().year + 1),
 ]
 
 # Typical Cowes Week dates (first Saturday in August).
@@ -109,29 +116,17 @@ def _detect_status(score_text: str | None) -> str:
 
 def _build_points_url(year: int, series_id: int) -> str:
     """Build URL for an overall points page for a given year + class."""
-    # Archive years use section=regatta, current year uses section=racing
-    section = "racing" if year == CW_YEARS[-1] else "regatta"
-    return (
-        f"{CW_PHP}?map=cw26&ui=cw4&style=std&override="
-        f"&section={section}&page=points{year}&resultrequest={series_id}"
-    )
+    return f"{CW_PAGE}&section=regatta&page=points{year}&resultrequest={series_id}"
 
 
 def _build_boat_details_url(year: int, boatref: int) -> str:
     """Build URL for a boat's detail page."""
-    section = "racing" if year == CW_YEARS[-1] else "regatta"
-    return (
-        f"{CW_PHP}?map=cw26&ui=cw4&style=std&override="
-        f"&section={section}&page=boatdetails{year}&boatref={boatref}"
-    )
+    return f"{CW_PAGE}&section=regatta&page=boatdetails{year}&boatref={boatref}"
 
 
 def _build_archive_url() -> str:
     """Build URL for the results archive page."""
-    return (
-        f"{CW_PHP}?map=cw26&ui=cw4&style=std&override="
-        "&section=regatta&page=archive"
-    )
+    return f"{CW_PAGE}&section=regatta&page=archive"
 
 
 async def _fetch_available_classes(client, year: int) -> dict[str, int]:
@@ -139,11 +134,7 @@ async def _fetch_available_classes(client, year: int) -> dict[str, int]:
 
     Returns dict mapping class name -> series ID.
     """
-    section = "racing" if year == CW_YEARS[-1] else "regatta"
-    url = (
-        f"{CW_PHP}?map=cw26&ui=cw4&style=std&override="
-        f"&section={section}&page=points{year}"
-    )
+    url = f"{CW_PAGE}&section=regatta&page=points{year}"
     await cw_limiter.wait()
     try:
         resp = await client.get(url)
