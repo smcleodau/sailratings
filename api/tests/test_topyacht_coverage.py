@@ -116,6 +116,14 @@ def test_season_url_variants_rewrite_stale_directory_links():
     assert ty.season_url_variants("https://club.example/results/", "Regatta 2026") == []
 
 
+def test_club_index_url_expands_season_end_year():
+    assert ty.club_index_url("https://topyacht.net.au/results/fsc", 2025, "kb{end_yy}") == \
+        "https://topyacht.net.au/results/fsc/2025/kb26/index.htm"
+    assert ty.club_index_url("https://topyacht.net.au/results", 2026, "mirw") == \
+        "https://topyacht.net.au/results/2026/mirw/index.htm"
+    assert {"FSC", "MIRW"} <= set(ty.TOPYACHT_CLUBS)
+
+
 def test_directory_skips_blank_results_links():
     html = ('<table><tr><td>RFBYC Season 2026/2027</td><td>KB</td><td>RFBYC</td>'
             '<td><a href="x">Enter</a></td><td><a href="">Results</a></td></tr></table>')

@@ -184,6 +184,15 @@ TOPYACHT_CLUBS: dict[str, dict] = {
     # -----------------------------------------------------------------------
     # Western Australia — clubs on topyacht.net.au/results/{club}/{year}/
     # -----------------------------------------------------------------------
+    "FSC": {
+        "club_name": "Fremantle Sailing Club",
+        "base_url": "https://topyacht.net.au/results/fsc",
+        # Keelboat tree is named for the season's end year: 2025/kb26/.
+        # IRC in Success Cup, Coastal Cup, West Coaster etc. The club site
+        # sits behind a JavaScript bot check, so it can't be crawled.
+        "divisions": ["kb{end_yy}"],
+        "years": list(range(2025, _LATEST_SEASON + 1)),
+    },
     "ORWA": {
         "club_name": "Ocean Racing Club of Western Australia",
         "base_url": "https://topyacht.net.au/results/orwa",
@@ -297,6 +306,13 @@ TOPYACHT_CLUBS: dict[str, dict] = {
 # "IRC", "IRC  Div1", "IRC TCC", "IRC1", "IRC_NS", "IRCNS" (non-spinnaker) —
 # but not words that merely contain the letters (e.g. "Circuit").
 _IRC_HEADER_RE = re.compile(r"(?<![A-Za-z])IRC(?:NS)?(?![A-Za-z])", re.I)
+
+
+def club_index_url(base_url: str, year: int, division: str) -> str:
+    """``{base}/{year}/{division}/index.htm``; ``{end_yy}`` in a division
+    expands to the season's two-digit end year (FSC: 2025/kb26)."""
+    division = division.format(end_yy=f"{(year + 1) % 100:02d}")
+    return f"{base_url}/{year}/{division}/index.htm"
 
 
 def _safe_decimal(val: str) -> Decimal | None:
@@ -1183,7 +1199,7 @@ async def scrape_club(
                 continue
 
             for division in divisions:
-                index_url = f"{base_url}/{year}/{division}/index.htm"
+                index_url = club_index_url(base_url, year, division)
                 print(f"\n  Discovering series at {index_url}...")
 
                 series_list = await discover_series_from_index(client, index_url)
@@ -1294,7 +1310,7 @@ class TopYachtSource(RaceResultSource):
                         continue
 
                     for division in club["divisions"]:
-                        index_url = f"{base_url}/{year}/{division}/index.htm"
+                        index_url = club_index_url(base_url, year, division)
                         series_list = await discover_series_from_index(client, index_url)
 
                         for series in series_list:
