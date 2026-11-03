@@ -45,7 +45,6 @@ SAILWAVE_SEEDS: list[SailwaveSeed] = [
     SailwaveSeed(SW + "chichesteryc/", "Chichester Yacht Club"),
     SailwaveSeed(SW + "hisc/", "Hayling Island Sailing Club"),
     SailwaveSeed(SW + "LangstoneSC/", "Langstone Sailing Club"),
-    SailwaveSeed(SW + "Gurnardsc/", "Gurnard Sailing Club"),
     SailwaveSeed(SW + "PooleYC/", "Poole Yacht Club"),
     SailwaveSeed(SW + "Parkstone/", "Parkstone Yacht Club"),
     SailwaveSeed(SW + "WPNSA/", "Weymouth & Portland National Sailing Academy"),

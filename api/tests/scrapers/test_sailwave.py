@@ -60,7 +60,15 @@ def test_parse_race_date(text, ref, expected):
 
 
 def test_parse_race_date_no_roll_back_for_single_year_events():
+    assert sw.parse_race_date("December 13", date(2027, 1, 20), roll_back=False) is None
     assert sw.parse_race_date("April 20", date(2025, 4, 12), roll_back=False) is None
+
+
+def test_event_year_overrides_a_typo_year():
+    page = sw.SailwavePage(title="", event="2025 Thursday Evening Keelboats", venue="",
+                           as_of=date(2026, 1, 21), version=None, tables=[])
+    assert page.date_for("8th May 2024") == date(2025, 5, 8)
+    assert page.date_for("19th June 2025") == date(2025, 6, 19)
 
 
 @pytest.mark.parametrize("fleet,system,header,expected", [
@@ -76,6 +84,7 @@ def test_parse_race_date_no_roll_back_for_single_year_events():
     ("Class 1", None, "rating_other", False),      # column headed ECHO/PY
     ("SB20 Class", None, None, False),
     ("Class 1", None, "rating", False),
+    ("Class 1 VPRS Fleet", "IRC", "rating_irc", False),  # Parkstone 2018
 ])
 def test_fleet_is_irc(fleet, system, header, expected):
     assert sw.fleet_is_irc(fleet, system, header) is expected
@@ -388,3 +397,46 @@ def test_iis_subfolder_listing_parse():
     files = sw.parse_folder_index(html, "https://sailwave.com/results/royalsolentyc/2019TaittingerRegatta/")
     assert files == [("https://sailwave.com/results/royalsolentyc/2019TaittingerRegatta/results.htm",
                       datetime(2019, 12, 29, 10, 14))]
+
+
+# ---------------------------------------------------------------------------
+# Parkstone YC layouts: fleet-first titles, per-day race labels, d/m dates
+# ---------------------------------------------------------------------------
+
+
+def _pk(name):
+    raw = (FIX / name).read_bytes()
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("windows-1252")
+
+
+@pytest.mark.parametrize("title,expected", [
+    ("R1 - IRC 1 Champs - April 18", ("R1", "IRC 1 Champs", "April 18")),
+    ("Race 1 - IRC 1 Class - 17/04/21", ("Race 1", "IRC 1 Class", "17/04/21")),
+    ("Class 1 Fleet - R2 06/10", ("R2", "Class 1 Fleet", "06/10")),
+    ("15/10 R1 - 1 Class at 10:05", ("R1", "1 Class", "15/10")),
+    ("29/10 - 1 Class at 11:10", ("", "1 Class", "29/10")),
+    ("R9 - IRC 1 Division", ("R9", "IRC 1 Division", "")),
+])
+def test_split_race_title(title, expected):
+    assert sw._split_race_title(title) == expected
+
+
+def test_per_day_race_labels_are_numbered_in_series_order():
+    rows = sw.parse_sailwave_html(_pk("parkstone_irc_autumn_2023.html"), source_url="p")
+    tabled = sorted({(r.race_number, r.event_date) for r in rows if r.raw_data["row_origin"] == "race_table"})
+    # "15/10 R1", "15/10 R2", "29/10", "05/11 R1", ... -> races 1..8 in order
+    assert tabled[:4] == [(1, date(2023, 10, 15)), (2, date(2023, 10, 15)),
+                          (3, date(2023, 10, 29)), (4, date(2023, 11, 5))]
+    assert {r.class_name for r in rows} == {"1 Class"}
+    assert all(r.rating_type == "irc_tcc" for r in rows)
+
+
+def test_parkstone_winter_series_two_fleets():
+    rows = sw.parse_sailwave_html(_pk("parkstone_cruiser_winter_2019_irc.htm"), source_url="p")
+    assert {r.class_name for r in rows} == {"Class 1 Fleet", "Class 2 Fleet"}
+    r1 = [r for r in rows if r.class_name == "Class 1 Fleet" and r.race_number == 1]
+    assert r1 and {r.event_date for r in r1} == {date(2019, 10, 6)}
+    assert all(r.corrected_time for r in r1 if r.status == "finished")

@@ -177,6 +177,10 @@ def parse_race_date(text: str | None, ref: date | None, *, roll_back: bool = Tru
         y = int(m.group(3))
         y = y + 2000 if y < 100 else y
         return _mk(y, int(m.group(2)), int(m.group(1)))
+    # d/m (UK, no year) e.g. "15/10" in Parkstone's race titles
+    m = re.search(r"(?<![\d/])(\d{1,2})/(\d{1,2})(?![\d/])", t)
+    if m and ref is not None:
+        return _year_for(ref, int(m.group(2)), int(m.group(1)), roll_back)
     # d Month [y] / Month d[,] [y]
     m = re.search(r"\b(\d{1,2})[\s-]+([A-Za-z]{3,})\.?(?:[\s,-]+(\d{2,4}))?\b", t)
     order = "dm"
@@ -196,8 +200,16 @@ def parse_race_date(text: str | None, ref: date | None, *, roll_back: bool = Tru
         return _mk(y + 2000 if y < 100 else y, mon, day)
     if ref is None:
         return None
+    return _year_for(ref, mon, day, roll_back)
+
+
+def _year_for(ref: date, mon: int, day: int, roll_back: bool) -> date | None:
+    """Put a yearless day/month in ref's year. Sailwave stamps "as of" when it
+    publishes, so a race cannot be after it: a later date ("December 13" read
+    on 20 January) is the previous year for a winter series, or rejected for
+    an event named for a single year (a stale file under a new name)."""
     d = _mk(ref.year, mon, day)
-    if d and d > ref + timedelta(days=7):
+    if d and d > ref + timedelta(days=2):
         d = _mk(ref.year - 1, mon, day) if roll_back else None
     return d
 
@@ -291,7 +303,15 @@ class SailwavePage:
         return not (self.as_of and years == {str(self.as_of.year)})
 
     def date_for(self, text: str | None, url: str = "") -> date | None:
-        return parse_race_date(text, self.reference_date(url), roll_back=self.roll_back)
+        d = parse_race_date(text, self.reference_date(url), roll_back=self.roll_back)
+        years = {int(y) for y in re.findall(r"(?<!\d)(20\d\d)(?!\d)", self.event)}
+        if d and len(years) == 1:
+            y = next(iter(years))
+            wrap = (d.year == y + 1 and d.month <= 3) or (d.year == y - 1 and d.month >= 10)
+            if d.year != y and not wrap:
+                # A typo'd year in one header ("8th May 2024" in a 2025 series).
+                d = _mk(y, d.month, d.day)
+        return d
 
     def reference_date(self, url: str = "") -> date | None:
         if self.as_of:
@@ -335,17 +355,65 @@ def _caption_after(title: Tag | None, table: Tag) -> str:
     return ""
 
 
+_LABEL_RE = re.compile(r"\b(R|Race)\s*(\d+)\b", re.IGNORECASE)
+_START_AT_RE = re.compile(r"\s+at\s+\d{1,2}[:.]\d{2}(?::\d{2})?\s*$", re.IGNORECASE)
+
+
+def _renumber(cols: list) -> None:
+    """Series race numbers for summary columns.
+
+    When every column has a distinct R-number it is kept; otherwise (no
+    label, or per-day numbering like '15/10 R1', '05/11 R1') the columns are
+    numbered in order, which is how Sailwave lays races out.
+    """
+    nums = [c.number for c in cols]
+    if None in nums or len(set(nums)) != len(nums):
+        for i, c in enumerate(cols, 1):
+            c.number = i
+
+
+def _renumber_race_tables(tabs: list) -> None:
+    """Same rule for race tables, per fleet, keeping the title as race_name."""
+    by_fleet: dict[str, list] = {}
+    for t in tabs:
+        by_fleet.setdefault(_fleet_key(t.fleet), []).append(t)
+    for group in by_fleet.values():
+        nums = [t.race_number for t in group]
+        if None in nums or len(set(nums)) != len(nums):
+            for i, t in enumerate(group, 1):
+                label = " ".join(x for x in (t.race_label, t.race_date_text) if x)
+                t.race_label = label or f"R{i}"
+                t.race_number = i
+
+
 def _split_race_title(text: str) -> tuple[str, str, str]:
-    """'R1 - IRC 1 Champs - April 18' -> ('R1', 'IRC 1 Champs', 'April 18')."""
+    """Race title -> (race label, fleet, date text).
+
+    Sailwave layouts seen: 'R1 - IRC 1 Champs - April 18', 'Race 1 - IRC 1
+    Class - 17/04/21', 'Class 1 Fleet - R2 06/10', '1 Class at 10:05 - 29/10'.
+    """
     parts = [p.strip() for p in re.split(r"\s+-\s+", _clean(text)) if p.strip()]
-    if not parts:
-        return "", "", ""
-    label = parts[0]
-    rest = parts[1:]
-    date_text = ""
-    if rest and parse_race_date(rest[-1], date(2000, 12, 31)):
-        date_text = rest.pop()
-    return label, " - ".join(rest), date_text
+    label = date_text = ""
+    fleet_parts = []
+    probe = date(2000, 12, 31)
+    for i, part in enumerate(parts):
+        lm = _LABEL_RE.search(part)
+        has_date = parse_race_date(part, probe) is not None
+        if lm and not label and (has_date or re.fullmatch(r"(R|Race)\s*\d+", part, re.I) or i == 0):
+            label = lm.group(0)
+            rest = _clean(part.replace(lm.group(0), " "))
+            if rest and parse_race_date(rest, probe):
+                date_text = rest
+            elif rest and i != 0:
+                fleet_parts.append(rest)
+            continue
+        if has_date and (i > 0 or len(part) <= 14):
+            if not date_text:
+                date_text = part
+            continue  # a second rendering of the date ("06-Aug - ... - 06/08/2018")
+        fleet_parts.append(part)
+    fleet = _START_AT_RE.sub("", " - ".join(fleet_parts)).strip()
+    return label, fleet, date_text
 
 
 def parse_page(html: str) -> SailwavePage:
@@ -386,9 +454,16 @@ def parse_page(html: str) -> SailwavePage:
             if f and f not in fields:
                 fields[f] = i
                 continue
-            m = _RACE_COL_RE.match(first)
-            if m and not f:
-                race_cols.append(RaceColumn(i, first, int(m.group(2)), " ".join(parts[1:])))
+            if f:
+                continue
+            joined = " ".join(parts)
+            m = _LABEL_RE.search(joined)
+            date_like = parse_race_date(joined, date(2000, 12, 31)) is not None
+            if (m and _RACE_COL_RE.match(first)) or (date_like and fields):
+                label = m.group(0) if m else ""
+                date_text = _clean(joined.replace(label, " ")) if label else joined
+                race_cols.append(RaceColumn(i, joined if not label else label,
+                                            int(m.group(2)) if m else None, date_text))
         if "boat" not in fields and "sail" not in fields:
             continue
         kind = None
@@ -419,9 +494,11 @@ def parse_page(html: str) -> SailwavePage:
             tab.race_date_text = date_text or None
             tab.fleet = fleet
         else:
-            tab.fleet = title_text
+            tab.fleet = _START_AT_RE.sub("", title_text).strip()
+            _renumber(tab.race_columns)
         tables.append(tab)
 
+    _renumber_race_tables([t for t in tables if t.kind == "race"])
     return SailwavePage(
         title=title,
         event=_cell(h1) or title,
@@ -440,6 +517,11 @@ def parse_page(html: str) -> SailwavePage:
 def fleet_is_irc(fleet: str, rating_system: str | None, rating_header: str | None,
                  *, assume_irc: bool = False) -> bool:
     if rating_header == "rating_other":
+        return False
+    name = _clean(fleet)
+    if _OTHER_SYSTEMS_RE.search(_IRC_RE.sub(" ", name)):
+        # "Class 1 VPRS Fleet" scored with Sailwave's "IRC" system, or a
+        # combined "IRC/ECHO" fleet: not an IRC result.
         return False
     if rating_system:
         if rating_system.startswith("IRC"):
