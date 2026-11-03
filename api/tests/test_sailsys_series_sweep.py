@@ -261,3 +261,37 @@ def test_run_sailsys_feeds_swept_series_to_each_club(monkeypatch):
     assert imported == [("MHYC", 1)]
     assert out["records_written"] == 1 and out["clubs"] == {"CYCA": 0, "MHYC": 1}
     assert out["series_sweep"]["new_series"] == 1
+
+
+class TestIrcDefinitionDetection:
+    """CYCA's IRC definition is id 25; the old fixed {1, 33} list stored
+    every CYCA IRC race with PHS as the rating and no irc_tcc."""
+
+    def _scrape(self, body, race_id=43879):
+        path = f"/api/v1/races/{race_id}/resultsentrants/display"
+
+        async def go():
+            async with httpx.AsyncClient(transport=_transport({}, extra={path: body})) as client:
+                return await sailsys.scrape_race_results(client, 3, 5924, race_id,
+                                                         series_name="SSOS", club_name="CYCA")
+        return asyncio.run(go())
+
+    def test_cyca_definition_25_is_irc(self):
+        rows = self._scrape(_fx("race_43879_cyca_irc25.json"))
+        about_time = next(r for r in rows if r.raw_data["boat_name"] == "About Time")
+        assert about_time.raw_data["irc_tcc"] == "1.221"
+        assert str(about_time.tcc_at_race) == "1.221"
+        assert about_time.raw_data["irc_place"] == 1 and about_time.place == 1
+        assert about_time.raw_data["irc_corrected"] == "06:01:40"
+        assert about_time.raw_data["phs"] == "1.2249" and about_time.raw_data["phs_place"] == 2
+        phs_only = next(r for r in rows if r.raw_data["boat_name"] == "Cadenza")
+        assert phs_only.raw_data["irc_tcc"] is None
+
+    def test_unknown_definition_id_recognised_by_name(self):
+        race = {"handicappings": [{"id": 5, "shortName": "PHS"}, None],
+                "competitors": [{"items": [{"handicap": {"currentHandicaps": [
+                    {"definition": {"id": 9001, "shortName": "IRC SH", "fullName": "IRC Short-handed"},
+                     "value": 1.0},
+                    {"definition": {"id": 4, "shortName": "ORCGP"}, "value": 600}]}}]}]}
+        ids = sailsys.irc_definition_ids(race)
+        assert 9001 in ids and 5 not in ids and 4 not in ids

@@ -15,8 +15,11 @@ API endpoints (all public, no login):
 Handicap IDs (from handicappings array):
   5  = PHS (SailSys PHS)
   33 = IRC Fleet (Manual)
+  25 = IRC Fleet (Manual)  (CYCA's IRC definition, shortName "IRC")
   4  = ORCGP (ORC General Purpose)
   1  = IRC (legacy?)
+IRC definitions are also recognised by name (see irc_definition_ids), since
+clubs get their own definition ids.
 """
 
 import asyncio
@@ -79,9 +82,38 @@ CLUBS = {
 }
 
 # Handicap definition IDs we care about (IRC-related)
-IRC_HANDICAP_IDS = {1, 33}  # IRC legacy and IRC Fleet (Manual)
+IRC_HANDICAP_IDS = {1, 25, 33}  # IRC legacy, IRC Fleet (Manual) x2
 PHS_HANDICAP_ID = 5
 ORCGP_HANDICAP_ID = 4
+
+
+def _is_irc_definition(defn: dict | None) -> bool:
+    if not defn:
+        return False
+    if defn.get("id") in IRC_HANDICAP_IDS:
+        return True
+    name = (defn.get("shortName") or defn.get("fullName") or "").strip().upper()
+    return name.startswith("IRC")
+
+
+def irc_definition_ids(race_data: dict) -> set[int]:
+    """IRC handicap definition ids used in one race.
+
+    A fixed id list missed CYCA, whose IRC definition is id 25 ("IRC Fleet
+    (Manual)"): every CYCA IRC race since 2022 was stored with PHS as the
+    rating. Read the race's own ``handicappings`` and each entrant's
+    handicap definitions and keep any whose name starts with "IRC".
+    """
+    ids = set(IRC_HANDICAP_IDS)
+    defs = list(race_data.get("handicappings") or [])
+    for group in race_data.get("competitors") or []:
+        for item in group.get("items") or []:
+            for hc in ((item or {}).get("handicap") or {}).get("currentHandicaps") or []:
+                defs.append((hc or {}).get("definition"))
+    for d in defs:
+        if _is_irc_definition(d) and d.get("id") is not None:
+            ids.add(d["id"])
+    return ids
 
 # SailSys race statuses that indicate a race has been sailed and is
 # publishing results. 4 = ratified/finalised; 3 = scored but not yet
@@ -501,6 +533,8 @@ async def scrape_race_results(
     results = []
     source_url = f"{SAILSYS_BASE}/club/{club_id}/results/series/{series_id}/races/{race_id}?handicap=1"
 
+    irc_ids = irc_definition_ids(race_data)
+
     # Count fleet size across all competitor groups
     total_competitors = 0
     for competitor_group in (race_data.get("competitors") or []):
@@ -538,7 +572,7 @@ async def scrape_race_results(
                 hc_def = hc.get("definition", {})
                 hc_id = hc_def.get("id")
                 hc_value = hc.get("value")
-                if hc_id in IRC_HANDICAP_IDS:
+                if hc_id in irc_ids:
                     irc_tcc = _safe_decimal(hc_value)
                 elif hc_id == PHS_HANDICAP_ID:
                     phs_value = _safe_decimal(hc_value)
@@ -568,7 +602,7 @@ async def scrape_race_results(
                 if placing_text and placing_text in {"DNF", "DNC", "DSQ", "OCS", "RET", "DNS", "RAF", "STP"}:
                     status = placing_text
 
-                if hc_def_id in IRC_HANDICAP_IDS:
+                if hc_def_id in irc_ids:
                     irc_corrected = corrected
                     irc_place = _safe_int(place)
                 elif hc_def_id == PHS_HANDICAP_ID:
