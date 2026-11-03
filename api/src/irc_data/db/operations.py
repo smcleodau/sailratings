@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 
@@ -99,20 +99,52 @@ def upsert_tcc_snapshot(
 # ---------------------------------------------------------------------------
 
 
-def upsert_certificate(engine: Engine, boat_id: int | None, cert_data: dict) -> int:
-    """Insert or update a certificate record."""
+def upsert_certificate(engine: Engine, boat_id: int | None, cert_data: dict) -> int | None:
+    """Insert or update a certificate record, keyed on ``cert_number``.
+
+    IRC cert numbers are stable across annual reissues, so the row holds the
+    boat's *newest* certificate.  An older PDF (a Wayback/historical copy or
+    a stale duplicate file) never overwrites a newer certificate: the update
+    only applies when the incoming issue date is the same or later.  A known
+    ``boat_id`` is never replaced by NULL.
+
+    Returns the row id, or ``None`` when the existing row was newer and was
+    left untouched.  See :func:`upsert_certificate_status` for the outcome.
+    """
+    row_id, _status = upsert_certificate_status(engine, boat_id, cert_data)
+    return row_id
+
+
+def upsert_certificate_status(
+    engine: Engine, boat_id: int | None, cert_data: dict
+) -> tuple[int | None, str]:
+    """Like :func:`upsert_certificate` but also reports the outcome.
+
+    Status is ``"inserted"``, ``"updated"`` or ``"kept_newer"``.
+    """
+    table = Certificate.__table__
     values = {"boat_id": boat_id, **cert_data}
-    stmt = pg_insert(Certificate.__table__).values(**values)
+    stmt = pg_insert(table).values(**values)
     update_cols = {k: stmt.excluded[k] for k in cert_data if k != "cert_number"}
+    update_cols["boat_id"] = func.coalesce(stmt.excluded.boat_id, table.c.boat_id)
     update_cols["scraped_at"] = text("now()")
+    new_date, old_date = stmt.excluded.issue_date, table.c.issue_date
     stmt = stmt.on_conflict_do_update(
-        constraint="certificates_cert_number_key",
+        # Index inference, not a constraint name: migration 0012 renamed the
+        # constraint and the stale name made every upsert raise.
+        index_elements=[table.c.cert_number],
         set_=update_cols,
+        where=or_(
+            and_(new_date.isnot(None), or_(old_date.is_(None), new_date >= old_date)),
+            and_(new_date.is_(None), old_date.is_(None)),
+        ),
     )
-    stmt = stmt.returning(Certificate.__table__.c.id)
+    stmt = stmt.returning(table.c.id, text("(xmax = 0) AS inserted"))
     with engine.begin() as conn:
-        result = conn.execute(stmt)
-        return result.scalar_one()
+        row = conn.execute(stmt).first()
+    if row is None:
+        return None, "kept_newer"
+    return row[0], ("inserted" if row[1] else "updated")
 
 
 # ---------------------------------------------------------------------------

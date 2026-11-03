@@ -305,24 +305,37 @@ def scrape():
 @scrape.command(name="certs")
 @click.option("--search", "-s", multiple=True, help="Search term (sail prefix, boat name)")
 @click.option("--all-targets", is_flag=True, help="Download all AUS + Sunfast 3300 certs")
-@click.option("--exhaustive", is_flag=True, help="2-letter exhaustive search (AA..ZZ, ~17min)")
+@click.option("--exhaustive", is_flag=True, help="2-letter exhaustive search (AA..ZZ) + targeted cert-number search for current-TCC boats still missing a cert")
+@click.option("--targeted-only", is_flag=True, help="Only search current-TCC cert numbers that are missing or due a refresh")
+@click.option("--refresh-all", is_flag=True, help="Re-download every listed PDF, not only new/stale ones")
+@click.option("--download-delay", type=float, default=2.0, show_default=True,
+              help="Seconds between PDF downloads (the site meters downloads; it slows further on HTTP 429)")
 @click.pass_context
-def scrape_certs(ctx, search, all_targets, exhaustive):
+def scrape_certs(ctx, search, all_targets, exhaustive, targeted_only, refresh_all, download_delay):
     """Download certificate PDFs from ircrating.org."""
     import asyncio
+    import json as _json
 
-    if exhaustive:
-        from irc_data.scrapers.certificate_bulk import (
-            download_certificates,
-            exhaustive_enumerate,
+    if exhaustive or targeted_only:
+        from irc_data.scrapers.certificate_bulk import discover_and_download
+
+        engine = ctx.obj.get("engine")
+        console.print(
+            "Running certificate discovery "
+            f"({'targeted only' if targeted_only else 'exhaustive + targeted'})..."
         )
-
-        console.print("Running exhaustive 2-letter enumeration...")
-        certs = asyncio.run(exhaustive_enumerate())
-        console.print(f"Found {len(certs)} unique certificates")
-        console.print("Downloading new certificates...")
-        downloaded = asyncio.run(download_certificates(certs))
-        console.print(f"[green]Downloaded {len(downloaded)} certificate PDFs.[/green]")
+        out = asyncio.run(
+            discover_and_download(
+                engine,
+                exhaustive=not targeted_only,
+                targeted=True,
+                refresh_all=refresh_all,
+                log=console.print,
+                download_delay=download_delay,
+            )
+        )
+        ctx.obj["scrape_certs_stats"] = out
+        console.print(f"[green]{_json.dumps(out, default=str)}[/green]")
         return
 
     if all_targets:
@@ -1950,126 +1963,51 @@ def firecrawl_diff(ctx, source, limit, days, explicit_url):
     is_flag=True,
     help=(
         "Also sweep HISTORICAL_CERTS_DIR (PDFs harvested by "
-        "`backfill-irc-certs`)."
+        "`backfill-irc-certs`). Older certificates never overwrite newer ones."
     ),
 )
+@click.option(
+    "--all",
+    "reparse_all",
+    is_flag=True,
+    help="Re-parse every PDF, not just new or re-downloaded ones.",
+)
 @click.pass_context
-def parse_certs(ctx, cert_dir, include_historical):
-    """Parse downloaded certificate PDFs and insert into database."""
-    from irc_data.config import CERTIFICATES_DIR, HISTORICAL_CERTS_DIR
-    from irc_data.db.operations import (
-        find_boat_by_cert_number,
-        find_boat_by_sail_number,
-        upsert_certificate,
-    )
-    from irc_data.parsers.certificate_pdf import (
-        parse_all_certificates,
-        parse_filename_info,
+def parse_certs(ctx, cert_dir, include_historical, reparse_all):
+    """Parse downloaded certificate PDFs and upsert them into irc_certificates."""
+    from irc_data.config import HISTORICAL_CERTS_DIR
+    from irc_data.parsers.certificate_ingest import (
+        default_certificate_paths,
+        ingest_certificates,
+        iter_certificate_files,
     )
 
     engine = ctx.obj["engine"]
-    dirs: list[Path] = [Path(cert_dir) if cert_dir else CERTIFICATES_DIR]
-    if include_historical and HISTORICAL_CERTS_DIR not in dirs:
-        dirs.append(HISTORICAL_CERTS_DIR)
+    if cert_dir:
+        dirs = [Path(cert_dir)]
+        if include_historical:
+            dirs.append(HISTORICAL_CERTS_DIR)
+        paths = iter_certificate_files(dirs)
+    else:
+        # --include-historical also sweeps the DP-00-05 raw store.
+        paths = default_certificate_paths(
+            include_historical=include_historical, include_raw_store=include_historical
+        )
+    console.print(f"Found {len(paths)} certificate PDFs")
 
-    results: list = []
-    for d in dirs:
-        console.print(f"Parsing PDFs in {d}...")
-        if not d.exists():
-            console.print(f"  [yellow]{d} does not exist; skipping[/yellow]")
-            continue
-        results.extend(parse_all_certificates(d))
-    console.print(f"Parsed {len(results)} certificates")
-
-    inserted = 0
-    matched = 0
-    for cert in results:
-        # Use cert_number from PDF, or fall back to filename
-        fn_info = parse_filename_info(Path(cert.pdf_path).name)
-        cert_number = cert.cert_number or fn_info.get("cert_number")
-
-        if not cert_number:
-            continue
-
-        # Try to match to a boat in the database
-        boat_id = find_boat_by_cert_number(engine, cert_number)
-        if not boat_id:
-            sail_no = fn_info.get("sail_number")
-            if sail_no:
-                boat_id = find_boat_by_sail_number(engine, sail_no)
-
-        if boat_id:
-            matched += 1
-
-        cert_dict = {
-            "cert_number": cert_number,
-            "issue_date": cert.issue_date,
-            "source": cert.source,
-            "pdf_path": cert.pdf_path,
-            "lh": cert.lh,
-            "beam": cert.beam,
-            "draft": cert.draft,
-            "displacement": cert.displacement_kg,
-            "bo": cert.bo,
-            "so": cert.so,
-            "p": cert.p,
-            "e": cert.e,
-            "j": cert.j,
-            "fl": cert.fl,
-            "stl": cert.stl,
-            "spl": cert.spl,
-            "rig_type": cert.rig_type,
-            "mast_material": cert.mast_material,
-            "spreaders": cert.spreaders,
-            "muw": cert.muw,
-            "mtw": cert.mtw,
-            "mhw": cert.mhw,
-            "hlu": cert.hlu,
-            "hlp": cert.hlp,
-            "hhw": cert.hhw,
-            "htw": cert.htw,
-            "huw": cert.huw,
-            "sym_slu": cert.sym_slu,
-            "sym_sle": cert.sym_sle,
-            "sym_sf": cert.sym_sf,
-            "sym_shw": cert.sym_shw,
-            "asym_slu": cert.asym_slu,
-            "asym_sle": cert.asym_sle,
-            "asym_sf": cert.asym_sf,
-            "asym_shw": cert.asym_shw,
-            "water_ballast": cert.water_ballast,
-            "stix": cert.stix,
-            "avs": cert.avs,
-            "design_category": cert.design_category,
-            # Extended measurements
-            "lwp": cert.lwp,
-            "dlr": cert.dlr,
-            "x": cert.x,
-            "y": cert.y,
-            "internal_ballast": cert.internal_ballast,
-            "hsa": cert.hsa,
-            "headsails_max": cert.headsails_max,
-            "flying_headsails_max": cert.flying_headsails_max,
-            "fsa": cert.fsa,
-            "flu": cert.flu,
-            "flp": cert.flp,
-            "fuw": cert.fuw,
-            "ftw": cert.ftw,
-            "fhw": cert.fhw,
-            "fsfl": cert.fsfl,
-            "fshw": cert.fshw,
-            "spa": cert.spa,
-            "spinnakers_max": cert.spinnakers_max,
-            "stl_fh_max": cert.stl_fh_max,
-            "aft_rigging": cert.aft_rigging,
-            "raw_data": cert.raw_data,
-        }
-        upsert_certificate(engine, boat_id, cert_dict)
-        inserted += 1
-
-    console.print(
-        f"[green]Inserted {inserted} certificates ({matched} matched to boats).[/green]"
+    stats = ingest_certificates(
+        engine, paths, incremental=not reparse_all, log=console.print
     )
+    ctx.obj["parse_certs_stats"] = stats.as_dict()
+    console.print(
+        f"[green]Parsed {stats.parsed} PDFs (skipped {stats.skipped_unchanged} unchanged): "
+        f"{stats.inserted} new, {stats.updated} updated, {stats.kept_newer} kept newer, "
+        f"{stats.not_certificate} not certificates, {stats.parse_errors} parse errors, "
+        f"{stats.db_errors} DB errors; {stats.matched} matched to boats, "
+        f"{stats.linked_after} previously-unlinked certs linked.[/green]"
+    )
+    for err in stats.errors[:10]:
+        console.print(f"  [yellow]{err}[/yellow]")
 
 
 # --- Analysis commands ---

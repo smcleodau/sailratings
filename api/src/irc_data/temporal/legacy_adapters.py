@@ -50,10 +50,13 @@ verified by ``api/tests/temporal/test_legacy_adapters.py``:
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "LEGACY_CLI_ADAPTERS",
@@ -218,7 +221,22 @@ def _run_tcc(record: Mapping[str, Any]) -> Mapping[str, Any]:
     cli.main(args=["import", str(path), "--snapshot-date", str(today)], standalone_mode=False)
     with engine.connect() as conn:
         after = conn.execute(count, {"d": today}).scalar()
-    return {"records_written": after - before, "snapshot_rows_today": after, "downloaded": str(path)}
+    # New boats from today's listing may already have a parsed certificate
+    # (cert parsed before the boat row existed) — link them now rather than
+    # waiting for the weekly irc-certs run.
+    try:
+        from irc_data.parsers.certificate_ingest import link_unlinked_certificates
+
+        certs_linked = link_unlinked_certificates(engine)
+    except Exception as exc:  # never fail the TCC run over linking
+        logger.warning("certificate linking after TCC import failed: %s", exc)
+        certs_linked = None
+    return {
+        "records_written": after - before,
+        "snapshot_rows_today": after,
+        "downloaded": str(path),
+        "certs_linked": certs_linked,
+    }
 
 
 def _last_successful_run_since(slug: str, lookback_days: int = 1) -> "date | None":
@@ -601,49 +619,61 @@ def _run_manage2sail(record: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _run_cert_discovery(record: Mapping[str, Any]) -> Mapping[str, Any]:
-    """IRC certificate discovery — exhaustive 2-letter search + download.
+    """IRC certificate discovery — exhaustive 2-letter search + targeted
+    cert-number search for current-TCC boats, downloading as it goes.
 
-    Legacy: ``scrape certs --exhaustive``.
+    Legacy: ``scrape certs --exhaustive``.  The old enumerate-then-download
+    flow let every signed download link expire (HTTP 403), so weekly runs
+    wrote nothing from late July 2026.
     """
     import asyncio
 
-    from irc_data.scrapers.certificate_bulk import (
-        download_certificates,
-        exhaustive_enumerate,
-    )
+    from irc_data.db.connection import get_engine
+    from irc_data.scrapers.certificate_bulk import discover_and_download
 
-    certs = asyncio.run(exhaustive_enumerate())
-    downloaded = asyncio.run(download_certificates(certs))
+    # 5 s between downloads: weekly volumes are small and the site meters
+    # downloads per connection (it answers 429 + Retry-After past its cap).
+    out = asyncio.run(discover_and_download(get_engine(), download_delay=5.0))
+    stats = out.get("stats") or {}
     return {
-        "records_written": len(downloaded or []),
-        "records_found": len(certs or []),
+        "records_written": int(stats.get("new", 0)) + int(stats.get("updated", 0)),
+        "records_found": int(stats.get("found", 0)),
+        "failed": int(stats.get("failed", 0)),
+        "rate_limited": int(stats.get("rate_limited", 0)),
+        "refresh_candidates": out.get("refresh_candidates"),
+        "missing_current": out.get("missing_current"),
+        "targeted_missing": out.get("targeted_missing"),
+        "targeted_refresh": out.get("targeted_refresh"),
+        "blocked": out.get("blocked"),
     }
 
 
 def _run_cert_parse(record: Mapping[str, Any]) -> Mapping[str, Any]:
-    """IRC certificate parse — parse downloaded PDFs into the database.
+    """IRC certificate parse — parse new/re-downloaded PDFs into
+    ``irc_certificates`` and link certificates to boats.
 
-    Legacy: ``parse-certs``.
+    Legacy: ``parse-certs``.  Shares :func:`ingest_certificates` with the CLI
+    (the earlier version discarded every parse, then counted a ``certificates``
+    table that was renamed to ``irc_certificates`` in migration 0012).
     """
-    from sqlalchemy import text
-
-    from irc_data.cli import cli
-    from irc_data.config import CERTIFICATES_DIR
     from irc_data.db.connection import get_engine
+    from irc_data.parsers.certificate_ingest import (
+        default_certificate_paths,
+        ingest_certificates,
+    )
 
-    # Same throw-away bug as the results runners: this parsed every PDF and
-    # discarded the parse (records_written hardcoded 0). Run the CLI's own
-    # parse-certs (which upserts each certificate on cert_number) and report
-    # the real number of new certificate rows.
     engine = get_engine()
-    count = text("SELECT count(*) FROM certificates")
-    with engine.connect() as conn:
-        before = int(conn.execute(count).scalar() or 0)
-    cli.main(args=["parse-certs"], standalone_mode=False)
-    with engine.connect() as conn:
-        after = int(conn.execute(count).scalar() or 0)
-    pdfs = len(list(CERTIFICATES_DIR.glob("*.pdf"))) if CERTIFICATES_DIR.exists() else 0
-    return {"records_written": after - before, "records_found": pdfs}
+    paths = default_certificate_paths()
+    stats = ingest_certificates(engine, paths, incremental=True, log=lambda *_: None)
+    return {
+        "records_written": stats.inserted + stats.updated,
+        "records_found": len(paths),
+        "inserted": stats.inserted,
+        "updated": stats.updated,
+        "linked": stats.linked_after,
+        "parse_errors": stats.parse_errors,
+        "db_errors": stats.db_errors,
+    }
 
 
 def _run_wayback_certs(record: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -693,11 +723,17 @@ def _run_boat_news(record: Mapping[str, Any]) -> Mapping[str, Any]:
 #: ``irc-certs`` source — the default run chains discovery → parse, matching
 #: the old cron pairing of ``scrape certs`` + ``parse-certs``.
 def _chain_cert_discovery_and_parse(record: Mapping[str, Any]) -> Mapping[str, Any]:
-    discovery = _run_cert_discovery(record)
+    # Parse whatever is on disk even when discovery fails part-way (site
+    # outage, blocked), then surface the discovery failure.
+    try:
+        discovery = _run_cert_discovery(record)
+    except Exception:
+        _run_cert_parse(record)
+        raise
     parsed = _run_cert_parse(record)
     return {
-        "records_written": int(discovery.get("records_written") or 0),
-        "records_found": int(parsed.get("records_found") or 0),
+        "records_written": int(parsed.get("records_written") or 0),
+        "records_found": int(discovery.get("records_found") or 0),
         "discovery": dict(discovery),
         "parse": dict(parsed),
     }
