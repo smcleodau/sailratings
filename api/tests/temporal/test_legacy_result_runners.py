@@ -28,7 +28,8 @@ RUNNERS = {
     "isora": ("irc_data.scrapers.isora", "ISORASource", "isora", True),
     "rhkyc": ("irc_data.scrapers.legacy.rhkyc", "RHKYCSource", "rhkyc", True),
     "sailracehq": ("irc_data.scrapers.sailracehq", "SailRaceHQSource", "sailracehq", False),
-    "rorc": ("irc_data.scrapers.rorc", "RORCSource", "rorc", False),
+    # rorc stores class_name (boat type) like its archive rows: part of the result identity.
+    "rorc": ("irc_data.scrapers.rorc", "RORCSource", "rorc", True),
     "sydney-hobart": ("irc_data.scrapers.sydneyhobart", "SydneyHobartSource", "sydneyhobart", False),
     "cowesweek": ("irc_data.scrapers.cowesweek", "CowesWeekSource", "cowesweek", True),
     "yachtscoring": ("irc_data.scrapers.yachtscoring", "YachtScoringSource", "yachtscoring", True),

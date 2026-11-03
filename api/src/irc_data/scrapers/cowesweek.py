@@ -56,10 +56,12 @@ IRC_CLASS_IDS = {
     "IRC Class 7": 70,
 }
 
-# Years for which overall-points pages exist in the archive.
-# 2012 and 2020 are missing (2020 = COVID, 2012 = not in archive).
+# Years for which overall-points pages exist in the archive. 2020 had no
+# regatta (COVID). 2001-2004 and 2012 are in the archive too (the list used
+# to skip 2012 and the 2001-2004 pages were never parsed: their points
+# tables have no header row and their class options read "Class 1 IRC").
 CW_YEARS = [
-    2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011,
+    2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012,
     2013, 2014, 2015, 2016, 2017, 2018, 2019,
     2021, 2022, 2023, 2024, 2025,
     # Every season since: the list stopped at 2025, so 2026 was never scraped.
@@ -143,16 +145,42 @@ async def _fetch_available_classes(client, year: int) -> dict[str, int]:
     except Exception:
         return {}
 
-    classes = {}
+    return parse_irc_class_options(resp.text)
+
+
+_OLD_CLASS_NAME_RE = re.compile(r"^Class\s+(\w+)\s+IRC\b\s*(.*)$", re.IGNORECASE)
+
+
+def irc_class_name(option_text: str) -> str | None:
+    """Normalised IRC class name for a series option, or None if not IRC.
+
+    2005+ options read ``IRC Class 0`` / ``IRC Class Zero`` / ``IRC Ocean
+    Racer``; 2001-2004 read ``Class 0 IRC`` (normalised to ``IRC Class 0``).
+    Sub-trophies scored within a class (``Class 0 IRC - Delta Trophy``) and
+    group overalls are not separate results and are skipped.
+    """
+    name = re.sub(r"\s+", " ", option_text or "").strip()
+    if not re.search(r"\bIRC\b", name, re.IGNORECASE):
+        return None
+    if re.search(r"trophy|overall|\s-\s", name, re.IGNORECASE):
+        return None
+    m = _OLD_CLASS_NAME_RE.match(name)
+    if m:
+        rest = m.group(2).strip()
+        return f"IRC Class {m.group(1)}" + (f" {rest}" if rest else "")
+    return name
+
+
+def parse_irc_class_options(page_html: str) -> dict[str, int]:
+    """IRC series options of a points page's series dropdown -> {name: id}."""
+    classes: dict[str, int] = {}
     for m in re.finditer(
         r'option\s+value="(\d+)"\s*(?:selected)?\s*>([^<]*)',
-        resp.text,
+        page_html,
     ):
-        series_id = int(m.group(1))
-        name = m.group(2).strip()
-        if name.startswith("IRC Class"):
-            classes[name] = series_id
-
+        name = irc_class_name(m.group(2))
+        if name and name not in classes:
+            classes[name] = int(m.group(1))
     return classes
 
 
@@ -228,7 +256,45 @@ def parse_points_table(
                 "day_scores": day_scores,
             })
 
+    if not results:
+        results = _parse_headerless_points(tables)
     return results
+
+
+def _parse_headerless_points(tables) -> list[dict]:
+    """2001-2004 points pages: one table, no header row, no boat links.
+
+    Rows are ``pos | BOAT NAME | day scores... | total | nett``. There is no
+    boat-details link, so these rows carry no sail number or TCC.
+    """
+    for table in tables:
+        rows = [r.find_all("td") for r in table.find_all("tr")]
+        data = [
+            cells for cells in rows
+            if len(cells) >= 3
+            and re.fullmatch(r"\d+=?", cells[0].get_text(strip=True))
+            and re.search(r"[A-Za-z]", cells[1].get_text(strip=True))
+        ]
+        # A results table: (nearly) every row is position + name.
+        if len(data) < 2 or len(data) < len(rows) - 1:
+            continue
+        out = []
+        for cells in data:
+            day_scores = [
+                {"score": t, "status": ""}
+                for t in (c.get_text(strip=True).replace("\xa0", "") for c in cells[2:])
+                if t
+            ]
+            out.append({
+                "boat_name": re.sub(r"\s+", " ", cells[1].get_text(" ", strip=True)),
+                "skipper": None,
+                "boatref": None,
+                "place": _safe_int(cells[0].get_text(strip=True)),
+                "fleet_size": len(data),
+                "day_scores": day_scores,
+            })
+        return out
+    return []
 
 
 async def fetch_boat_details(

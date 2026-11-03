@@ -29,7 +29,31 @@ rorc_limiter = RateLimiter(min_delay=2.0, jitter=1.0)
 RORC_YEARS = list(range(2007, 2023))
 
 # Result-file links on the year index pages (old and current URL layout).
-RESULT_LINK_RE = re.compile(r"/(?:files/)?raceresults/\d{4}/[^/]+\.html?$")
+# 2007-2011 keep most races in per-race sub-folders
+# (``/raceresults/2007/cervantestrophyrace/ms0003.html``).
+RESULT_LINK_RE = re.compile(r"/(?:files/)?raceresults/\d{4}/(?:[^/]+/)*[^/]+\.html?$")
+
+# "Start: Sun 11 Aug 13 12:30:00" / "Start: Fri 10 May 13" / "Start: 5 May 2007"
+_START_DATE_RE = re.compile(
+    r"Start:\s*(?:[A-Za-z]+,?\s+)?(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{4}|\d{2})\b"
+)
+
+
+def parse_start_date(text: str | None) -> date | None:
+    """Race start date from a Sail100 ``<h2>Start: ...</h2>`` heading.
+
+    The headings carry a start time on most pages ("Sun 11 Aug 13 12:30:00"),
+    which the old ``strptime`` formats rejected, leaving ~4,400 rows undated.
+    """
+    m = _START_DATE_RE.search(text or "")
+    if not m:
+        return None
+    day, mon, year = m.groups()
+    fmt = "%d %b %Y" if len(year) == 4 else "%d %b %y"
+    try:
+        return datetime.strptime(f"{day} {mon.title()} {year}", fmt).date()
+    except ValueError:
+        return None
 
 
 def _safe_decimal(val: str | None) -> Decimal | None:
@@ -90,22 +114,26 @@ def parse_rorc_result_html(html: str, event_name: str, source_url: str) -> list[
 
     race_title = event_name
     race_date = None
-    for h1 in h1_tags:
+    title_idx = None
+    for i, h1 in enumerate(h1_tags):
         text = h1.get_text(strip=True)
         if text and "RORC" in text.upper() or "IRC" in text.upper() or len(text) > 10:
             race_title = text
+            title_idx = i
             break
+    # The heading after the series/class title names the race itself
+    # ("Rolex Fastnet Race"). Kept in raw_data only: event_name/race_name are
+    # part of the stored result identity, so changing them would split rows.
+    race_heading = None
+    if title_idx is not None and title_idx + 1 < len(h1_tags):
+        race_heading = h1_tags[title_idx + 1].get_text(strip=True) or None
 
     for h2 in h2_tags:
         text = h2.get_text(strip=True)
         if "Start:" in text:
-            date_str = text.replace("Start:", "").strip()
-            for fmt in ["%a %d %b %y", "%a %d %b %Y", "%d %b %y", "%d %b %Y"]:
-                try:
-                    race_date = datetime.strptime(date_str, fmt).date()
-                    break
-                except ValueError:
-                    continue
+            race_date = parse_start_date(text)
+            if race_date:
+                break
 
     # Find the results table (border="1" distinguishes it from layout tables)
     tables = soup.find_all("table", {"border": "1"})
@@ -194,6 +222,11 @@ def parse_rorc_result_html(html: str, event_name: str, source_url: str) -> list[
                 event_series=event_name,
                 organizing_club="RORC",
                 event_type="offshore",
+                # The 2026-03 archive import stored the "Type of boat" column
+                # as class_name (13.6k rows). class_name is part of the stored
+                # result identity, so a scrape that leaves it NULL inserts a
+                # second copy of every archived result instead of updating it.
+                class_name=boat_type or None,
                 place=place,
                 fleet_size=len(rows) - 1,
                 status=status,
@@ -207,6 +240,7 @@ def parse_rorc_result_html(html: str, event_name: str, source_url: str) -> list[
                     "owner": owner,
                     "comments": comments,
                     "headers": headers,
+                    "race_heading": race_heading,
                 },
             ))
 
@@ -222,6 +256,7 @@ class RORCSource(RaceResultSource):
     async def discover_events(self, since: date | None = None) -> list[EventRef]:
         """Discover RORC result files by scanning year index pages."""
         events = []
+        seen_urls: set[str] = set()
         min_year = since.year if since else 2007
 
         async with get_http_client() as client:
@@ -246,6 +281,9 @@ class RORCSource(RaceResultSource):
                         href = link.get("href", "")
                         text = link.get_text(strip=True)
                         full_url = urljoin(RORC_BASE, href)
+                        if full_url in seen_urls:
+                            continue
+                        seen_urls.add(full_url)
 
                         # Skip cumulative/season results (we want per-race)
                         filename = href.split("/")[-1] if "/" in href else href

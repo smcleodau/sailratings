@@ -26,12 +26,31 @@ _CW_RACE_NUMBERS = list(range(1, 9))
 
 
 def _cw_url(page: str, **params) -> str:
+    """A Cowes Week results URL on the current skin.
+
+    The site moved from ``map=cw26&ui=cw4`` to ``map=cw-res&ui=cw-res`` in
+    2026; the old skin answers every page with an 89-byte stub. Same base as
+    ``scrapers/cowesweek.CW_PAGE`` (``section=regatta`` serves every year).
+    """
     qs = "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
     return (
         "https://www.cowesweek.co.uk/web/code/php/main_c.php"
-        f"?map=cw26&ui=cw4&style=std&override=&section=racing&page={page}"
+        f"?map=cw-res&ui=cw-res&style=std&override=&section=regatta&page={page}"
         + (f"&{qs}" if qs else "")
     )
+
+
+def _cw_race_request(series_id: int, race: int) -> str:
+    """``classrequest`` value selecting one IRC class's race-day results.
+
+    The daily-results page takes ``classrequest={class code}/{race number}``
+    (``%2F``-encoded). For IRC Classes 0-7 the class code is ``10 + k`` and
+    the race number is ``day * 1000 + series id`` (e.g. IRC Class 1 on day 7
+    is ``11/7010``) in every archived year checked (2013, 2019, 2024, 2025).
+    ``dayrequest={day}`` must accompany it: without it the server assumes
+    the last day and renders nothing for earlier race numbers.
+    """
+    return f"{10 + series_id // 10}%2F{race * 1000 + series_id}"
 
 
 def cowesweek_year_expand(_seed: str, year: int | None) -> list[str]:
@@ -54,9 +73,11 @@ def cowesweek_race_expand(_seed: str, year: int | None) -> list[str]:
     """Cowes Week year landing → per-race (daily results) pages.
 
     Each IRC class races once per day; the ``page=results{YYYY}`` view with
-    ``resultrequest={class_id}&race={n}`` renders that class's finishing
-    table for race ``n`` — including each boat's **per-race IRC TCC** (the
-    TCC in force for that race, which can change mid-week after a re-rating).
+    ``dayrequest={n}&classrequest={code}/{race number}`` (see
+    :func:`_cw_race_request`)
+    renders that class's finishing table for race ``n`` — including each
+    boat's **per-race IRC TCC** (the TCC in force for that race, which can
+    change mid-week after a re-rating).
 
     This is the OPS-02-06 "follow per-race pages for TCCs" requirement: the
     series-points pages only expose the aggregate score, so the expander
@@ -66,7 +87,7 @@ def cowesweek_race_expand(_seed: str, year: int | None) -> list[str]:
     if not year:
         return []
     return [
-        _cw_url(f"results{year}", resultrequest=cls, race=race)
+        _cw_url(f"results{year}", dayrequest=race, classrequest=_cw_race_request(cls, race))
         for cls in _CW_CLASS_IDS
         for race in _CW_RACE_NUMBERS
     ]

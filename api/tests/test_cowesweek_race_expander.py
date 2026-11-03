@@ -21,12 +21,21 @@ def test_cowesweek_race_expand_covers_classes_and_races():
     assert all("points2025" not in u for u in urls)
 
 
-def test_cowesweek_race_expand_uses_resultrequest_and_race_params():
+def test_cowesweek_race_expand_uses_day_and_classrequest_params():
     urls = ux.cowesweek_race_expand("seed", 2025)
-    # Class 5 (IRC Class 0) race 1 must be present.
-    assert any("resultrequest=5" in u and "race=1" in u for u in urls)
-    # Class 70 (IRC Class 7) race 8 must be present.
-    assert any("resultrequest=70" in u and "race=8" in u for u in urls)
+    # IRC Class 0 (series 5, class code 10) race 1 -> race number 1005.
+    assert any("dayrequest=1&" in u and "classrequest=10%2F1005" in u for u in urls)
+    # IRC Class 1 (series 10, class code 11) on day 7 -> 11/7010 (live-verified).
+    assert any("dayrequest=7&" in u and "classrequest=11%2F7010" in u for u in urls)
+    # IRC Class 7 (series 70, class code 17) race 8.
+    assert any("dayrequest=8&" in u and "classrequest=17%2F8070" in u for u in urls)
+
+
+def test_cowesweek_urls_use_current_site_skin():
+    """The old map=cw26&ui=cw4 skin answers every page with a stub."""
+    for urls in (ux.cowesweek_race_expand("seed", 2025), ux.cowesweek_year_expand("seed", 2025)):
+        assert all("map=cw-res&ui=cw-res" in u and "section=regatta" in u for u in urls)
+        assert not any("cw26" in u or "ui=cw4" in u for u in urls)
 
 
 def test_cowesweek_race_expand_requires_year():
