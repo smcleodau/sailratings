@@ -43,6 +43,18 @@ from irc_data.scrapers.base import RateLimiter, get_http_client
 
 rate_limiter = RateLimiter(min_delay=2.0, jitter=1.0)
 
+# The site caps PDF downloads per connection: past the cap it answers
+# ``429 Too many downloads from your connection`` with ``Retry-After: 600``.
+# We honour Retry-After, then slow the download pace (doubling, 15 s floor,
+# 120 s cap) and give up for the run after this many consecutive 429s.
+DEFAULT_RETRY_AFTER = 600
+MAX_DOWNLOAD_DELAY = 120.0
+MAX_CONSECUTIVE_429 = 6
+
+
+class DownloadQuotaExhausted(RuntimeError):
+    """ircrating.org kept refusing downloads (HTTP 429) — stop this run."""
+
 SUPERSEDED_DIRNAME = "superseded"
 
 
@@ -123,6 +135,8 @@ class HarvestStats:
     skipped_existing: int = 0
     failed: int = 0
     token_refreshes: int = 0
+    rate_limited: int = 0
+    rate_limit_wait_s: float = 0.0
     seen_filenames: set = field(default_factory=set)
     seen_cert_numbers: set = field(default_factory=set)
 
@@ -143,7 +157,9 @@ class CertificateHarvester:
         refresh: Iterable[str] = (),
         refresh_all: bool = False,
         limiter: RateLimiter | None = None,
+        download_limiter: RateLimiter | None = None,
         log: Callable[[str], None] = print,
+        sleep: Callable = asyncio.sleep,
     ):
         self.client = client
         self.output_dir = Path(output_dir or CERTIFICATES_DIR)
@@ -151,7 +167,13 @@ class CertificateHarvester:
         self.refresh = {str(c) for c in refresh}
         self.refresh_all = refresh_all
         self.limiter = limiter or rate_limiter
+        # Downloads are paced separately (they are what the site meters).
+        self.download_limiter = download_limiter or (
+            limiter if limiter is not None else RateLimiter(min_delay=2.0, jitter=1.0)
+        )
         self.log = log
+        self._sleep = sleep
+        self._consecutive_429 = 0
         self.stats = HarvestStats()
         self._done: set[str] = set()  # filenames handled this run
 
@@ -162,23 +184,55 @@ class CertificateHarvester:
             return True
         return not (self.output_dir / info["filename"]).exists()
 
-    async def search(self, term: str) -> list[dict]:
-        await self.limiter.wait()
-        self.stats.searches += 1
-        resp = await self.client.post(
-            IRC_CERTIFICATE_SEARCH_URL,
-            data={"pdf_search": term},
-            headers={"Referer": IRC_CERTIFICATE_SEARCH_URL},
+    async def _honour_429(self, resp, what: str) -> bool:
+        """Back off on HTTP 429. Returns True when the caller should retry."""
+        if resp.status_code != 429:
+            self._consecutive_429 = 0
+            return False
+        self._consecutive_429 += 1
+        self.stats.rate_limited += 1
+        if self._consecutive_429 > MAX_CONSECUTIVE_429:
+            raise DownloadQuotaExhausted(
+                f"HTTP 429 {self._consecutive_429} times in a row ({what})"
+            )
+        try:
+            wait = float(resp.headers.get("retry-after") or DEFAULT_RETRY_AFTER)
+        except (TypeError, ValueError, AttributeError):
+            wait = float(DEFAULT_RETRY_AFTER)
+        wait = min(max(wait, 30.0), 3600.0) + 5.0
+        dl = self.download_limiter
+        dl.min_delay = min(max(dl.min_delay * 2, 15.0), MAX_DOWNLOAD_DELAY)
+        self.log(
+            f"  HTTP 429 on {what}: waiting {wait:.0f}s (Retry-After), "
+            f"download pace now >= {dl.min_delay:.0f}s"
         )
+        self.stats.rate_limit_wait_s += wait
+        await self._sleep(wait)
+        return True
+
+    async def search(self, term: str) -> list[dict]:
+        while True:
+            await self.limiter.wait()
+            self.stats.searches += 1
+            resp = await self.client.post(
+                IRC_CERTIFICATE_SEARCH_URL,
+                data={"pdf_search": term},
+                headers={"Referer": IRC_CERTIFICATE_SEARCH_URL},
+            )
+            if not await self._honour_429(resp, f"search {term!r}"):
+                break
         resp.raise_for_status()
         return _parse_results_html(resp.text)
 
-    async def _get(self, url: str):
-        await self.limiter.wait()
-        return await self.client.get(url, headers={"Referer": IRC_CERTIFICATE_SEARCH_URL})
+    async def _get(self, url: str, what: str = "download"):
+        while True:
+            await self.download_limiter.wait()
+            resp = await self.client.get(url, headers={"Referer": IRC_CERTIFICATE_SEARCH_URL})
+            if not await self._honour_429(resp, what):
+                return resp
 
     async def download(self, info: dict) -> str | None:
-        resp = await self._get(info["url"])
+        resp = await self._get(info["url"], info["filename"])
         if resp.status_code == 403 and info.get("cert_number"):
             # Signed token expired: search the cert number for a fresh link.
             self.stats.token_refreshes += 1
@@ -187,7 +241,7 @@ class CertificateHarvester:
             except Exception:
                 fresh = []
             if fresh:
-                resp = await self._get(fresh[0]["url"])
+                resp = await self._get(fresh[0]["url"], info["filename"])
         if resp.status_code != 200 or not resp.content.startswith(b"%PDF"):
             self.stats.failed += 1
             self.log(f"  Failed: {info['filename']} (HTTP {resp.status_code})")
@@ -202,6 +256,8 @@ class CertificateHarvester:
     async def harvest_term(self, term: str) -> list[dict]:
         try:
             results = await self.search(term)
+        except DownloadQuotaExhausted:
+            raise
         except Exception as exc:
             self.stats.search_errors += 1
             self.log(f"  '{term}': search error — {exc}")
@@ -220,6 +276,8 @@ class CertificateHarvester:
             self._done.add(info["filename"])
             try:
                 await self.download(info)
+            except DownloadQuotaExhausted:
+                raise
             except Exception as exc:
                 self.stats.failed += 1
                 self.log(f"  Failed: {info['filename']} — {exc}")
@@ -330,49 +388,64 @@ async def discover_and_download(
     targeted: bool = True,
     refresh_all: bool = False,
     log: Callable[[str], None] = print,
+    harvester_factory=None,
 ) -> dict:
-    """Weekly discovery: exhaustive search + targeted cert-number search.
+    """Weekly discovery, highest-value downloads first (the site meters
+    downloads per connection, so order matters):
 
-    Downloads PDFs not on disk, plus re-downloads for current-TCC boats whose
-    stored certificate is missing, undated, expired or predates a TCC change.
+    1. targeted cert-number searches for current-TCC boats with no
+       certificate row at all;
+    2. the exhaustive two-character sweep (new PDFs not on disk, plus
+       re-downloads of current-TCC certs that are undated, expired or
+       predate a TCC change);
+    3. targeted searches for any refresh candidates the sweep never listed.
+
+    A persistent download refusal (repeated HTTP 429) ends the run early
+    with ``out["blocked"]`` set; what was downloaded is kept.
     """
     refresh: set[str] = set()
+    missing: list[str] = []
     if engine is not None:
         refresh = refresh_cert_numbers(engine)
-        log(f"Refresh candidates from TCC listing: {len(refresh)}")
-    out: dict = {"refresh_candidates": len(refresh)}
-    listed: set[str] = set()
+        missing = missing_current_cert_numbers(engine) if targeted else []
+        log(f"Refresh candidates from TCC listing: {len(refresh)}; "
+            f"current-TCC cert numbers with no certificate: {len(missing)}")
+    out: dict = {"refresh_candidates": len(refresh), "missing_current": len(missing)}
+
+    async def _targeted(cert_nos: list[str], label: str) -> dict:
+        log(f"Targeted cert-number searches ({label}): {len(cert_nos)}")
+        hits = 0
+        for i, cert_no in enumerate(cert_nos, 1):
+            results = await h.harvest_term(cert_no)
+            if any(r.get("cert_number") == cert_no for r in results):
+                hits += 1
+            if i % 100 == 0:
+                log(f"  Targeted {label}: {i}/{len(cert_nos)}, {hits} listed, "
+                    f"{h.stats.new} new, {h.stats.updated} updated")
+        return {"searched": len(cert_nos), "listed": hits}
+
     async with get_http_client() as client:
-        h = CertificateHarvester(
-            client, output_dir=output_dir, refresh=refresh, refresh_all=refresh_all, log=log
-        )
-        if exhaustive:
-            terms = exhaustive_terms()
-            for i, term in enumerate(terms, 1):
-                await h.harvest_term(term)
-                if i % 50 == 0:
-                    s = h.stats
-                    log(f"  Progress: {i}/{len(terms)} terms, {s.found} listed, {s.new} new, "
-                        f"{s.updated} updated, {s.failed} failed")
-            listed = set(h.stats.seen_cert_numbers)
-            out["exhaustive"] = h.stats.as_dict()
-        if targeted and engine is not None:
-            # Anything the exhaustive pass listed is already handled; search
-            # the remaining current-TCC cert numbers (with no cert row) and
-            # the refresh set the exhaustive pass did not cover.
-            targets = sorted(
-                (set(missing_current_cert_numbers(engine, listed)) | (refresh - listed)),
-                key=lambda c: int(c) if c.isdigit() else 0,
-            )
-            log(f"Targeted cert-number searches: {len(targets)}")
-            hits = 0
-            for i, cert_no in enumerate(targets, 1):
-                results = await h.harvest_term(cert_no)
-                if any(r.get("cert_number") == cert_no for r in results):
-                    hits += 1
-                if i % 100 == 0:
-                    log(f"  Targeted: {i}/{len(targets)}, {hits} listed")
-            out["targeted"] = {"searched": len(targets), "listed": hits}
+        factory = harvester_factory or CertificateHarvester
+        h = factory(client, output_dir=output_dir, refresh=refresh, refresh_all=refresh_all, log=log)
+        try:
+            if missing:
+                out["targeted_missing"] = await _targeted(missing, "missing")
+            if exhaustive:
+                terms = exhaustive_terms()
+                for i, term in enumerate(terms, 1):
+                    await h.harvest_term(term)
+                    if i % 50 == 0:
+                        s = h.stats
+                        log(f"  Progress: {i}/{len(terms)} terms, {s.found} listed, {s.new} new, "
+                            f"{s.updated} updated, {s.failed} failed, {s.rate_limited} rate-limited")
+            if targeted and refresh:
+                leftover = sorted(refresh - h.stats.seen_cert_numbers,
+                                  key=lambda c: int(c) if c.isdigit() else 0)
+                if leftover:
+                    out["targeted_refresh"] = await _targeted(leftover, "refresh")
+        except DownloadQuotaExhausted as exc:
+            out["blocked"] = str(exc)
+            log(f"[stopped] ircrating.org download quota: {exc}")
     out["stats"] = h.stats.as_dict()
     return out
 

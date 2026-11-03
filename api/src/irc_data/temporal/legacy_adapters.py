@@ -637,8 +637,12 @@ def _run_cert_discovery(record: Mapping[str, Any]) -> Mapping[str, Any]:
         "records_written": int(stats.get("new", 0)) + int(stats.get("updated", 0)),
         "records_found": int(stats.get("found", 0)),
         "failed": int(stats.get("failed", 0)),
+        "rate_limited": int(stats.get("rate_limited", 0)),
         "refresh_candidates": out.get("refresh_candidates"),
-        "targeted": out.get("targeted"),
+        "missing_current": out.get("missing_current"),
+        "targeted_missing": out.get("targeted_missing"),
+        "targeted_refresh": out.get("targeted_refresh"),
+        "blocked": out.get("blocked"),
     }
 
 

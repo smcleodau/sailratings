@@ -301,3 +301,89 @@ def test_refresh_plan_targets_missing_expired_and_tcc_changed(pg_engine):
     assert cb.refresh_cert_numbers(pg_engine) == {"200", "300", "400"}
     assert cb.missing_current_cert_numbers(pg_engine) == ["300"]
     assert cb.missing_current_cert_numbers(pg_engine, listed={"300"}) == []
+
+
+# ---------------------------------------------------------------------------
+# Download quota (HTTP 429 "Too many downloads from your connection")
+# ---------------------------------------------------------------------------
+
+
+class _Resp429(_Resp):
+    def __init__(self, retry_after="600"):
+        super().__init__(status=429, text="Too many downloads from your connection.")
+        self.headers = {"retry-after": retry_after}
+
+
+class _QuotaClient(_FakeClient):
+    def __init__(self, listing, refuse_first_n):
+        super().__init__(listing)
+        self.refuse = refuse_first_n
+
+    async def get(self, url, headers=None):
+        if self.refuse > 0:
+            self.refuse -= 1
+            self.calls.append(("GET429", url))
+            return _Resp429()
+        self.calls.append(("GET", url))
+        return _Resp(content=b"%PDF-" + url.encode())
+
+
+class _Limiter:
+    def __init__(self):
+        self.min_delay = 2.0
+
+    async def wait(self):
+        return None
+
+
+def test_harvester_honours_retry_after_and_slows_downloads(tmp_path):
+    slept = []
+
+    async def _sleep(s):
+        slept.append(s)
+
+    client = _QuotaClient(["14163_KOA_AUS52152.pdf"], refuse_first_n=1)
+    dl = _Limiter()
+    h = cb.CertificateHarvester(client, output_dir=tmp_path, limiter=_NoWait(), download_limiter=dl,
+                                log=lambda *_: None, sleep=_sleep)
+    asyncio.run(h.harvest_term("KOA"))
+    assert (tmp_path / "14163_KOA_AUS52152.pdf").exists()
+    assert slept and slept[0] >= 600
+    assert dl.min_delay >= 15
+    assert h.stats.rate_limited == 1 and h.stats.failed == 0
+
+
+def test_harvester_stops_run_when_quota_never_recovers(tmp_path):
+    async def _sleep(s):
+        return None
+
+    client = _QuotaClient(["14163_KOA_AUS52152.pdf"], refuse_first_n=99)
+    h = cb.CertificateHarvester(client, output_dir=tmp_path, limiter=_NoWait(), download_limiter=_Limiter(),
+                                log=lambda *_: None, sleep=_sleep)
+    with pytest.raises(cb.DownloadQuotaExhausted):
+        asyncio.run(h.harvest_term("KOA"))
+    assert h.stats.rate_limited == cb.MAX_CONSECUTIVE_429 + 1
+
+
+def test_discover_and_download_reports_block_instead_of_crashing(tmp_path, monkeypatch):
+    async def _sleep(s):
+        return None
+
+    client = _QuotaClient(["14163_KOA_AUS52152.pdf"], refuse_first_n=99)
+
+    class _Ctx:
+        async def __aenter__(self):
+            return client
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(cb, "get_http_client", lambda: _Ctx())
+    monkeypatch.setattr(cb, "exhaustive_terms", lambda: ["KO"])
+
+    def _factory(c, **kw):
+        return cb.CertificateHarvester(c, limiter=_NoWait(), download_limiter=_Limiter(), sleep=_sleep, **kw)
+
+    out = asyncio.run(cb.discover_and_download(None, output_dir=tmp_path, log=lambda *_: None,
+                                               harvester_factory=_factory))
+    assert "blocked" in out and out["stats"]["rate_limited"] > 0
