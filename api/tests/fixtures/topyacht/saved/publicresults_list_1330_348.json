@@ -1,0 +1,28 @@
+{
+ "success": true,
+ "message": "Series list for Publish Results retrieved successfully!",
+ "data": [
+  {
+   "seriesId": 1205,
+   "label": "Summer Passage 2026/27",
+   "link": "/publicresults/SeriesIndex?seriesId=1205",
+   "clubName": "Southport Yacht Club",
+   "eventId": 348,
+   "clubId": 1330,
+   "status": 1,
+   "banner": "OffshoreDivision202627-348_20260428034924.png",
+   "logos": null
+  },
+  {
+   "seriesId": 1082,
+   "label": "IRC SUPER SERIES 2026/27",
+   "link": "/publicresults/SeriesIndex?seriesId=1082",
+   "clubName": "Southport Yacht Club",
+   "eventId": 348,
+   "clubId": 1330,
+   "status": 1,
+   "banner": "OffshoreDivision202627-348_20260428034924.png",
+   "logos": null
+  }
+ ]
+}

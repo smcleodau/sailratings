@@ -1,0 +1,58 @@
+{
+ "success": true,
+ "message": "Series for Publish Results retrieved successfully!",
+ "data": {
+  "distinctFleets": [
+   {
+    "seriesFleetClassId": 3006,
+    "label": "D1",
+    "fleet": "D1",
+    "clubName": "Southport Yacht Club",
+    "seriesId": 1205,
+    "seriesName": "Summer Passage 2026/27",
+    "banner": "SummerPassage202627-1205.png",
+    "logos": null,
+    "eventBanner": "OffshoreDivision202627-348_20260428034924.png",
+    "eventLogos": null,
+    "eventId": 348,
+    "clubId": 1330
+   },
+   {
+    "seriesFleetClassId": 3007,
+    "label": "D2",
+    "fleet": "D2",
+    "clubName": "Southport Yacht Club",
+    "seriesId": 1205,
+    "seriesName": "Summer Passage 2026/27",
+    "banner": "SummerPassage202627-1205.png",
+    "logos": null,
+    "eventBanner": "OffshoreDivision202627-348_20260428034924.png",
+    "eventLogos": null,
+    "eventId": 348,
+    "clubId": 1330
+   }
+  ],
+  "raceSessions": [
+   {
+    "sessionId": 2073,
+    "label": "R1",
+    "note": "",
+    "startTime": null,
+    "seriesFleetClassId": 3006,
+    "columnOrder": null,
+    "hiddenColumns": null,
+    "publishedResultColumns": null
+   },
+   {
+    "sessionId": 2073,
+    "label": "R1",
+    "note": "",
+    "startTime": null,
+    "seriesFleetClassId": 3007,
+    "columnOrder": null,
+    "hiddenColumns": null,
+    "publishedResultColumns": null
+   }
+  ]
+ }
+}

@@ -24,7 +24,7 @@ import re
 from datetime import date, datetime
 from email.utils import parsedate_to_datetime
 from decimal import Decimal, InvalidOperation
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -113,6 +113,14 @@ TOPYACHT_CLUBS: dict[str, dict] = {
         # The series.htm pages have an IRC column that the scraper picks up.
         # 2020/2021 may have been cancelled (COVID) — scraper handles 404s.
         "years": list(range(2017, _LATEST_SEASON + 1)),
+    },
+    "MIRW": {
+        "club_name": "Magnetic Island Race Week",
+        "base_url": "https://topyacht.net.au/results",
+        "divisions": ["mirw"],
+        # Townsville YC, late Aug/early Sep. IRC division confirmed 2026
+        # (not listed in TopYacht's events directory, so only reachable here).
+        "years": list(range(2024, _LATEST_SEASON + 1)),
     },
     "FOS": {
         "club_name": "Festival of Sails",
@@ -579,6 +587,29 @@ async def discover_series_from_index(
     return series_list
 
 
+_IRC_HEADER_RE = re.compile(r"\bIRC\b", re.I)
+
+
+def irc_column_indexes(headers: list[str]) -> list[int]:
+    """Indexes of IRC-scored columns in a series.htm header row.
+
+    Clubs label them "IRC", "IRC  Div1", "IRC TCC", "IRC Overall", "IRC 1"…
+    — an exact "IRC" match silently dropped Festival of Sails and similar
+    multi-division regattas.
+    """
+    return [i for i, h in enumerate(headers) if _IRC_HEADER_RE.search(h or "")]
+
+
+def _label_date(label: str) -> date | None:
+    m = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", label or "")
+    if not m:
+        return None
+    try:
+        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return None
+
+
 async def discover_races_from_series(
     client,
     series_url: str,
@@ -587,7 +618,7 @@ async def discover_races_from_series(
     """Parse a series.htm page and return IRC race result page URLs.
 
     The series page contains a table with columns like PHS, IRC, ORC, Entrants.
-    We look for links in the IRC column (identified by the column header).
+    We look for links in every IRC column (see ``irc_column_indexes``).
     Race rows contain links like "01RGrp11.htm".
     """
     html = await _fetch_html(client, series_url)
@@ -616,54 +647,41 @@ async def discover_races_from_series(
     if not header_row:
         return []
 
-    headers = [td.get_text(strip=True).upper() for td in header_row.find_all(["td", "th"])]
-    irc_col_idx = None
-    for i, h in enumerate(headers):
-        if h == "IRC":
-            irc_col_idx = i
-            break
-
-    if irc_col_idx is None:
+    headers = [td.get_text(" ", strip=True) for td in header_row.find_all(["td", "th"])]
+    irc_cols = irc_column_indexes(headers)
+    if not irc_cols:
         return []
 
-    # Parse each race row and extract the IRC result link
+    seen_urls: set[str] = set()
     for row in table.find_all("tr")[1:]:  # skip header
         cells = row.find_all(["td", "th"])
-        if len(cells) <= irc_col_idx:
-            continue
+        race_label = cells[0].get_text(" ", strip=True) if cells else ""
 
-        # Get race name from first column
-        race_label = cells[0].get_text(strip=True)
-        if not race_label or race_label.lower() == "series scores":
-            # Series scores are cumulative, not individual race results — still useful
-            pass
-
-        # Check the IRC column cell for a link
-        irc_cell = cells[irc_col_idx]
-        link = irc_cell.find("a", href=True)
-        if not link:
-            continue
-
-        href = link["href"]
-        full_url = urljoin(series_url, href.replace("\\", "/"))
-
-        # Rows are labelled "dd/mm/yyyy ..." — skip races before the cutoff
-        # without fetching them (the daily crawl would otherwise reopen every
-        # race of every season).
-        m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})", race_label or "")
-        try:
-            label_date = date(int(m.group(3)), int(m.group(2)), int(m.group(1))) if m else None
-        except ValueError:
-            label_date = None
+        # Rows are labelled "dd/mm/yyyy ..." or "Race 4 - 26/01/2026" — skip
+        # races before the cutoff without fetching them (the daily crawl
+        # would otherwise reopen every race of every season).
+        label_date = _label_date(race_label)
         if since and label_date and label_date < since:
             continue
 
-        races.append({
-            "race_label": race_label,
-            "url": full_url,
-            "series_name": series_name,
-            "is_series_scores": "series scores" in race_label.lower() or href.startswith("S"),
-        })
+        for col in irc_cols:
+            if len(cells) <= col:
+                continue
+            link = cells[col].find("a", href=True)
+            if not link:
+                continue
+            href = link["href"]
+            full_url = urljoin(series_url, href.replace("\\", "/"))
+            if full_url in seen_urls:
+                continue
+            seen_urls.add(full_url)
+            races.append({
+                "race_label": race_label,
+                "url": full_url,
+                "series_name": series_name,
+                "irc_column": headers[col],
+                "is_series_scores": "series scores" in race_label.lower() or href.startswith("S"),
+            })
 
     return races
 
@@ -680,7 +698,23 @@ async def discover_races_from_series(
 # starting point.
 
 EVENTS_DIRECTORY_URL = "https://topyacht.com.au/web/events/"
-_TOPYACHT_PAGE_RE = re.compile(r"(?:/index\.htm|/series\.htm)(?:[?#].*)?$|topyacht\.net\.au/results/", re.I)
+# Classic TopYacht pages: index/series pages, the topyacht.net.au results tree
+# (now served from tes.topyacht.net.au), and club-hosted TopYacht trees like
+# orcv.org.au/results/2025-26/, files.southportyachtclub.com.au/results/2025/
+# or dssinc-results.org/results/2026/.
+_TOPYACHT_PAGE_RE = re.compile(
+    r"(?:/index\.htm|/series\.htm)(?:[?#].*)?$|topyacht\.net\.au/results/|/results/20\d\d(?:-\d\d)?/",
+    re.I,
+)
+# TopYacht's newer cloud platform: a JavaScript app at topyacht.net whose
+# public results pages read unauthenticated JSON from app.topyacht.net.
+# Southport YC moved its offshore (IRC) racing here for 2026/27.
+_PUBLICRESULTS_RE = re.compile(r"topyacht\.net/publicresults/(?:IndexResults|SeriesIndex)\?", re.I)
+PUBLICRESULTS_API = "https://app.topyacht.net/api/PublishResults/clubs/"
+PUBLICRESULTS_PAGE = "https://topyacht.net/publicresults/SeriesIndex"
+_SKIP_EXT_RE = re.compile(r"\.(?:pdf|jpe?g|png|gif|svg|docx?|xlsx?|csv|zip|mp4)$", re.I)
+_SKIP_PATH_RE = re.compile(r"/(?:news|tag|category|author|feed|wp-content|wp-json|wp-admin)/", re.I)
+_YEAR_RE = re.compile(r"(?<!\d)(20\d\d)(?!\d)")
 
 
 def parse_events_directory(html: str, years: set[int]) -> list[dict]:
@@ -696,12 +730,46 @@ def parse_events_directory(html: str, years: set[int]) -> list[dict]:
         if not year_re.search(name):
             continue
         link = next((a for a in row.find_all("a", href=True)
-                     if "result" in a.get_text(strip=True).lower()), None)
+                     if "result" in a.get_text(strip=True).lower() and a["href"].strip()), None)
         if not link:
             continue
         club = cells[2].get_text(" ", strip=True) if len(cells) > 2 else ""
         events.append({"name": name, "club": club, "results_url": link["href"].strip()})
     return events
+
+
+def season_url_variants(url: str, event_name: str) -> list[str]:
+    """Newer-season guesses for a stale directory Results link.
+
+    Clubs clone last season's event in TopYacht's directory without updating
+    the Results link, so "ORCV Season 2026 - 2027" still points at
+    orcv.org.au/results/2024-25/ and "ORWA Season 2025-26" at orwa/2024/.
+    Rewrites the URL's season token ("2024-25", "2024-2025" or a "/2024/"
+    path segment) to each season the event name mentions (and the season
+    starting the year before, for single-year names like "FOS 2027").
+    """
+    years = sorted({int(y) for y in _YEAR_RE.findall(event_name or "")})
+    if not years:
+        return []
+    candidates = sorted({years[0] - 1, *years})
+    patterns = [
+        (re.compile(r"(?<!\d)(20\d\d)-(20\d\d)(?!\d)"), lambda y: f"{y}-{y + 1}"),
+        (re.compile(r"(?<!\d)(20\d\d)-(\d\d)(?!\d)"), lambda y: f"{y}-{(y + 1) % 100:02d}"),
+        (re.compile(r"/(20\d\d)/"), lambda y: f"/{y}/"),
+    ]
+    for pat, fmt in patterns:
+        m = pat.search(url)
+        if not m:
+            continue
+        current = int(m.group(1))
+        out = []
+        for y in candidates:
+            if y > current:
+                v = url[:m.start()] + fmt(y) + url[m.end():]
+                if v not in out:
+                    out.append(v)
+        return out
+    return []
 
 
 async def _fetch(client, url: str):
@@ -721,38 +789,69 @@ def _modified_before(resp, since: date | None) -> bool:
         return False
 
 
-async def resolve_series_urls(client, url: str, since: date | None = None, _hop: int = 0) -> list[str]:
+def _stale_url(url: str, since: date | None) -> bool:
+    """URL names only seasons that ended before ``since`` (e.g. .../2019/...)."""
+    if not since:
+        return False
+    years = [int(y) for y in _YEAR_RE.findall(url)]
+    return bool(years) and max(years) < since.year - 1
+
+
+async def resolve_series_urls(client, url: str, since: date | None = None,
+                              max_hops: int = 2, max_pages: int = 15) -> list[str]:
     """Series pages reachable from an event's Results link.
 
-    Handles a TopYacht index (lists series), a series page itself, or a club
-    web page that links to TopYacht pages (followed one hop). An index whose
-    Last-Modified predates ``since`` is skipped: nothing in it can be new.
+    Returns classic ``series.htm`` URLs plus any topyacht.net
+    ``/publicresults/`` links (scraped through its JSON API). Handles a
+    TopYacht index, a series page itself, or a club web page that links to
+    TopYacht pages, following up to ``max_hops`` links: from the start page,
+    TopYacht-looking links and same-site "results" links; beyond that, only
+    TopYacht-looking links. Pages whose Last-Modified predates ``since`` are
+    skipped: nothing in them can be new.
     """
-    resp = await _fetch(client, url)
-    if resp is None:
-        return []
-    final = str(resp.url)
-    if _modified_before(resp, since):
-        return []
-    soup = BeautifulSoup(resp.text, "html.parser")
-    if final.lower().split("?")[0].endswith("series.htm") or soup.find("table", class_="centre_index_table"):
-        return [final]
-
     out: list[str] = []
-    hops: list[str] = []
-    for a in soup.find_all("a", href=True):
-        href = urljoin(final, a["href"].replace("\\", "/"))
-        if href.lower().split("?")[0].endswith("/series.htm"):
-            if href not in out:
-                out.append(href)
-        elif _hop == 0 and _TOPYACHT_PAGE_RE.search(href) and href not in hops:
-            hops.append(href)
-    if out:
-        return out
-    for h in hops:
-        for s_url in await resolve_series_urls(client, h, since, _hop=1):
-            if s_url not in out:
-                out.append(s_url)
+    seen: set[str] = set()
+    queue: list[tuple[str, int]] = [(url, 0)]
+    fetched = 0
+    while queue and fetched < max_pages:
+        page_url, hop = queue.pop(0)
+        if page_url in seen:
+            continue
+        seen.add(page_url)
+        if _PUBLICRESULTS_RE.search(page_url):
+            if page_url not in out:
+                out.append(page_url)
+            continue
+        resp = await _fetch(client, page_url)
+        fetched += 1
+        if resp is None:
+            continue
+        final = str(resp.url)
+        if _modified_before(resp, since):
+            continue
+        soup = BeautifulSoup(resp.text, "html.parser")
+        if final.lower().split("?")[0].endswith("series.htm") or soup.find("table", class_="centre_index_table"):
+            if final not in out:
+                out.append(final)
+            continue
+        host = urlparse(final).netloc.lower()
+        for a in soup.find_all("a", href=True):
+            raw = a["href"].strip().replace("\\", "/")
+            if not raw or raw.startswith(("mailto:", "javascript:", "tel:", "#")):
+                continue
+            href = urljoin(final, raw).split("#")[0]
+            path = href.lower().split("?")[0]
+            if path.endswith("/series.htm") or _PUBLICRESULTS_RE.search(href):
+                if href not in out:
+                    out.append(href)
+                continue
+            if hop >= max_hops or href in seen or _SKIP_EXT_RE.search(path) or _stale_url(href, since):
+                continue
+            if _TOPYACHT_PAGE_RE.search(href):
+                queue.append((href, hop + 1))
+            elif (hop == 0 and urlparse(href).netloc.lower() == host and not _SKIP_PATH_RE.search(path)
+                  and ("result" in path or "result" in a.get_text(" ", strip=True).lower())):
+                queue.append((href, hop + 1))
     return out
 
 
@@ -775,12 +874,188 @@ async def scrape_series(client, series_url: str, since: date | None = None,
     return results
 
 
+# ---------------------------------------------------------------------------
+# topyacht.net public results (JSON behind the JavaScript results app)
+# ---------------------------------------------------------------------------
+
+def _blank_time(val) -> str | None:
+    val = (val or "").strip()
+    return None if val in ("", "00:00:00", "0:00:00") else val
+
+
+def _race_label(label: str | None) -> str | None:
+    label = (label or "").strip()
+    m = re.fullmatch(r"R(?:ace)?\s*(\d+)", label, re.I)
+    return f"Race {int(m.group(1))}" if m else (label or None)
+
+
+def parse_publicresults_race(
+    data: dict,
+    *,
+    series_name: str,
+    fleet_label: str | None,
+    race_label: str | None,
+    source_url: str,
+    organizing_club: str | None = None,
+) -> list[RaceResult]:
+    """IRC rows from an app.topyacht.net ``raceResults`` payload (``data``)."""
+    results: list[RaceResult] = []
+    race_name = _race_label(race_label)
+    event_name = f"{series_name} - {race_name}" if race_name and race_name not in series_name else series_name
+    for group in data.get("resultGroupeds") or []:
+        option = (group.get("resultOption") or "").strip()
+        if not _IRC_HEADER_RE.search(option):
+            continue
+        rows = [r for r in group.get("results") or [] if (r.get("boatName") or "").strip()]
+        for r in rows:
+            place, status = _detect_status(str(r.get("showPlace") or ""))
+            race_date = None
+            try:
+                race_date = date.fromisoformat(str(r.get("raceDate") or "")[:10])
+            except ValueError:
+                pass
+            results.append(RaceResult(
+                event_name=event_name,
+                event_date=race_date,
+                source_url=source_url,
+                tcc_at_race=_safe_decimal(str(r.get("ahc") or "")),
+                place=place,
+                division=fleet_label or None,
+                elapsed_time=_blank_time(r.get("elapsedTime")),
+                corrected_time=_blank_time(r.get("correctedTime")),
+                raw_data={
+                    "boat_name": r["boatName"].strip(),
+                    "sail_number": (r.get("sailnum") or "").strip() or None,
+                    "skipper": (r.get("skipper") or "").strip() or None,
+                    "club": organizing_club,
+                    "club_name": organizing_club,
+                    "finish_time": _blank_time(r.get("finishTime")),
+                    "division": fleet_label,
+                    "fleet_size": len(rows),
+                    "race_name": race_name,
+                    "race_date": str(race_date) if race_date else None,
+                    "status": status,
+                    "bch": r.get("bch"),
+                    "result_option": option,
+                },
+            ))
+    return results
+
+
+async def _fetch_json_data(client, url: str):
+    resp = await _fetch(client, url)
+    if resp is None:
+        return None
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+    if not isinstance(body, dict) or not body.get("success"):
+        return None
+    return body.get("data")
+
+
+async def publicresults_series(client, url: str) -> list[dict]:
+    """Series referenced by a topyacht.net /publicresults/ link."""
+    q = parse_qs(urlparse(url).query)
+    if q.get("seriesId"):
+        return [{"series_id": q["seriesId"][0], "label": None, "club": None}]
+    if q.get("clubId") and q.get("eventId"):
+        data = await _fetch_json_data(
+            client, f"{PUBLICRESULTS_API}list?clubId={q['clubId'][0]}&eventId={q['eventId'][0]}")
+        return [{"series_id": str(d["seriesId"]), "label": d.get("label"), "club": d.get("clubName")}
+                for d in data or [] if d.get("seriesId") is not None]
+    return []
+
+
+async def scrape_publicresults_series(client, series_id: str, since: date | None = None,
+                                      organizing_club: str | None = None,
+                                      label: str | None = None) -> list[RaceResult]:
+    """IRC results for one topyacht.net series, newest race first.
+
+    Each raceResults call returns every scoring option for a fleet's race, so
+    a fleet whose first published race has no IRC group is skipped; within a
+    fleet, two consecutive races entirely before ``since`` end the walk.
+    """
+    data = await _fetch_json_data(
+        client, f"{PUBLICRESULTS_API}raceSessionsAndFleetsBySeriesId?seriesId={series_id}")
+    if not data:
+        return []
+    sessions = data.get("raceSessions") or []
+    results: list[RaceResult] = []
+    for fleet in data.get("distinctFleets") or []:
+        fid = fleet.get("seriesFleetClassId")
+        series_name = fleet.get("seriesName") or label or f"TopYacht series {series_id}"
+        club = fleet.get("clubName") or organizing_club
+        fleet_sessions = sorted((s for s in sessions if s.get("seriesFleetClassId") == fid),
+                                key=lambda s: s.get("sessionId") or 0, reverse=True)
+        old_streak = 0
+        for s in fleet_sessions:
+            sid = s.get("sessionId")
+            race = await _fetch_json_data(
+                client, f"{PUBLICRESULTS_API}raceResults?seriesId={series_id}&fleetId={fid}&raceSessionId={sid}")
+            groups = (race or {}).get("resultGroupeds") or []
+            if not groups:
+                continue
+            if not any(_IRC_HEADER_RE.search(g.get("resultOption") or "") for g in groups):
+                break  # fleet not IRC-scored
+            parsed = parse_publicresults_race(
+                race, series_name=series_name, fleet_label=fleet.get("label"), race_label=s.get("label"),
+                source_url=f"{PUBLICRESULTS_PAGE}?seriesId={series_id}&fleetId={fid}&raceSessionId={sid}",
+                organizing_club=club,
+            )
+            if since:
+                dated = [r for r in parsed if r.event_date]
+                if dated and all(r.event_date < since for r in dated):
+                    old_streak += 1
+                    if old_streak >= 2:
+                        break
+                    continue
+                old_streak = 0
+                parsed = [r for r in parsed if r.event_date is None or r.event_date >= since]
+            results.extend(parsed)
+    return results
+
+
+async def scrape_results_url(client, url: str, since: date | None = None,
+                             organizing_club: str | None = None,
+                             seen: set[str] | None = None) -> list[RaceResult]:
+    """IRC results behind one Results link (classic pages and topyacht.net)."""
+    seen = seen if seen is not None else set()
+    results: list[RaceResult] = []
+    for s_url in await resolve_series_urls(client, url, since=since):
+        if s_url in seen:
+            continue
+        seen.add(s_url)
+        if _PUBLICRESULTS_RE.search(s_url):
+            for ser in await publicresults_series(client, s_url):
+                key = f"topyacht.net-series:{ser['series_id']}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                found = await scrape_publicresults_series(
+                    client, ser["series_id"], since=since,
+                    organizing_club=ser["club"] or organizing_club, label=ser["label"])
+                if found:
+                    print(f"    {ser['label'] or ser['series_id']}: {len(found)} results (topyacht.net)")
+                results.extend(found)
+        else:
+            found = await scrape_series(client, s_url, since=since, organizing_club=organizing_club)
+            if found:
+                print(f"    {len(found)} results ({s_url})")
+            results.extend(found)
+    return results
+
+
 async def scrape_events_directory(since: date | None = None, years: set[int] | None = None,
                                   skip_series: set[str] | None = None) -> list[RaceResult]:
     """Scrape IRC results for every recent event in TopYacht's events directory."""
     today = date.today()
-    years = years or {today.year - 1, today.year, today.year + 1}
+    if not years:
+        first = min(since.year, today.year - 1) if since else today.year - 1
+        years = set(range(first, today.year + 2))
     seen = set(skip_series or ())
+    roots_done: set[str] = set()
     all_results: list[RaceResult] = []
     async with get_http_client() as client:
         resp = await _fetch(client, EVENTS_DIRECTORY_URL)
@@ -789,13 +1064,14 @@ async def scrape_events_directory(since: date | None = None, years: set[int] | N
         events = parse_events_directory(resp.text, years)
         print(f"TopYacht directory: {len(events)} recent events with results links")
         for ev in events:
-            for s_url in await resolve_series_urls(client, ev["results_url"], since=since):
-                if s_url in seen:
+            for root in [ev["results_url"], *season_url_variants(ev["results_url"], ev["name"])]:
+                if root in roots_done:
                     continue
-                seen.add(s_url)
-                found = await scrape_series(client, s_url, since=since, organizing_club=ev["club"] or None)
+                roots_done.add(root)
+                found = await scrape_results_url(client, root, since=since,
+                                                 organizing_club=ev["club"] or None, seen=seen)
                 if found:
-                    print(f"  {ev['name'][:50]}: {len(found)} results ({s_url})")
+                    print(f"  {ev['name'][:60]}: {len(found)} results ({root})")
                 all_results.extend(found)
     print(f"TopYacht directory total: {len(all_results)} results")
     return all_results
@@ -899,7 +1175,7 @@ async def scrape_club(
                     series_url = series["url"]
                     print(f"\n    Series: {series_name}")
 
-                    races = await discover_races_from_series(client, series_url)
+                    races = await discover_races_from_series(client, series_url, since=since)
                     # Filter out series scores — we want individual race results
                     race_pages = [r for r in races if not r["is_series_scores"]]
                     print(f"      {len(race_pages)} IRC race result pages")
