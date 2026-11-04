@@ -7,7 +7,8 @@ Prints one JSON line per seed.
 
     PYTHONPATH=src python scripts/backfill_uk_irc.py [warsash hamble halsail sailwave] [--from SUBSTR]
 
-``--from`` resumes at the first seed whose URL contains SUBSTR.
+``--from`` resumes at the first seed whose URL contains SUBSTR; ``--only A,B``
+runs just the seeds whose URL contains one of the comma-separated strings.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ def _emit(**kw) -> None:
     print(json.dumps(kw, default=str), flush=True)
 
 
-def main(groups: list[str], start_at: str | None = None) -> None:
+def main(groups: list[str], start_at: str | None = None, only: list[str] | None = None) -> None:
     from irc_data.scrapers import halsail, sailwave
     from irc_data.scrapers.halsail_seeds import seeds_for as hal_seeds
     from irc_data.scrapers.sailwave_seeds import seeds_for as sw_seeds
@@ -40,6 +41,8 @@ def main(groups: list[str], start_at: str | None = None) -> None:
     for group in groups:
         for kind, source, seed in plan[group]:
             if skipping and start_at not in seed.url:
+                continue
+            if only and not any(o in seed.url for o in only):
                 continue
             skipping = False
             started = time.monotonic()
@@ -63,4 +66,9 @@ if __name__ == "__main__":
         i = args.index("--from")
         start = args[i + 1]
         args = args[:i] + args[i + 2:]
-    main(args or ["warsash", "hamble", "halsail", "sailwave"], start)
+    only = None
+    if "--only" in args:
+        i = args.index("--only")
+        only = args[i + 1].split(",")
+        args = args[:i] + args[i + 2:]
+    main(args or ["warsash", "hamble", "halsail", "sailwave"], start, only)

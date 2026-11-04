@@ -463,3 +463,24 @@ def test_dedupe_same_result_in_overall_and_mini_series_files():
             row("mini1", "Winter 2019 1st Mini Series IRC")]
     kept, dropped = sw.dedupe_rows(rows)
     assert dropped == 1 and {r.source_url for r in kept} == {"overall"}
+
+
+@pytest.mark.parametrize("event,venue,expected", [
+    ("IRC Welsh National Championship 2026 4th to 6th September 2026 CHPSC & RDYC", "", date(2026, 9, 4)),
+    ("Baltimore Regatta 2026 IRC", "Bushes Bar August 3rd 2026", date(2026, 8, 3)),
+    ("IRC1 AKW 2026", "SCYC", None),
+])
+def test_event_title_date(event, venue, expected):
+    page = sw.SailwavePage(title="", event=event, venue=venue, as_of=None, version=None, tables=[])
+    assert page.event_title_date() == expected
+
+
+def test_undated_regatta_uses_event_title_day_without_race_day():
+    html = _html("WSC_Champs_26_BG_D1_R1.htm").replace("&nbsp;-&nbsp;April 18", "")
+    html = html.replace("<h2>Warsash Sailing Club</h2>", "<h2>Warsash 18th to 19th April 2026</h2>")
+    # (a single-race file with an "as of" stamp would be dated by the stamp)
+    html = html.replace("Results are provisional as of 20:43 on April 21, 2026", "Results are provisional")
+    rows = sw.parse_sailwave_html(html)
+    assert rows and {r.event_date for r in rows} == {date(2026, 4, 18)}
+    assert all("race_date" not in r.raw_data for r in rows)
+    assert {r.raw_data["date_source"] for r in rows} == {"event_title"}

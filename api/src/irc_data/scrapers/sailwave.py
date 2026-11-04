@@ -303,6 +303,27 @@ class SailwavePage:
         years = set(re.findall(r"(?<!\d)(20\d\d)(?!\d)", f"{self.event} {self.title}"))
         return not (self.as_of and years == {str(self.as_of.year)})
 
+    def event_title_date(self) -> date | None:
+        """First day of the event when its titles state a full date
+        ("4th to 6th September 2026", "Bushes Bar August 3rd 2026")."""
+        for text in (self.event, self.venue, self.title):
+            t = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", _clean(text), flags=re.I)
+            m = re.search(r"\b(\d{1,2})\s*(?:-|to|&|and|\u2013)\s*\d{1,2}\s+([A-Za-z]{3,})\s+(20\d\d)\b", t)
+            if m and _month(m.group(2)):
+                d = _mk(int(m.group(3)), _month(m.group(2)), int(m.group(1)))
+                if d:
+                    return d
+            for m in re.finditer(r"\b(\d{1,2})\s+([A-Za-z]{3,})\s+(20\d\d)\b|\b([A-Za-z]{3,})\s+(\d{1,2}),?\s+(20\d\d)\b", t):
+                if m.group(1):
+                    mon, day, year = _month(m.group(2)), int(m.group(1)), int(m.group(3))
+                else:
+                    mon, day, year = _month(m.group(4)), int(m.group(5)), int(m.group(6))
+                if mon:
+                    d = _mk(year, mon, day)
+                    if d:
+                        return d
+        return None
+
     def date_for(self, text: str | None, url: str = "") -> date | None:
         d = parse_race_date(text, self.reference_date(url), roll_back=self.roll_back)
         years = {int(y) for y in re.findall(r"(?<!\d)(20\d\d)(?!\d)", self.event)}
@@ -703,6 +724,11 @@ def _race_rows(tab, page, ref, systems, url, name, club, event_type, series, ass
         if len(numbers) == 1 and not any(t.kind == "summary" for t in page.tables):
             date_source = "results_as_of"
             race_date = page.as_of
+    if race_date is None:
+        # One-off regattas whose races are undated but whose title states
+        # the date: rows carry the event's (first) day, no race day.
+        race_date = page.event_title_date()
+        date_source = "event_title"
     if race_date is None or rating_idx is None:
         return []
     f = tab.fields
@@ -740,7 +766,7 @@ def _race_rows(tab, page, ref, systems, url, name, club, event_type, series, ass
             "helm": _get(cells, f.get("helm")) or None,
             "club": _get(cells, f.get("club")) or None,
             "points": _get(cells, f.get("points")) or None,
-            "race_date": race_date.isoformat(),
+            "race_date": race_date.isoformat() if date_source != "event_title" else None,
             "race_title": tab.title,
             "date_source": date_source,
             "results_as_of": page.as_of.isoformat() if page.as_of else None,
@@ -803,6 +829,10 @@ def _summary_rows(tab, page, ref, systems, url, name, club, event_type, series, 
     page, dates = ref
     for rc in tab.race_columns:
         race_date = page.date_for(rc.date_text, url) or _date_lookup(dates, tab.fleet, rc.number)
+        date_source = "summary_header" if race_date else None
+        if race_date is None:
+            race_date = page.event_title_date()
+            date_source = "event_title"
         if race_date is None:
             continue
         staged = []
@@ -840,7 +870,8 @@ def _summary_rows(tab, page, ref, systems, url, name, club, event_type, series, 
                 "club": _get(cells, f.get("club")) or None,
                 "points": v,
                 "discarded": v.startswith("(") or None,
-                "race_date": race_date.isoformat(),
+                "race_date": race_date.isoformat() if date_source != "event_title" else None,
+                "date_source": date_source,
                 "race_title": f"{rc.label} - {fleet} - {rc.date_text}",
                 "row_origin": "summary",
                 "rating_system": "IRC",
