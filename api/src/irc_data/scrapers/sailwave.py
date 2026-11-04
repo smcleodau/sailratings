@@ -381,6 +381,29 @@ _LABEL_RE = re.compile(r"\b(R|Race)\s*(\d+)\b", re.IGNORECASE)
 _START_AT_RE = re.compile(r"\s+at\s+\d{1,2}[:.]\d{2}(?::\d{2})?\s*$", re.IGNORECASE)
 
 
+def _race_names_as_fleets(tables: list) -> None:
+    """'6 Range - 07/07/2019' (race 6, course 'Range') parsed as fleet '6 Range'.
+
+    When a race table's "fleet" is one of the summary's race column labels,
+    or a numbered course name while the page has a single summary fleet, it
+    is the race label and the race belongs to that summary fleet.
+    """
+    summaries = [t for t in tables if t.kind == "summary"]
+    labels = {_fleet_key(c.label): c for t in summaries for c in t.race_columns}
+    fleets = {_fleet_key(t.fleet) for t in summaries}
+    for t in tables:
+        if t.kind != "race" or not t.fleet or _fleet_key(t.fleet) in fleets:
+            continue
+        col = labels.get(_fleet_key(t.fleet))
+        numbered = re.match(r"^(\d{1,2})\s+[A-Za-z]", t.fleet)
+        if col is None and not (numbered and len(summaries) == 1):
+            continue
+        t.race_label = t.fleet
+        t.race_number = col.number if col is not None and col.number else (
+            int(numbered.group(1)) if numbered else t.race_number)
+        t.fleet = summaries[0].fleet if len(summaries) == 1 else ""
+
+
 def _renumber(cols: list) -> None:
     """Series race numbers for summary columns.
 
@@ -481,6 +504,10 @@ def parse_page(html: str) -> SailwavePage:
             joined = " ".join(parts)
             m = _LABEL_RE.search(joined)
             date_like = parse_race_date(joined, date(2000, 12, 31)) is not None
+            numbered = re.match(r"^(\d{1,2})\s+[A-Za-z]", joined) if fields and "rating" in fields or "rating_irc" in fields else None
+            if numbered and not m:
+                race_cols.append(RaceColumn(i, joined, int(numbered.group(1)), ""))
+                continue
             if (m and _RACE_COL_RE.match(first)) or (date_like and fields):
                 label = m.group(0) if m else ""
                 date_text = _clean(joined.replace(label, " ")) if label else joined
@@ -520,6 +547,7 @@ def parse_page(html: str) -> SailwavePage:
             _renumber(tab.race_columns)
         tables.append(tab)
 
+    _race_names_as_fleets(tables)
     _renumber_race_tables([t for t in tables if t.kind == "race"])
     return SailwavePage(
         title=title,

@@ -484,3 +484,23 @@ def test_undated_regatta_uses_event_title_day_without_race_day():
     assert rows and {r.event_date for r in rows} == {date(2026, 4, 18)}
     assert all("race_date" not in r.raw_data for r in rows)
     assert {r.raw_data["date_source"] for r in rows} == {"event_title"}
+
+
+def test_numbered_course_titles_are_races_not_fleets():
+    html = """<html><body><h1>SYC Cruiser Racing 2019 - IRC</h1><h2>Salcombe</h2>
+    <h3 class="summarytitle">Overall</h3><div class="caption summarycaption">Sailed: 2, Rating system: IRC</div>
+    <table class="summarytable"><thead><tr><th>Rank</th><th>Boat</th><th>Class</th><th>IRC</th>
+    <th>2 Range</th><th>6 Range</th><th>Total</th><th>Nett</th></tr></thead><tbody>
+    <tr><td>1st</td><td>JuJu</td><td>J 122</td><td>1.063</td><td>2</td><td>1</td><td>3</td><td>3</td></tr>
+    <tr><td>2nd</td><td>Aeolus</td><td>RS Elite</td><td>0.925</td><td>1</td><td>2</td><td>3</td><td>3</td></tr>
+    </tbody></table>
+    <h3 class="racetitle">6 Range - 07/07/2019 at 10:45</h3>
+    <table class="racetable"><thead><tr><th>Rank</th><th>Boat</th><th>Class</th><th>IRC</th><th>Elapsed</th>
+    <th>Corrected</th><th>Points</th></tr></thead><tbody>
+    <tr><td>1</td><td>JuJu</td><td>J 122</td><td>1.063</td><td>00:28:45</td><td>0:30:34</td><td>1</td></tr>
+    <tr><td>2</td><td>Aeolus</td><td>RS Elite</td><td>0.925</td><td>00:33:45</td><td>0:31:13</td><td>2</td></tr>
+    </tbody></table><p>Sailwave Scoring Software 2.29</p></body></html>"""
+    rows = sw.parse_sailwave_html(html)
+    tabled = [r for r in rows if r.raw_data["row_origin"] == "race_table"]
+    assert {(r.class_name, r.race_number, r.event_date) for r in tabled} == {("Overall", 6, date(2019, 7, 7))}
+    assert {r.race_name for r in tabled} == {"6 Range"}
