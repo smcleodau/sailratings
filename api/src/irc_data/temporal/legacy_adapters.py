@@ -621,6 +621,72 @@ def _run_manage2sail(record: Mapping[str, Any]) -> Mapping[str, Any]:
     return manage2sail.run(dict(record), since=since)
 
 
+def _since_for(slug: str, record: Mapping[str, Any]) -> "date | None":
+    """``record["since"]`` if given, else the last successful run minus 14 days."""
+    return _record_since(record) or _last_successful_run_since(slug, lookback_days=14)
+
+
+def _assert_approved(*slugs: str) -> None:
+    """Policy gate: the series' register row and the host platform's row."""
+    from irc_data.db.connection import get_engine
+    from irc_data.sources.registry import resolve_and_assert_approved
+
+    engine = get_engine()
+    for slug in dict.fromkeys(slugs):
+        resolve_and_assert_approved(engine, slug)
+
+
+def _run_sailwave_seeds(record: Mapping[str, Any], slug: str) -> Mapping[str, Any]:
+    """Sailwave IRC results for the seeds registered under ``slug``.
+
+    Per-race IRC rows (race tables: place, elapsed, corrected; summary-only
+    races: place from points) stored through ``store_normalized_results``
+    with the natural-key upsert; ``records_written`` is the row-count delta.
+    Raises when a seed listing is empty or every seed fails to list.
+    """
+    from irc_data.scrapers import sailwave
+    from irc_data.scrapers.sailwave_seeds import seeds_for
+
+    _assert_approved(slug, "sailwave")
+    return sailwave.run(dict(record), source=slug, seeds=seeds_for(slug),
+                        since=_since_for(slug, record))
+
+
+def _run_sailwave(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Generic Sailwave IRC results (UK / Irish club seed list)."""
+    return _run_sailwave_seeds(record, "sailwave")
+
+
+def _run_warsash(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Warsash Spring Series / Spring Championships (Sailwave files)."""
+    return _run_sailwave_seeds(record, "warsash-spring-series")
+
+
+def _run_halsail_seeds(record: Mapping[str, Any], slug: str) -> Mapping[str, Any]:
+    """HalSail IRC results for the seeds registered under ``slug``.
+
+    Renders the club-linked public result pages in headless Chromium (policy
+    UA, >= 2 s pacing, Print*/HalApi requests aborted) and stores per-race
+    IRC rows with ``source_url``. Raises if every seed fails to render.
+    """
+    from irc_data.scrapers import halsail
+    from irc_data.scrapers.halsail_seeds import seeds_for
+
+    _assert_approved(slug, "halsail")
+    return halsail.run(dict(record), source=slug, seeds=seeds_for(slug),
+                       since=_since_for(slug, record))
+
+
+def _run_hamble(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Hamble Winter Series (HRSC, published on HalSail)."""
+    return _run_halsail_seeds(record, "hamble-winter-series")
+
+
+def _run_halsail(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Other club-linked HalSail IRC series (Island SC, RYS, ...)."""
+    return _run_halsail_seeds(record, "halsail")
+
+
 def _run_cert_discovery(record: Mapping[str, Any]) -> Mapping[str, Any]:
     """IRC certificate discovery — exhaustive 2-letter search + targeted
     cert-number search for current-TCC boats, downloading as it goes.
@@ -814,6 +880,30 @@ LEGACY_CLI_ADAPTERS: dict[str, LegacyScraperAdapter] = {
         cli_argv=("scrape", "results", "--source", "manage2sail"),
         description="Manage2Sail IRC race results (event list + known IRC clubs).",
         runner=_run_manage2sail,
+    ),
+    "sailwave": LegacyScraperAdapter(
+        slug="sailwave",
+        cli_argv=("scrape", "results", "--source", "sailwave"),
+        description="Sailwave IRC results from the UK/Irish club seed list.",
+        runner=_run_sailwave,
+    ),
+    "warsash-spring-series": LegacyScraperAdapter(
+        slug="warsash-spring-series",
+        cli_argv=("scrape", "results", "--source", "sailwave"),
+        description="Warsash Spring Series / Championships IRC results (Sailwave).",
+        runner=_run_warsash,
+    ),
+    "hamble-winter-series": LegacyScraperAdapter(
+        slug="hamble-winter-series",
+        cli_argv=("scrape", "results", "--source", "halsail"),
+        description="Hamble Winter Series IRC results (HalSail, headless render).",
+        runner=_run_hamble,
+    ),
+    "halsail": LegacyScraperAdapter(
+        slug="halsail",
+        cli_argv=("scrape", "results", "--source", "halsail"),
+        description="Club-linked HalSail IRC results (headless render).",
+        runner=_run_halsail,
     ),
     "irc-certs": LegacyScraperAdapter(
         slug="irc-certs",

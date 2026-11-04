@@ -400,6 +400,9 @@ _SEED_SOURCES: list[tuple[str, str, str, str, str, str]] = [
      "European race management; publicly published results"),
     ("sailwave", "Sailwave", "https://www.sailwave.com", "results", "approved",
      "Results files publicly linked from club sites"),
+    ("halsail", "HalSail", "https://www.halsail.com", "results", "approved",
+     "Approved 2026-11-03 with conditions: club-linked public /Result pages only, "
+     ">=2s + policy UA, no Print*/HalApi/JSON endpoints, store source_url"),
     ("sailing-news", "Sailing News Feeds", "https://example.com/news", "news", "approved",
      "RSS/Atom feeds; explicitly published for syndication"),
     ("irc-certs", "IRC Certificate PDFs", "https://ircrating.org/pdfdirectory",
