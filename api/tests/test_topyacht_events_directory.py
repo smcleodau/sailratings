@@ -87,3 +87,9 @@ def test_resolve_skips_index_unchanged_since_cutoff():
             return await ty.resolve_series_urls(c, "https://h/summer/index.htm", since=date(2026, 6, 1))
     ty.rate_limiter.min_delay = ty.rate_limiter.jitter = 0
     assert asyncio.run(run()) == []
+
+
+def test_implausible_dates_are_dropped():
+    assert ty._label_date("29/10/2106 Race 3") is None
+    assert ty._parse_race_date("Race 3 (29/10/2106)") is None
+    assert ty._label_date("29/10/2016 Race 3") == date(2016, 10, 29)

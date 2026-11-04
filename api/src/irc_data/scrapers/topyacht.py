@@ -334,6 +334,11 @@ def _safe_int(val: str) -> int | None:
         return None
 
 
+def _plausible(d: date) -> date | None:
+    """Drop dates no race can have (club typos such as 2106 for 2016)."""
+    return d if 1990 <= d.year <= date.today().year + 1 else None
+
+
 def _parse_race_date(text: str) -> date | None:
     """Extract a date from TopYacht race heading text.
 
@@ -343,7 +348,7 @@ def _parse_race_date(text: str) -> date | None:
     m = re.search(r"\((\d{1,2})/(\d{1,2})/(\d{4})\)", text)
     if m:
         try:
-            return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+            return _plausible(date(int(m.group(3)), int(m.group(2)), int(m.group(1))))
         except ValueError:
             pass
     return None
@@ -625,7 +630,7 @@ def _label_date(label: str) -> date | None:
     if not m:
         return None
     try:
-        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        return _plausible(date(int(m.group(3)), int(m.group(2)), int(m.group(1))))
     except ValueError:
         return None
 
