@@ -4,8 +4,12 @@ Usage (from api/, PYTHONPATH=src)::
 
   python scripts/backfill_results_history.py rorc --since 2007-01-01 [--dry-run]
   python scripts/backfill_results_history.py cowesweek --since 2001-01-01
+  python scripts/backfill_results_history.py cowesweek --since 2016-01-01 \
+      --events '2016 Cowes Week - IRC Class 2'
   python scripts/backfill_results_history.py sydney-hobart --since 1945-01-01 --dry-run
   python scripts/backfill_results_history.py manage2sail --since 2010-01-01
+  python scripts/backfill_results_history.py manage2sail --since 2018-01-01 \
+      --m2s-events 'https://www.manage2sail.com/en-US/event/<id>|2018-05-10'
 
 Persists exactly like the scheduled runners: event sources go through
 ``store_normalized_results`` (same arguments as
@@ -57,11 +61,13 @@ from irc_data.db.connection import get_engine
 from irc_data.db.models import RaceResultModel
 from irc_data.db.operations import _find_existing_result, find_boat_by_sail_number
 from irc_data.db.result_identity import (
+    SKIPPER_SQL,
     ResultIdentity,
     canonical_source_url,
     match_strength,
     raw_boat_name,
     raw_sail_number,
+    raw_skipper,
 )
 from irc_data.matching.identity import normalize_sail
 from irc_data.scrapers.result_import import _find_boat_by_name, store_normalized_results
@@ -134,16 +140,19 @@ def classify(engine, kw, boat_id):
         row = conn.execute(text(
             "SELECT r.id, r.boat_id, r.place, r.status, r.source_url, "
             "COALESCE(r.raw_data->>'boat_name', ee.boat_name) bn, "
-            "COALESCE(r.raw_data->>'sail_number', r.raw_data->>'sail_no', ee.sail_number) sn "
+            "COALESCE(r.raw_data->>'sail_number', r.raw_data->>'sail_no', ee.sail_number) sn, "
+            + SKIPPER_SQL + " sk "
             "FROM race_results r LEFT JOIN event_entries ee ON ee.id = r.event_entry_id "
             "WHERE r.id = :id"), {"id": hit[0]}).mappings().one()
     raw = kw.get("raw_data") or {}
     new = ResultIdentity.build(boat_name=raw_boat_name(raw), sail_number=raw_sail_number(raw),
                                place=kw.get("place"), status=kw.get("status"),
-                               boat_id=boat_id, source_url=kw.get("source_url"))
+                               boat_id=boat_id, source_url=kw.get("source_url"),
+                               skipper=raw_skipper(raw))
     old = ResultIdentity.build(id=row["id"], boat_name=row["bn"], sail_number=row["sn"],
                                place=row["place"], status=row["status"],
-                               boat_id=row["boat_id"], source_url=row["source_url"])
+                               boat_id=row["boat_id"], source_url=row["source_url"],
+                               skipper=row["sk"])
     return match_strength(new, old) or "?", dict(row)
 
 
@@ -304,6 +313,9 @@ def run_event_source(args, engine):
         years = {int(y) for y in args.years.split(",")}
         events = [e for e in events if (e.metadata or {}).get("year") in years
                   or (e.event_date and e.event_date.year in years)]
+    if args.events:
+        wanted = {n.strip().lower() for n in args.events.split(";") if n.strip()}
+        events = [e for e in events if e.event_name.strip().lower() in wanted]
     log(stage="discovered", source=slug, events=len(events))
     before = year_counts(engine, source)
     dry, dry_year = Counter(), defaultdict(Counter)
@@ -403,9 +415,47 @@ def run_manage2sail(args, engine):
             refs.extend(m.parse_club_events(resp.text, club_id))
         return refs
 
-    async def main():
+    async def process(ref):
         nonlocal irc_events
+        rows = await scraper.scrape_event(ref)
+        if not rows:
+            return
+        irc_events += 1
+        y = ref.event_date.year if ref.event_date else None
+        found_year[y] += len(rows)
+        orgs = {c for r in rows for c in (r.raw_data or {}).get("organizer_club_ids") or []}
+        new_clubs = sorted(c for c in orgs if c not in walked and c not in queue)
+        queue.extend(new_clubs)
+        entry = {"event": ref.event_name, "date": ref.event_date, "rows": len(rows),
+                 "url": ref.event_url, "new_clubs": new_clubs}
+        if args.dry_run:
+            kinds = Counter()
+            for r in rows:
+                bid = _boat_id(engine, r.sail_number, r.boat_name, r.rating_value, boat_cache)
+                kinds[classify(engine, m2s_kwargs(r), bid)[0]] += 1
+            dry_year[y].update(kinds)
+            entry["dry"] = dict(kinds)
+        else:
+            st = m.store_results(engine, rows)
+            written_year[y] += st["written"]
+            entry.update(written=st["written"], store_errors=st["errors"])
+        log(stage="irc_event", **entry)
+
+    async def main():
         try:
+            if args.m2s_events:
+                # Only these events (URL|start-date), no club walk.
+                for spec in (s.strip() for s in args.m2s_events.split(";")):
+                    if not spec:
+                        continue
+                    url, start = spec.rsplit("|", 1)
+                    ref = m.EventRef(source=m.SOURCE, event_name=url, event_url=url,
+                                     event_date=date.fromisoformat(start),
+                                     metadata={"end_date": start, "event_key": m._event_key(url),
+                                               "club_ids": []})
+                    seen_events.add(ref.metadata["event_key"])
+                    await process(ref)
+                return
             while queue:
                 club = queue.pop(0)
                 if club in walked:
@@ -426,29 +476,7 @@ def run_manage2sail(args, engine):
                 log(stage="club", club=club, events_listed=len(refs), events_new=len(todo),
                     queue=len(queue))
                 for ref in todo:
-                    rows = await scraper.scrape_event(ref)
-                    if not rows:
-                        continue
-                    irc_events += 1
-                    y = ref.event_date.year if ref.event_date else None
-                    found_year[y] += len(rows)
-                    orgs = {c for r in rows for c in (r.raw_data or {}).get("organizer_club_ids") or []}
-                    new_clubs = sorted(c for c in orgs if c not in walked and c not in queue)
-                    queue.extend(new_clubs)
-                    entry = {"event": ref.event_name, "date": ref.event_date, "rows": len(rows),
-                             "url": ref.event_url, "new_clubs": new_clubs}
-                    if args.dry_run:
-                        kinds = Counter()
-                        for r in rows:
-                            bid = _boat_id(engine, r.sail_number, r.boat_name, r.rating_value, boat_cache)
-                            kinds[classify(engine, m2s_kwargs(r), bid)[0]] += 1
-                        dry_year[y].update(kinds)
-                        entry["dry"] = dict(kinds)
-                    else:
-                        st = m.store_results(engine, rows)
-                        written_year[y] += st["written"]
-                        entry.update(written=st["written"], store_errors=st["errors"])
-                    log(stage="irc_event", **entry)
+                    await process(ref)
         finally:
             await scraper.aclose()
 
@@ -465,6 +493,10 @@ def main():
     ap.add_argument("source", choices=sorted(STORE_SOURCE))
     ap.add_argument("--since", required=True, help="ISO date; earliest event date to fetch")
     ap.add_argument("--years", help="comma list to restrict event sources to these years")
+    ap.add_argument("--events", help="semicolon list of exact event names (event sources), "
+                    "e.g. '2016 Cowes Week - IRC Class 2;2017 Cowes Week - IRC Class 2'")
+    ap.add_argument("--m2s-events", help="manage2sail only: semicolon list of URL|YYYY-MM-DD "
+                    "(event page and start date) to re-save without walking clubs")
     ap.add_argument("--clubs", help="extra manage2sail club GUIDs (comma list)")
     ap.add_argument("--held-log", help="JSONL of rows held back as probable duplicates "
                     "(default /home/irc-data/data-raw/backfills/<source>_held.jsonl)")

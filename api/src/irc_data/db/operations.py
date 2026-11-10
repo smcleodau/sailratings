@@ -228,10 +228,12 @@ def _find_existing_result(conn, values: dict, boat_id: int | None):
     """
     from irc_data.db.result_identity import (
         SCOPE_COLUMNS,
+        SKIPPER_SQL,
         ResultIdentity,
         pick_existing,
         raw_boat_name,
         raw_sail_number,
+        raw_skipper,
     )
 
     clauses, params = [], {}
@@ -248,7 +250,7 @@ def _find_existing_result(conn, values: dict, boat_id: int | None):
             "SELECT r.id, r.boat_id, r.event_entry_id, r.place, r.status, r.source_url, "
             "COALESCE(r.raw_data->>'boat_name', ee.boat_name) AS boat_name, "
             "COALESCE(r.raw_data->>'sail_number', r.raw_data->>'sail_no', ee.sail_number) "
-            "AS sail_number "
+            "AS sail_number, " + SKIPPER_SQL + " AS skipper "
             "FROM race_results r LEFT JOIN event_entries ee ON ee.id = r.event_entry_id "
             "WHERE " + " AND ".join(clauses)
         ),
@@ -260,12 +262,13 @@ def _find_existing_result(conn, values: dict, boat_id: int | None):
     new = ResultIdentity.build(
         boat_name=raw_boat_name(raw), sail_number=raw_sail_number(raw),
         place=values.get("place"), status=values.get("status"),
-        boat_id=boat_id, source_url=values.get("source_url"),
+        boat_id=boat_id, source_url=values.get("source_url"), skipper=raw_skipper(raw),
     )
     cands = {
         r.id: ResultIdentity.build(
             id=r.id, boat_name=r.boat_name, sail_number=r.sail_number,
             place=r.place, status=r.status, boat_id=r.boat_id, source_url=r.source_url,
+            skipper=r.skipper,
         )
         for r in rows
     }

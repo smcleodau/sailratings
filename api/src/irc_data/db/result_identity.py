@@ -32,6 +32,36 @@ normalised sail number:
   missing, an existing row that was never matched to a boat also counts.
   This keeps two genuinely different boats with the same name in one race
   (e.g. ``ABRACADABRA`` and ``ABRACADABRA ²`` in the 2025 Fastnet) apart.
+
+Different names on one sail number
+----------------------------------
+A sail number is not unique to one entry: Cowes Week corporate charter
+boats race under several sponsor names on one sail number in the same class
+(2016 IRC Class 2: ``SAILING LOGIC LANCELOT``, ``RIGHTMOVE LANCELOT II``,
+``NABARRO LANCELOT II``, ``ALLENBY CAPITAL LANCELOT`` all ``GBR6840R``;
+``MERLIN`` and ``RIGHTMOVE MERLIN`` both ``GBR3923L``), and Manage2Sail
+pages carry entries with a copied sail number (Ostend-Ramsgate 2018:
+``Mr sandman`` and ``Moana`` both ``BEL 4701``). Boat matching is by sail
+number, so those entries also share the matched boat. So when **both** rows
+carry a boat name and the normalised names differ, a sail-only match:
+
+* never counts the same matched boat as corroboration, only the **same
+  place** (and status when unplaced) — two entries of one page never share
+  a place except in a tie;
+* if the names are *related* (one normalised name contains the other, e.g.
+  ``SNSP Hakuna Matata`` / ``Hakuna Matata``, ``PINK PANTHER`` / ``PANTHER``,
+  or they share a significant word), the same place is enough unless both
+  rows carry a skipper/helm and it differs;
+* if the names share nothing (``MADRUGADA`` / ``BULLDOG``, ``SALVO`` /
+  ``SCHERZO OF COWES``), the same place **and** the same skipper/helm
+  (``raw_data`` ``skipper`` or ``helm``, present on both) are required. This
+  keeps the 2025 Cowes Week renames (same sail, skipper and place) matching
+  and keeps tied charter entries (``BORDIER & CIE (UK) PLC`` /
+  ``HERBERT SMITH FREEHILLS``, both ``GBR2806L``, both 28th, no skipper)
+  apart.
+
+Names that differ only in case, spacing, punctuation or quotes normalise to
+the same key and are not "different" at all.
 """
 
 from __future__ import annotations
@@ -75,6 +105,31 @@ def normalize_key_name(name: str | None) -> str:
     return "".join(ch for ch in name if ch.isalnum())
 
 
+# Words too generic to make two boat names "related".
+_GENERIC_NAME_TOKENS = {"THE", "OF", "AND", "II", "III", "IV", "TOO", "TWO", "TEAM"}
+
+
+def _name_tokens(name: str | None) -> set[str]:
+    if not name:
+        return set()
+    name = unicodedata.normalize("NFKC", str(name)).upper()
+    return {w for w in re.findall(r"[^\W_]+", name)
+            if len(w) >= 3 and w not in _GENERIC_NAME_TOKENS}
+
+
+def names_related(a_raw: str | None, b_raw: str | None) -> bool:
+    """Normalised names equal, one containing the other, or a shared significant word."""
+    a, b = normalize_key_name(a_raw), normalize_key_name(b_raw)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long_ = sorted((a, b), key=len)
+    if len(short) >= 3 and short in long_:
+        return True
+    return bool(_name_tokens(a_raw) & _name_tokens(b_raw))
+
+
 def normalize_key_sail(sail: str | None) -> str:
     """Upper-case sail number keeping only letters and digits."""
     return normalize_key_name(sail)
@@ -116,10 +171,13 @@ class ResultIdentity:
     status: str | None
     boat_id: int | None
     source_url: str | None
+    skipper: str = ""  # normalised skipper/helm as published, "" when absent
+    raw_name: str = ""  # published name before normalisation (word tests)
 
     @classmethod
     def build(cls, *, id=None, boat_name=None, sail_number=None, place=None,
-              status=None, boat_id=None, source_url=None) -> "ResultIdentity":
+              status=None, boat_id=None, source_url=None,
+              skipper=None) -> "ResultIdentity":
         return cls(
             id=id,
             name=normalize_key_name(boat_name),
@@ -128,6 +186,8 @@ class ResultIdentity:
             status=(status or "").strip().upper() or None,
             boat_id=boat_id,
             source_url=source_url,
+            skipper=normalize_key_name(skipper),
+            raw_name=str(boat_name or ""),
         )
 
 
@@ -150,6 +210,18 @@ def match_strength(new: ResultIdentity, old: ResultIdentity) -> str | None:
         # Nothing published agrees. Neither identifier present on either side
         # is not enough to call it the same result.
         return None
+    if sail_eq and new.name and old.name:
+        # Different published names on one sail number (see "Different names
+        # on one sail number" above): place must agree, the matched boat is
+        # no evidence, and unrelated names also need the same skipper.
+        if not _same_place(new, old):
+            return None
+        skippers_known = bool(new.skipper) and bool(old.skipper)
+        if skippers_known and new.skipper != old.skipper:
+            return None
+        if names_related(new.raw_name or new.name, old.raw_name or old.name):
+            return "weak"
+        return "weak" if skippers_known else None
     same_boat = new.boat_id is not None and new.boat_id == old.boat_id
     if _same_place(new, old) or same_boat:
         return "weak"
@@ -187,3 +259,13 @@ def raw_boat_name(raw: dict | None, fallback: str | None = None) -> str | None:
 def raw_sail_number(raw: dict | None, fallback: str | None = None) -> str | None:
     raw = raw or {}
     return raw.get("sail_number") or raw.get("sail_no") or fallback
+
+
+# SQL expression for the stored skipper/helm, matching ``raw_skipper``.
+SKIPPER_SQL = "COALESCE(r.raw_data->>'skipper', r.raw_data->>'helm')"
+
+
+def raw_skipper(raw: dict | None) -> str | None:
+    raw = raw or {}
+    val = raw.get("skipper") or raw.get("helm")
+    return val if isinstance(val, str) else None

@@ -28,9 +28,10 @@ from irc_data.db.result_identity import (
 
 
 def _rid(id=None, name="Panther", sail="GBR 6690R", place=1, boat_id=None,
-         url="https://example.org/r1", status="finished"):
+         url="https://example.org/r1", status="finished", skipper=None):
     return ResultIdentity.build(id=id, boat_name=name, sail_number=sail, place=place,
-                                status=status, boat_id=boat_id, source_url=url)
+                                status=status, boat_id=boat_id, source_url=url,
+                                skipper=skipper)
 
 
 def test_normalisation_keeps_unicode_digits_apart():
@@ -60,9 +61,61 @@ def test_strong_match_ignores_boat_id_and_place():
 
 
 def test_renamed_boat_same_sail_same_place_is_weak_match():
-    old = _rid(id=1, name="MADRUGADA", sail="GBR942R", place=6, boat_id=1887)
-    new = _rid(name="BULLDOG", sail="GBR942R", place=6, boat_id=1887)
+    # 2025 Cowes Week: unrelated names, same sail, place and skipper.
+    old = _rid(id=1, name="MADRUGADA", sail="GBR942R", place=6, boat_id=1887,
+               skipper="Derek Shakespeare")
+    new = _rid(name="BULLDOG", sail="GBR942R", place=6, boat_id=1887,
+               skipper="Derek Shakespeare")
     assert match_strength(new, old) == "weak"
+    # Without a skipper on both sides an unrelated name is not a rename.
+    assert match_strength(_rid(name="BULLDOG", sail="GBR942R", place=6, boat_id=1887),
+                          old) is None
+    # A different skipper never is.
+    assert match_strength(_rid(name="BULLDOG", sail="GBR942R", place=6, boat_id=1887,
+                               skipper="Someone Else"), old) is None
+
+
+def test_related_names_same_sail_same_place_match():
+    # Sponsor prefix / shortened name, same place: same result.
+    for a, b in [("SNSP Hakuna Matata", "HAKUNA MATATA"), ("PINK PANTHER", "PANTHER"),
+                 ("FIRST CHALLENGER", "CHALLENGER"), ("Yes!", "YES! T&G")]:
+        old = _rid(id=1, name=a, sail="FRA35425", place=9, boat_id=7)
+        assert match_strength(_rid(name=b, sail="FRA35425", place=9), old) == "weak", (a, b)
+    # Case / punctuation / quotes only: the same name, a strong match.
+    assert match_strength(_rid(name='"State O\'Shassis"', sail="GBR1"),
+                          _rid(id=1, name="STATE OSHASSIS", sail="GBR1")) == "strong"
+
+
+def test_cowes_week_charter_boats_sharing_sail_stay_apart():
+    # 2016 Cowes Week IRC Class 2: corporate charters, one sail number,
+    # different sponsor names and places, all matched to the same boat.
+    entries = [("SAILING LOGIC LANCELOT", 16), ("RIGHTMOVE LANCELOT II", 20),
+               ("NABARRO LANCELOT II", 21), ("ALLENBY CAPITAL LANCELOT", 23)]
+    stored = [_rid(id=i, name=n, sail="GBR6840R", place=p, boat_id=20191)
+              for i, (n, p) in enumerate(entries, 1)]
+    for name, place in entries:
+        new = _rid(name=name, sail="GBR6840R", place=place, boat_id=20191)
+        hit = pick_existing(new, stored)
+        assert hit is not None and hit.name == new.name  # only its own row
+    # Name contained in another, same sail, adjacent places.
+    assert match_strength(_rid(name="MERLIN", sail="GBR3923L", place=19, boat_id=5),
+                          _rid(id=1, name="RIGHTMOVE MERLIN", sail="GBR3923L", place=18,
+                               boat_id=5)) is None
+    # Tied on place, unrelated names, no skipper published.
+    assert match_strength(_rid(name="HERBERT SMITH FREEHILLS", sail="GBR2806L", place=28,
+                               boat_id=6),
+                          _rid(id=1, name="BORDIER & CIE (UK) PLC", sail="GBR2806L",
+                               place=28, boat_id=6)) is None
+
+
+def test_manage2sail_copied_sail_number_stays_apart():
+    # Ostend-Ramsgate 2018: two entries published with BEL 4701.
+    old = _rid(id=1, name="Mr sandman", sail="BEL 4701", place=20, boat_id=900,
+               skipper="Christiaan Pottiez")
+    new = _rid(name="Moana", sail="BEL 4701", place=14, boat_id=900,
+               skipper="François Goubau")
+    assert match_strength(new, old) is None
+    assert match_strength(old, new) is None
 
 
 def test_corrected_sail_same_name_same_place_is_weak_match():
@@ -161,14 +214,15 @@ def pg_engine():
 
 
 def _save(engine, boat_id, name, sail, place, race_name="Race 1", race_date=None,
-          event="2026 Test Regatta", url="https://example.org/results/1"):
+          event="2026 Test Regatta", url="https://example.org/results/1", skipper=None):
     from irc_data.db.operations import upsert_race_result
 
     return upsert_race_result(
         engine, boat_id=boat_id, event_name=event, event_date=date(2026, 6, 1),
         race_name=race_name, race_date_specific=race_date, source="isora",
         source_url=url, place=place, class_name="IRC Class 1", status="finished",
-        raw_data={"boat_name": name, "sail_number": sail},
+        raw_data={"boat_name": name, "sail_number": sail,
+                  **({"skipper": skipper} if skipper else {})},
     )
 
 
@@ -221,7 +275,18 @@ def test_different_races_do_not_collide(pg_engine):
 
 
 def test_renamed_boat_on_rescrape_updates(pg_engine):
-    first = _save(pg_engine, 3, "MADRUGADA", "GBR942R", 6)
-    assert _save(pg_engine, 3, "BULLDOG", "GBR942R", 6) == first
+    first = _save(pg_engine, 3, "MADRUGADA", "GBR942R", 6, skipper="Derek Shakespeare")
+    assert _save(pg_engine, 3, "BULLDOG", "GBR942R", 6, skipper="Derek Shakespeare") == first
     rows = _rows(pg_engine)
     assert len(rows) == 1 and rows[0].boat_name == "BULLDOG"
+
+
+def test_charter_entries_sharing_sail_all_saved(pg_engine):
+    # One page, one sail number, four sponsor names, one matched boat.
+    ids = {_save(pg_engine, 1, name, "GBR6840R", place)
+           for name, place in [("SAILING LOGIC LANCELOT", 16), ("RIGHTMOVE LANCELOT II", 20),
+                               ("NABARRO LANCELOT II", 21), ("ALLENBY CAPITAL LANCELOT", 23)]}
+    assert len(ids) == 4 and len(_rows(pg_engine)) == 4
+    # Re-saving one of them updates its own row.
+    assert _save(pg_engine, 1, "NABARRO LANCELOT II", "GBR6840R", 21) in ids
+    assert len(_rows(pg_engine)) == 4
