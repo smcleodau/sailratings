@@ -36,7 +36,12 @@ from datetime import timedelta
 from sqlalchemy import text
 
 from irc_data.db.connection import get_engine
-from irc_data.db.result_identity import SCOPE_COLUMNS, ResultIdentity, pick_existing
+from irc_data.db.result_identity import (
+    SCOPE_COLUMNS,
+    SKIPPER_SQL,
+    ResultIdentity,
+    pick_existing,
+)
 
 SAME_RUN = timedelta(minutes=10)
 
@@ -45,6 +50,7 @@ def _ident(r, id=None) -> ResultIdentity:
     return ResultIdentity.build(
         id=r.id if id is None else id, boat_name=r.boat_name, sail_number=r.sail_number,
         place=r.place, status=r.status, boat_id=r.boat_id, source_url=r.source_url,
+        skipper=r.skipper,
     )
 
 
@@ -55,7 +61,8 @@ def find_groups(conn):
                r.source_url, r.created_at, r.tcc_at_race,
                COALESCE(r.raw_data->>'boat_name', ee.boat_name) AS boat_name,
                COALESCE(r.raw_data->>'sail_number', r.raw_data->>'sail_no',
-                        ee.sail_number) AS sail_number
+                        ee.sail_number) AS sail_number,
+               {SKIPPER_SQL} AS skipper
         FROM race_results r LEFT JOIN event_entries ee ON ee.id = r.event_entry_id
         ORDER BY r.id
     """)).fetchall()
